@@ -1,86 +1,79 @@
 # POE2Radar — Contributor Guide
 
-External, read-only memory-reading **map/radar overlay for Path of Exile 2**. .NET 10, Windows,
-x64 only. Forked from the BubblesBot (PoE1) framework; PoE1 game data stripped.
+External memory-reading **map/radar overlay for Path of Exile 2**. .NET 10, Windows, x64 only.
+Reads game state out of process (no injection) and draws an overlay; an opt-in auto-flask feature
+sends keystrokes. Forked from a PoE1 framework, since rewritten around the live PoE2 layout.
 
 ## Non-negotiable rules
 
-**PoE2, not PoE1.** This is the *new* game. Do not reintroduce PoE1 mechanics, leagues, scarabs,
-atlas content, or PoE1 offset values as if they are correct. PoE1 carryover offsets in
-`KnownOffsets.cs` are an *unverified starting point* — treat every one as wrong until validated
-against live PoE2.
+**PoE2, not PoE1.** Offsets are PoE2-specific and drift with patches. Validated values live in
+`Game/Poe2Offsets.cs`; `resources/community-offsets.md` documents them + the discovery workflow.
 
-**Stay external.** Memory access via `OpenProcess` + `ReadProcessMemory`. **Never** inject into
-the PoE2 process — no DLL injection, no function hooking, no packet manipulation.
+**Stay external.** Memory access via `OpenProcess` + `ReadProcessMemory`. **Never** inject into the
+PoE2 process — no DLL injection, no function hooking, no packet manipulation.
 
-**Input/automation (opt-in).** As of the auto-flask feature, the overlay may send keystrokes via
-`SendInput` (`Input/SendInputNative`). Rules: foreground-gated (only when PoE2 is the focused
-window), in-game-gated, per-action cooldowns, and a master kill-switch hotkey (F8). Keep automation
-minimal and clearly gated; this is a personal QoL tool, not a headless bot.
+**Input/automation (opt-in).** The overlay may send keystrokes via `SendInput`
+(`Input/SendInputNative`) for auto-flask only. Rules: foreground-gated (only when PoE2 is focused),
+in-game-gated, per-action cooldowns, master kill-switch hotkey (F8). Keep automation minimal and
+clearly gated — a personal QoL tool, not a headless bot.
 
-**No self-healing offsets.** The overlay validates a handful of canary reads at startup
-(`CanaryCheck`) and refuses to run if they fail. Offset *discovery* lives in
-`POE2Radar.Research`, never in the overlay. When a PoE2 patch breaks reads, run Research,
-re-validate, commit the new table, restart.
+**Offset discovery lives in Research.** The overlay just reads; reverse-engineering/probes live in
+`POE2Radar.Research`. When a patch breaks reads, run the Research probes, re-validate, commit.
 
 **Three-pillar layout.** Exactly three projects:
-- `src/POE2Radar.Core` — memory plumbing, offset table, readers, snapshot/cache. Pure read-side.
-- `src/POE2Radar.Overlay` — tick loop + Direct2D overlay. The deliverable `.exe`.
+- `src/POE2Radar.Core` — memory plumbing + the PoE2 offset table + the live read layer. Read-side.
+- `src/POE2Radar.Overlay` — tick loop, Direct2D overlay, HTTP API, opt-in input. The deliverable `.exe`.
 - `src/POE2Radar.Research` — dev-time discovery/validation tooling. Never linked into the overlay.
 
 ## Architecture
 
-**Entry point:** `src/POE2Radar.Overlay/Program.cs` — attach → `Bootstrap.ResolveIngameData`
-(AOB scan, `--hp` value-scan fallback) → `CanaryCheck` → `RadarApp.Run`.
+**Entry point:** `src/POE2Radar.Overlay/Program.cs` — attach (`ProcessHandle.AttachToPoE`) →
+`Bootstrap.ResolveGameStateSlot` (AOB scan for the GameState pointer, validated by a working chain)
+→ `RadarApp.Run`.
 
-**Tick model** (`RadarApp`): two cadences.
-- *Render rate* (~144 Hz): read `LivePlayer`, track the game window, render the overlay. Projects
-  cached entity grid coords through the live player position so blips track smoothly.
-- *World rate* (~30 Hz): build a fresh `GameSnapshot`, refresh `EntityCache`, recompute the debug
-  A* path. Expensive entity-walk reads only happen at this cadence.
+**Core read layer:**
+- `MemoryReader.cs`, `ProcessHandle.cs`, `Native/` — Win32 + typed reads. `AttachToPoE` lists the
+  PoE2 client process names.
+- `Game/Poe2Offsets.cs` — **single source of truth for all PoE2 offsets** (validated + GameHelper2-
+  sourced; markers `✓` = confirmed live).
+- `Game/Poe2Live.cs` — the live reader: resolves GameState → InGameState → AreaInstance →
+  LocalPlayer each tick; reads player vitals, walks the entity std::maps into categorized dots
+  (rarity, reaction/hostility, POI via MinimapIcon, HP), reads the walkable terrain grid, the map
+  UI element (visibility/shift/zoom), tile landmarks, and area/character info. Caches per-entity
+  component addresses; cache key is the AreaInstance address (invalidates on zone change).
+- `Game/GameStructs.cs` — blittable structs (`StdVector`, `Vector2/3`, `VitalStruct`).
+- `Game/AobScanner.cs` + `AobPatterns.cs` — pattern scan for the GameState global slot.
+- `Game/LifeValidator.cs` — value-scan to find the Life component by HP (Research `--hp`).
+- `Pathfinding/MapProjection.cs` + `GridConstants.cs` — isometric grid→screen projection and the
+  grid↔world scale (250/23 ≈ 10.87).
 
-**Core layout:**
-- `MemoryReader.cs`, `ProcessHandle.cs`, `Native/` — Win32 + typed reads. `ProcessHandle.AttachToPoE`
-  searches candidate process names — **add the PoE2 client's process name here.**
-- `Game/KnownOffsets.cs` — single source of truth for all memory offsets. Overlay code reads
-  these only through the snapshot layer, never directly.
-- `Game/*Reader.cs`, `GameStructs.cs`, `EntityComponents.cs` — raw read helpers.
-- `Game/AobScanner.cs` + `AobPatterns.cs` — pattern scan to locate the IngameState global pointer.
-- `Snapshot/` — the ergonomic per-tick API: `GameSnapshot`, `PlayerView`, `LivePlayer`,
-  `EntityCache`, `CameraView` (matrix world→screen), `MapView`, `NavGrid` (terrain layers),
-  `WindowInfo`, `ElementGeometry`, `CanaryCheck`, `GroundLabelView`.
-- `Pathfinding/` — `GridConstants` (grid↔world scale — **re-calibrate for PoE2**), `AStar`,
-  `MapProjection` (isometric grid→screen), `PathSmoother`, terrain cell readers.
+**Overlay** (`src/POE2Radar.Overlay/`):
+- `RadarApp.cs` — tick loop. Render rate (~144 Hz): live player + render. World rate (~30 Hz):
+  refresh entities/terrain/landmarks. Publishes a `RadarState` for the API; runs auto-flask.
+- `Overlay/OverlayWindow.cs` — per-pixel-alpha layered window (`UpdateLayeredWindow`), tracks the
+  game window. `Overlay/OverlayRenderer.cs` — Direct2D: terrain bitmap + entity dots (colored/sized
+  by rarity) + POI rings + landmark markers + player blip + HUD. Drawn only when PoE2 is focused.
+- `Overlay/TerrainBitmap.cs` — bakes the walkable grid into a bitmap, rebuilt per area.
+- `Web/ApiServer.cs` — read-only HTTP API on `localhost:7777` (`/state`, `/entities`, `/landmarks`).
+- `Input/SendInputNative.cs` — scancode `SendInput` for auto-flask.
 
-**Overlay layout** (`src/POE2Radar.Overlay/Overlay/`):
-- `OverlayWindow` — per-pixel-alpha layered window (`UpdateLayeredWindow`), tracks the game window.
-- `OverlayRenderer` — Direct2D: terrain bitmap projected onto PoE2's expanded map + entity dots
-  (mob blob geometry, rares/uniques) + player blip + debug A* path.
-- `TerrainBitmap` — bakes the walkable-terrain layer into a bitmap, rebuilt per area hash.
-- `RenderContext` — what the renderer needs each frame, built fresh by `RadarApp`.
+**Research** (`src/POE2Radar.Research/Program.cs`) — probes: `--hp` (value-scan), `--chain`,
+`--entity`, `--find`/`--find-entities`/`--find-terrain`/`--find-map`, `--tiles`, `--rarity`,
+`--info`, `--watch` (area-change logger), `--dump`.
 
-## Critical rules (carried from the engine lineage — re-verify for PoE2)
+## Key facts (validated live; re-verify per patch)
 
-- **Grid units.** Positions/distances use entity grid position. World coords only at the two
-  projection call sites (grid→world multiply, `Camera.WorldToScreen`). The grid↔world scale
-  (`GridConstants`, PoE1 = 10.88) **must be re-derived for PoE2.**
-- **Map projection.** `OverlayRenderer` paints onto PoE's expanded-map canvas using the same
-  center/scale math the Radar plugin uses. `SubMap` zoom/shift offsets and the scale divisor are
-  **PoE1 values — re-discover for PoE2.**
-- **Area transitions.** `IngameData` is replaced on every area change — re-resolve it from
-  `IngameState.Data` each tick. Clear `EntityCache` and rebuild the terrain bitmap on area-hash
-  change.
-- **Canary on startup.** If offsets are stale the overlay must fail loud, not draw garbage.
-
-## Offset workflow (the main near-term task)
-
-1. Author/refresh `resources/community-offsets.md` with PoE2 community offset notes.
-2. Transcribe into `Game/KnownOffsets.cs`. Mark each `// unverified` until proven.
-3. `POE2Radar.Research --hp <currentHp>` — value-scan for the Life component to anchor the player
-   and back-walk to IngameData when AOB patterns aren't populated yet.
-4. `POE2Radar.Research` (AOB mode) once `AobPatterns.cs` has a PoE2 IngameState pattern.
-5. Validate each offset against a known in-game value; flip `// unverified` → `// ✓` as confirmed.
-6. There is no POEMCP for PoE2 — validation is manual / value-scan based, not oracle-driven.
+- Chain: AOB "Game States" → GameState → InGameState (active state) → `AreaInstance @ +0x290` →
+  `LocalPlayer @ +0x5A0`.
+- AreaInstance: AreaInfo `+0xA0` (code), AreaLevel `+0xC4`, AreaHash `+0x11C`, AwakeEntities std::map
+  `+0x6C0` / Sleeping `+0x6D0`, TerrainStruct `+0x8A0` (walkable `+0xD0`, BytesPerRow `+0x130`).
+- Entity: Details `+0x08`, ComponentList `+0x10`; component map via ComponentLookUp StdBucket.
+  Rarity = ObjectMagicProperties `+0x144`; hostility = Positioned.Reaction `+0x1E0` (friendly = bit
+  pattern `(b&0x7F)==1`); grid = Render world `+0x138` / 10.87; Life HP `+0x1A8` / Mana `+0x1F8` / ES
+  `+0x230`; Player name `+0x1B0`, level `+0x204`.
+- Map UI: UiRoot `InGameState +0x2F0`; UiElement Self `+0x08`, Children `+0x10`, Flags `+0x180`
+  (visible = bit `0x0B`); MapUiElement Shift `+0x368`, DefaultShift `+0x370` (= (0,-20)), Zoom `+0x3A8`.
+- **Still TBD:** camera world→screen matrix (for world-space nameplates); friendly area Name string.
 
 ## Dependencies
 - `Vortice.Direct2D1` (overlay rendering). Targets `net10.0-windows`, x64.

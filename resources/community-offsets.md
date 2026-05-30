@@ -91,10 +91,10 @@ whose offsets are **PoE2-targeted** (`GameProcessName.cs` maps the client to "Pa
 `StaticOffsetsPatterns.cs` patterns are for the PoE2 exe). Also see `resources/research notes.txt`
 (forum post describing the AOB `Pattern.cs` / `^` BytesToSkip system).
 
-> **Status: not yet transcribed into `KnownOffsets.cs`.** The scaffold's `KnownOffsets.cs` still
-> holds PoE1-shaped values. PoE2's layout is **structurally different** (see "Structural deltas"
-> below) — transcribing means reshaping reader code, not just swapping numbers. Validate each
-> value against a live PoE2 client before trusting it; this dump is an unknown-age snapshot.
+> **Status: the validated section above is live in `src/POE2Radar.Core/Game/Poe2Offsets.cs`.** The
+> GameHelper2 reference below documents PoE2's struct shapes; PoE2's layout is structurally
+> different from PoE1, and offsets drift per patch — re-validate against a live client (this dump
+> is an unknown-age snapshot) using the `POE2Radar.Research` probes.
 
 Markers below: address in hex, type, and the GameHelper2 file it came from.
 
