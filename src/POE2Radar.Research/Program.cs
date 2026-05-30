@@ -51,6 +51,9 @@ if (HasFlag(args, "--rarity"))
 if (HasFlag(args, "--info"))
     return RunInfo(process, reader);
 
+if (HasFlag(args, "--camera"))
+    return RunCamera(process, reader);
+
 if (TryGetHexArg(args, "--find") is { } needle)
     return RunFindPointer(reader, needle, TryGetHexArg(args, "--near"), TryGetIntArg(args, "--window") ?? 0x2000);
 
@@ -180,6 +183,47 @@ static int RunFindPointer(MemoryReader reader, nint needle, nint? near, int wind
         }
     }
     Console.WriteLine($"{hits} hit(s){(hits >= 60 ? " (capped)" : "")}.");
+    return 0;
+}
+
+// ── Camera: find the WorldToScreen 4x4 matrix. Scans pointers reachable from InGameState; for
+// each pointed object, treats every 16-float window as a row-major matrix, projects the player's
+// world position, and reports any that land the player near screen-center (the camera follows
+// the player). Run standing still.
+static int RunCamera(ProcessHandle process, MemoryReader reader)
+{
+    var (igs, _, _, lp) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("no chain"); return 1; }
+    var render = ResolveComponentAddr(reader, lp, "Render");
+    if (render == 0 || !reader.TryReadStruct<POE2Radar.Core.Game.Vector3>(render + 0x138, out var w))
+    { Console.Error.WriteLine("no player world pos"); return 1; }
+    Win.GetClientRect(Win.GetForegroundWindow(), out var rc);
+    int W = rc.right - rc.left, H = rc.bottom - rc.top;
+    if (W <= 0) { W = 1920; H = 1080; }
+    Console.WriteLine($"player world=({w.X:F1},{w.Y:F1},{w.Z:F1})  window={W}x{H}");
+
+    var buf = new byte[0x420];
+    for (var o = 0; o < 0x600; o += 8)
+    {
+        var cam = SafePtr(reader, igs + o);
+        if (cam == 0 || reader.TryReadBytes(cam, buf) < buf.Length) continue;
+        for (var mo = 0; mo + 64 <= buf.Length; mo += 4)
+        {
+            var m = new float[16];
+            for (var i = 0; i < 16; i++) m[i] = BitConverter.ToSingle(buf, mo + i * 4);
+            // v = (wx,wy,wz,1) * M   (row-major)
+            float X = w.X, Y = w.Y, Z = w.Z;
+            float cx = X*m[0]+Y*m[4]+Z*m[8]+m[12];
+            float cy = X*m[1]+Y*m[5]+Z*m[9]+m[13];
+            float cw = X*m[3]+Y*m[7]+Z*m[11]+m[15];
+            if (cw < 1f || cw > 1_000_000f) continue;
+            var sx = (cx/cw/2f + 0.5f) * W;
+            var sy = (0.5f - cy/cw/2f) * H;
+            if (sx < W*0.2f || sx > W*0.8f || sy < H*0.2f || sy > H*0.8f) continue; // player ~ center
+            Console.WriteLine($"  cam@InGameState+0x{o:X3} (0x{cam:X}) matrix@+0x{mo:X3} -> screen=({sx:F0},{sy:F0})  w={cw:F1}");
+        }
+    }
+    Console.WriteLine("Look for screen ≈ window center; that matrix is WorldToScreen.");
     return 0;
 }
 
@@ -760,4 +804,16 @@ static nint? TryGetHexArg(string[] args, string flag)
     var s = args[idx + 1];
     if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s[2..];
     return long.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out var v) ? (nint)v : null;
+}
+
+static class Win
+{
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct RECT { public int left, top, right, bottom; }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern nint GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    public static extern bool GetClientRect(nint h, out RECT r);
 }

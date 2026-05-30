@@ -81,8 +81,11 @@ TormentedSpirit, town waypoint/NPCs). Drawn with a white ring; `poi` exposed in 
 
 ### Still TBD
 
-Camera matrix (WorldData chain) for world-space nameplates; char-name offset in Player component.
-Both optional for the radar. The GameHelper2 reference below is the spec; check per-build drift.
+Camera WorldToScreen matrix (for world-space HP-bar nameplates). **Lead:** `--camera` probe finds
+candidate 4x4 matrices that project the player to exact screen-center; best candidate is reachable
+near `InGameState+0x08 → matrix @ ~+0x1E0` (w ≈ player view-depth). Needs a second-point validation
+(project a non-center entity) + a stable anchor before wiring. The friendly area Name string (vs the
+`G1_town` code) likely needs a WorldArea.dat row lookup. Both optional for the radar.
 
 ---
 
