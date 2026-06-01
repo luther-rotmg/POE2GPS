@@ -56,8 +56,14 @@ clearly gated — a personal QoL tool, not a headless bot.
   shape/color/opacity/size per item, metadata-matched "mechanic" overrides, and HP-bar geometry are
   config-driven via `RadarSettings.Styles` / `.HpBars` (defaults mirror the old hardcoded look) and
   editable live in the Console Settings tab. HP-bar rarity is signaled by scaling border weight.
+  Icon *shapes* are named SVGs from `Overlay/IconLibrary.cs` — built-in set materialized to an
+  `icons/` folder next to the exe on first run (sibling of `config/`); any `*.svg` dropped there
+  (single/multi `<path>`) overrides a built-in or adds a new icon. `Overlay/SvgPath.cs` parses each
+  path `d` (M/L/H/V/C/S/Q/T/Z + A→cubic) into figures the renderer normalizes (viewBox→unit) and
+  caches as an `ID2D1PathGeometry` per name.
 - `Overlay/TerrainBitmap.cs` — bakes the walkable grid into a bitmap, rebuilt per area.
-- `Web/ApiServer.cs` — read-only HTTP API on `localhost:7777` (`/state`, `/entities`, `/landmarks`).
+- `Web/ApiServer.cs` — read-only HTTP API on `localhost:7777` (`/state`, `/entities`, `/landmarks`,
+  `/api/icons` — the icon library for the dashboard's SVG-preview shape pickers).
 - `Input/SendInputNative.cs` — scancode `SendInput` for auto-flask.
 
 **Research** (`src/POE2Radar.Research/Program.cs`) — probes: `--hp` (value-scan), `--chain`,

@@ -58,8 +58,10 @@ public sealed class OverlayRenderer : IDisposable
     private readonly OverlayWindow _window;
     private TerrainBitmap? _terrain;
 
-    private enum Icon { Circle, Triangle, Star, Diamond, Plus, Square }
-    private ID2D1PathGeometry? _geoTriangle, _geoStar, _geoDiamond, _geoPlus;
+    // Per-icon-name geometry, built lazily from the SVG IconLibrary and cached for the renderer's
+    // lifetime. A name that can't be resolved/parsed is mapped to the Circle geometry so something
+    // always draws; the cache may therefore point several keys at one instance (deduped on Dispose).
+    private readonly Dictionary<string, ID2D1PathGeometry?> _geoCache = new(StringComparer.OrdinalIgnoreCase);
 
     private ID2D1SolidColorBrush? _bPlayer, _bOther, _bText, _bPanel, _bLandmark;
     private ID2D1SolidColorBrush? _bPath;  // recolored per route via SetColor
@@ -225,64 +227,67 @@ public sealed class OverlayRenderer : IDisposable
         }
     }
 
-    private void EnsureShapeGeometries()
+    /// <summary>
+    /// The unit-space (≈[-1,1], centered) path geometry for a named library icon, built once and cached.
+    /// Each library path's <c>d</c> is parsed (<see cref="SvgPath"/>) and normalized from its viewBox into
+    /// the unit space the old hardcoded geometries used, so <see cref="DrawIcon"/> can stamp it with the
+    /// same scale+translate transform. Unknown/unparseable names fall back to "Circle".
+    /// </summary>
+    private ID2D1PathGeometry? GetGeometry(string? name)
     {
-        if (_geoTriangle is not null) return;
-        var factory = (ID2D1Factory)_window.RenderTarget.Factory;
+        name ??= "Circle";
+        if (_geoCache.TryGetValue(name, out var cached)) return cached;
 
-        _geoTriangle = factory.CreatePathGeometry();
-        using (var s = _geoTriangle.Open())
-        {
-            s.BeginFigure(new NumVec2(0f, -1f), FigureBegin.Filled);
-            s.AddLine(new NumVec2(0.866f, 0.5f)); s.AddLine(new NumVec2(-0.866f, 0.5f));
-            s.EndFigure(FigureEnd.Closed); s.Close();
-        }
-        _geoDiamond = factory.CreatePathGeometry();
-        using (var s = _geoDiamond.Open())
-        {
-            s.BeginFigure(new NumVec2(0f, -1f), FigureBegin.Filled);
-            s.AddLine(new NumVec2(1f, 0f)); s.AddLine(new NumVec2(0f, 1f)); s.AddLine(new NumVec2(-1f, 0f));
-            s.EndFigure(FigureEnd.Closed); s.Close();
-        }
-        _geoStar = factory.CreatePathGeometry();
-        using (var s = _geoStar.Open())
-        {
-            const float inner = 0.42f; var first = true;
-            for (var i = 0; i < 10; i++)
-            {
-                var a = -MathF.PI / 2f + i * MathF.PI / 5f;
-                var rr = (i & 1) == 0 ? 1f : inner;
-                var pt = new NumVec2(MathF.Cos(a) * rr, MathF.Sin(a) * rr);
-                if (first) { s.BeginFigure(pt, FigureBegin.Filled); first = false; } else s.AddLine(pt);
-            }
-            s.EndFigure(FigureEnd.Closed); s.Close();
-        }
-        _geoPlus = factory.CreatePathGeometry();
-        using (var s = _geoPlus.Open())
-        {
-            const float a = 0.36f;
-            var pts = new[] {
-                new NumVec2(-a,-1f), new NumVec2(a,-1f), new NumVec2(a,-a), new NumVec2(1f,-a),
-                new NumVec2(1f,a), new NumVec2(a,a), new NumVec2(a,1f), new NumVec2(-a,1f),
-                new NumVec2(-a,a), new NumVec2(-1f,a), new NumVec2(-1f,-a), new NumVec2(-a,-a) };
-            s.BeginFigure(pts[0], FigureBegin.Filled);
-            for (var i = 1; i < pts.Length; i++) s.AddLine(pts[i]);
-            s.EndFigure(FigureEnd.Closed); s.Close();
-        }
+        var built = BuildGeometry(name);
+        if (built is null && !name.Equals("Circle", StringComparison.OrdinalIgnoreCase))
+            built = GetGeometry("Circle"); // shared fallback instance (deduped on Dispose)
+        _geoCache[name] = built;
+        return built;
     }
 
-    /// <summary>Draw a categorical icon at screen point p with radius r. Circle/Square use D2D
-    /// primitives; the rest stamp a cached unit geometry via a per-call scale+translate transform.</summary>
-    private void DrawIcon(ID2D1RenderTarget rt, Icon icon, NumVec2 p, float r, ID2D1SolidColorBrush brush, bool filled)
+    private ID2D1PathGeometry? BuildGeometry(string name)
     {
-        if (icon == Icon.Circle) { if (filled) rt.FillEllipse(new Ellipse(p, r, r), brush); else rt.DrawEllipse(new Ellipse(p, r, r), brush, 1.2f); return; }
-        if (icon == Icon.Square)
+        if (!IconLibrary.Map.TryGetValue(name, out var def)) return null;
+
+        // viewBox → unit space: center on the viewBox, uniform-scale so the larger half-extent maps to 1
+        // (aspect-preserving; a square 0 0 24 24 box puts an edge point at ±1, matching the old shapes).
+        float cx = def.VbX + def.VbW / 2f, cy = def.VbY + def.VbH / 2f;
+        float scale = 2f / MathF.Max(def.VbW, def.VbH);
+        NumVec2 N(NumVec2 p) => new((p.X - cx) * scale, (p.Y - cy) * scale);
+
+        var factory = (ID2D1Factory)_window.RenderTarget.Factory;
+        var geo = factory.CreatePathGeometry();
+        bool any = false;
+        using (var sink = geo.Open())
         {
-            var h = r * 0.9f; var rect = new Vortice.RawRectF(p.X - h, p.Y - h, p.X + h, p.Y + h);
-            if (filled) rt.FillRectangle(rect, brush); else rt.DrawRectangle(rect, brush, 1.5f); return;
+            foreach (var d in def.Paths)
+                foreach (var fig in SvgPath.Parse(d))
+                {
+                    sink.BeginFigure(N(fig.Start), FigureBegin.Filled);
+                    foreach (var seg in fig.Segs)
+                    {
+                        switch (seg.Kind)
+                        {
+                            case SvgPath.SegKind.Line: sink.AddLine(N(seg.End)); break;
+                            case SvgPath.SegKind.Cubic: sink.AddBezier(new BezierSegment { Point1 = N(seg.C1), Point2 = N(seg.C2), Point3 = N(seg.End) }); break;
+                            case SvgPath.SegKind.Quad: sink.AddQuadraticBezier(new QuadraticBezierSegment { Point1 = N(seg.C1), Point2 = N(seg.End) }); break;
+                        }
+                    }
+                    sink.EndFigure(fig.Closed ? FigureEnd.Closed : FigureEnd.Open);
+                    any = true;
+                }
+            sink.Close();
         }
-        EnsureShapeGeometries();
-        var geo = icon switch { Icon.Triangle => _geoTriangle, Icon.Star => _geoStar, Icon.Diamond => _geoDiamond, Icon.Plus => _geoPlus, _ => null };
+        if (any) return geo;
+        geo.Dispose();
+        return null;
+    }
+
+    /// <summary>Draw a named library icon at screen point p with radius r, by stamping its cached unit
+    /// geometry via a per-call scale+translate transform.</summary>
+    private void DrawIcon(ID2D1RenderTarget rt, string shape, NumVec2 p, float r, ID2D1SolidColorBrush brush, bool filled)
+    {
+        var geo = GetGeometry(shape);
         if (geo is null) return;
         var prev = rt.Transform;
         rt.Transform = new Matrix3x2(r, 0f, 0f, r, p.X, p.Y);
@@ -290,18 +295,8 @@ public sealed class OverlayRenderer : IDisposable
         rt.Transform = prev;
     }
 
-    /// <summary>A resolved, ready-to-draw icon: parsed shape, pixel size, and color.</summary>
-    private readonly record struct DrawStyle(Icon Shape, float Size, Color4 Color);
-
-    private static Icon ParseShape(string shape) => shape switch
-    {
-        "Triangle" => Icon.Triangle,
-        "Star"     => Icon.Star,
-        "Diamond"  => Icon.Diamond,
-        "Plus"     => Icon.Plus,
-        "Square"   => Icon.Square,
-        _          => Icon.Circle,
-    };
+    /// <summary>A resolved, ready-to-draw icon: library icon name, pixel size, and color.</summary>
+    private readonly record struct DrawStyle(string Shape, float Size, Color4 Color);
 
     /// <summary>Parse a <c>#RRGGBB</c> color + 0..1 opacity into a Color4 (falls back to opaque white).</summary>
     private static Color4 ParseColor(string hex, float opacity)
@@ -315,7 +310,10 @@ public sealed class OverlayRenderer : IDisposable
         return new Color4(1f, 1f, 1f, a);
     }
 
-    private static DrawStyle ToDrawStyle(IconStyle s) => new(ParseShape(s.Shape), s.Size, ParseColor(s.Color, s.Opacity));
+    private static DrawStyle ToDrawStyle(IconStyle s) => new(s.Shape, s.Size, ParseColor(s.Color, s.Opacity));
+
+    /// <summary>Clamp a 0..1 channel to a 0..255 byte (rounded).</summary>
+    private static byte ToByte(float f) => (byte)Math.Clamp((int)MathF.Round(f * 255f), 0, 255);
 
     /// <summary>
     /// Resolve the icon an entity should draw with, or null to skip it. Order: corpses/used chests are
@@ -339,7 +337,7 @@ public sealed class OverlayRenderer : IDisposable
             foreach (var key in mech.Match)
             {
                 if (!string.IsNullOrEmpty(key) && e.Metadata.Contains(key, StringComparison.OrdinalIgnoreCase))
-                    return new DrawStyle(ParseShape(mech.Shape), mech.Size, ParseColor(mech.Color, mech.Opacity));
+                    return new DrawStyle(mech.Shape, mech.Size, ParseColor(mech.Color, mech.Opacity));
             }
         }
 
@@ -385,7 +383,12 @@ public sealed class OverlayRenderer : IDisposable
         if (ctx.ShowTerrain && ctx.Terrain is { } t)
         {
             _terrain ??= new TerrainBitmap(rt);
-            _terrain.EnsureBuiltRaw(t.Walkable, t.Width, t.Height, ctx.AreaHash, inTransition: false);
+            var ci = ParseColor(ctx.TerrainStyle.InteriorColor, ctx.TerrainStyle.InteriorOpacity);
+            var ce = ParseColor(ctx.TerrainStyle.EdgeColor, ctx.TerrainStyle.EdgeOpacity);
+            var terrainStyle = new TerrainBitmap.TerrainStyle(
+                ToByte(ci.B), ToByte(ci.G), ToByte(ci.R), ToByte(ci.A),
+                ToByte(ce.B), ToByte(ce.G), ToByte(ce.R), ToByte(ce.A));
+            _terrain.EnsureBuiltRaw(t.Walkable, t.Width, t.Height, ctx.AreaHash, inTransition: false, terrainStyle);
             if (_terrain.Bitmap is { } bmp)
             {
                 var p00 = Project(new NumVec2(0, 0), player, center, scale);
@@ -417,7 +420,7 @@ public sealed class OverlayRenderer : IDisposable
         var lmStyle = ctx.Styles.Landmark;
         if (lmStyle.Enabled)
         {
-            var lmIcon = ParseShape(lmStyle.Shape);
+            var lmIcon = lmStyle.Shape;
             var lmColor = ParseColor(lmStyle.Color, lmStyle.Opacity);
             foreach (var lm in ctx.Landmarks)
             {
@@ -579,7 +582,8 @@ public sealed class OverlayRenderer : IDisposable
     {
         _bPlayer?.Dispose(); _bOther?.Dispose(); _bText?.Dispose(); _bPanel?.Dispose(); _bLandmark?.Dispose();
         _bPath?.Dispose(); _bStyle?.Dispose();
-        _geoTriangle?.Dispose(); _geoStar?.Dispose(); _geoDiamond?.Dispose(); _geoPlus?.Dispose();
+        foreach (var geo in _geoCache.Values.Where(g => g is not null).Distinct()) geo!.Dispose();
+        _geoCache.Clear();
         _tf?.Dispose();
         _terrain?.Dispose();
     }

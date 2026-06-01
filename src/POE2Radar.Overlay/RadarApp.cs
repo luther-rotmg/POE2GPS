@@ -215,7 +215,8 @@ public sealed class RadarApp : IDisposable
             NavMenuExpanded: _navMenuExpanded,
             NavMenuCorner: _settings.NavMenuCorner,
             Styles: _settings.Styles,
-            HpBars: _settings.HpBars);
+            HpBars: _settings.HpBars,
+            TerrainStyle: _settings.Terrain);
         _renderer.Render(ctx);
 
         // Make the overlay grab clicks only while the cursor is over a clickable legend row;

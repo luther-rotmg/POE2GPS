@@ -14,11 +14,16 @@ namespace POE2Radar.Overlay;
 /// </summary>
 public sealed class TerrainBitmap : IDisposable
 {
+    /// <summary>Resolved interior + edge colors (BGRA bytes) the bitmap was baked with. A value-equality
+    /// record so a live color/opacity tweak invalidates the cached bitmap and forces a rebuild.</summary>
+    public readonly record struct TerrainStyle(byte IB, byte IG, byte IR, byte IA, byte EB, byte EG, byte ER, byte EA);
+
     private readonly ID2D1RenderTarget _renderTarget;
     private ID2D1Bitmap? _bitmap;
     private int _builtForWidth;
     private int _builtForHeight;
     private uint _builtForAreaHash;
+    private TerrainStyle _builtForStyle;
 
     public TerrainBitmap(ID2D1RenderTarget renderTarget)
     {
@@ -35,30 +40,26 @@ public sealed class TerrainBitmap : IDisposable
     /// <paramref name="areaHash"/> match the cached bitmap. <paramref name="inTransition"/> forces
     /// an immediate drop (the area's hash may briefly persist while a zone is loading).
     /// </summary>
-    public void EnsureBuiltRaw(byte[] walkable, int width, int height, uint areaHash, bool inTransition)
+    public void EnsureBuiltRaw(byte[] walkable, int width, int height, uint areaHash, bool inTransition, TerrainStyle style)
     {
-        if (_bitmap is not null && (inTransition || areaHash != _builtForAreaHash))
+        if (_bitmap is not null && (inTransition || areaHash != _builtForAreaHash || !style.Equals(_builtForStyle)))
         {
             _bitmap.Dispose(); _bitmap = null; _builtForAreaHash = 0;
         }
         if (inTransition || width <= 0 || height <= 0) return;
-        if (_bitmap is not null && width == _builtForWidth && height == _builtForHeight && areaHash == _builtForAreaHash) return;
-        BuildFrom(walkable, width, height, areaHash);
+        if (_bitmap is not null && width == _builtForWidth && height == _builtForHeight
+            && areaHash == _builtForAreaHash && style.Equals(_builtForStyle)) return;
+        BuildFrom(walkable, width, height, areaHash, style);
     }
 
-    private void BuildFrom(byte[] walkable, int w, int h, uint areaHash)
+    private void BuildFrom(byte[] walkable, int w, int h, uint areaHash, TerrainStyle style)
     {
         var pixels = new byte[w * h * 4]; // BGRA
 
-        // Render style with per-pixel alpha:
-        //   • Walkable interior → very faint blue-grey wash (alpha ≈ 30/255). Reads as
-        //     "you can walk here" without occluding what's behind.
-        //   • Wall edge (walkable cell adjacent to an unwalkable cell or grid boundary) →
-        //     bright cyan at moderate alpha (~180/255). Strong enough to outline rooms.
+        // Render style with per-pixel alpha (colors/alpha are config-driven; defaults preserve the old look):
+        //   • Walkable interior → faint wash. Reads as "you can walk here" without occluding what's behind.
+        //   • Wall edge (walkable cell adjacent to an unwalkable cell or grid boundary) → brighter outline.
         //   • Walls themselves stay alpha 0 so PoE's actual map shows through.
-
-        const byte interiorAlpha = 30;
-        const byte edgeAlpha     = 180;
 
         for (var y = 0; y < h; y++)
         {
@@ -84,17 +85,17 @@ public sealed class TerrainBitmap : IDisposable
 
                 if (isEdge)
                 {
-                    pixels[idx + 0] = 255;        // B
-                    pixels[idx + 1] = 220;        // G
-                    pixels[idx + 2] = 60;         // R
-                    pixels[idx + 3] = edgeAlpha;
+                    pixels[idx + 0] = style.EB;   // B
+                    pixels[idx + 1] = style.EG;   // G
+                    pixels[idx + 2] = style.ER;   // R
+                    pixels[idx + 3] = style.EA;
                 }
                 else
                 {
-                    pixels[idx + 0] = 130;        // B
-                    pixels[idx + 1] = 100;        // G
-                    pixels[idx + 2] = 80;         // R
-                    pixels[idx + 3] = interiorAlpha;
+                    pixels[idx + 0] = style.IB;   // B
+                    pixels[idx + 1] = style.IG;   // G
+                    pixels[idx + 2] = style.IR;   // R
+                    pixels[idx + 3] = style.IA;
                 }
             }
         }
@@ -125,6 +126,7 @@ public sealed class TerrainBitmap : IDisposable
         _builtForWidth     = w;
         _builtForHeight    = h;
         _builtForAreaHash  = areaHash;
+        _builtForStyle     = style;
     }
 
     public void Dispose()

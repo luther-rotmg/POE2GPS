@@ -64,6 +64,9 @@ public sealed class RadarSettings
     //    this only adds sizing/offset). Rarity is signaled by a scaling border weight. ──
     public HpBarSettings HpBars { get; set; } = new();
 
+    // ── Walkable-terrain bitmap colors/transparency. Defaults reproduce the old hardcoded wash. ──
+    public TerrainSettings Terrain { get; set; } = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -167,6 +170,21 @@ public sealed class HpBarSettings
     public float WidthMagic { get; set; } = 38f;
     public float WidthRare { get; set; } = 50f;
     public float WidthUnique { get; set; } = 64f;
+}
+
+/// <summary>
+/// Walkable-terrain bitmap styling: the interior "wash" over walkable cells and the brighter
+/// outline drawn on walkable cells bordering a wall/edge. Color is <c>#RRGGBB</c>; opacity is 0..1
+/// (baked into the per-pixel alpha). Defaults reproduce the formerly hardcoded look exactly:
+/// interior <c>#506482</c> @ ~30/255, edge <c>#3CDCFF</c> @ ~180/255. The per-area terrain bitmap
+/// is rebuilt when any of these change.
+/// </summary>
+public sealed class TerrainSettings
+{
+    public string InteriorColor { get; set; } = "#506482";
+    public float InteriorOpacity { get; set; } = 0.118f; // → 30/255
+    public string EdgeColor { get; set; } = "#3CDCFF";
+    public float EdgeOpacity { get; set; } = 0.706f;      // → 180/255
 }
 
 /// <summary>

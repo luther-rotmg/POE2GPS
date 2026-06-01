@@ -70,4 +70,6 @@ public sealed record RenderContext(
     string NavMenuCorner,         // pinned corner: TopLeft/TopRight/BottomLeft/BottomRight
     // ── User-tweakable icon style table + HP-bar geometry (mirrored from RadarSettings). ──
     RadarStyles Styles,
-    HpBarSettings HpBars);
+    HpBarSettings HpBars,
+    // Walkable-terrain bitmap colors/transparency (mirrored from RadarSettings).
+    TerrainSettings TerrainStyle);

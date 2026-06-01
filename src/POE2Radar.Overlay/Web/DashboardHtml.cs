@@ -195,8 +195,6 @@ internal static class DashboardHtml
   .stylerow .sw{width:38px; height:20px}
   .stylerow .sw .knob{width:13px; height:13px}
   .stylerow .sw input:checked ~ .knob{transform:translateX(18px)}
-  select.sel2{font-family:inherit; font-size:11px; color:var(--ink); background:#0c0a07; border:1px solid var(--line); border-radius:2px; padding:4px 6px; cursor:pointer}
-  select.sel2:focus{outline:none; border-color:var(--gold-deep)}
   input[type=color]{width:30px; height:24px; padding:0; border:1px solid var(--line); background:#0c0a07; border-radius:2px; cursor:pointer; flex:none}
   input[type=range].op{width:78px; accent-color:var(--gold); flex:none}
   .opv{font-size:10px; color:var(--ink-faint); width:30px; text-align:right}
@@ -207,6 +205,24 @@ internal static class DashboardHtml
   .mechrow .matchin{width:100%; font-family:inherit; font-size:11px; color:var(--ink-dim); background:#0c0a07; border:1px solid var(--line); border-radius:2px; padding:5px 9px; margin-bottom:8px}
   .mechrow .ctl{display:flex; align-items:center; gap:9px; flex-wrap:wrap}
   .delbtn{font-family:inherit; font-size:11px; color:var(--blood-bright); background:transparent; border:1px solid var(--line); border-radius:2px; padding:4px 9px; cursor:pointer; flex:none}
+  .trow-ctl{display:flex; align-items:center; gap:9px; flex:none}
+
+  /* ── SVG icon picker (replaces the plain shape <select>): a button showing the chosen icon's
+       silhouette + name, opening a shared popup grid of icon previews. ── */
+  .iconpick{display:inline-flex; align-items:center; gap:6px; min-width:104px; background:#0c0a07; border:1px solid var(--line); border-radius:2px; padding:3px 7px; cursor:pointer; flex:none}
+  .iconpick:hover{border-color:var(--gold-deep)}
+  .iconpick .ipreview{width:15px; height:15px; flex:none; display:inline-flex; color:var(--ink)}
+  .iconpick .ipreview svg{width:15px; height:15px; display:block}
+  .iconpick .ipname{font-size:11px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .iconpick .ipcar{margin-left:auto; color:var(--ink-faint); font-size:8px}
+  #iconPop{position:fixed; z-index:1000; display:none; background:var(--panel2); border:1px solid var(--gold-deep); border-radius:4px; box-shadow:var(--shadow); padding:8px; max-height:300px; overflow:auto}
+  #iconPop.open{display:block}
+  .ipop-grid{display:grid; grid-template-columns:repeat(6,38px); gap:4px}
+  .ipop-cell{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; width:38px; height:40px; border:1px solid transparent; border-radius:3px; cursor:pointer; color:var(--ink)}
+  .ipop-cell:hover{border-color:var(--gold); background:#0c0a07}
+  .ipop-cell.sel{border-color:var(--gold-bright); background:#0c0a07}
+  .ipop-cell svg{width:20px; height:20px; display:block}
+  .ipop-cell .cn{font-size:7px; line-height:1; color:var(--ink-faint); max-width:36px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .delbtn:hover{border-color:var(--blood-bright)}
   .addbtn{font-family:"Cinzel","Georgia",serif; font-size:11px; letter-spacing:.1em; color:var(--gold-bright); background:transparent; border:1px dashed var(--gold-deep); border-radius:3px; padding:8px 14px; cursor:pointer; width:100%; margin-top:4px}
   .addbtn:hover{background:rgba(200,160,73,.07)}
@@ -322,6 +338,20 @@ internal static class DashboardHtml
             <div class="row"><div class="rl" style="color:var(--magic)">Width &middot; Magic</div><input class="numin" type="number" step="1" min="4" data-hp="widthMagic"></div>
             <div class="row"><div class="rl" style="color:var(--rare)">Width &middot; Rare</div><input class="numin" type="number" step="1" min="4" data-hp="widthRare"></div>
             <div class="row"><div class="rl" style="color:var(--unique)">Width &middot; Unique</div><input class="numin" type="number" step="1" min="4" data-hp="widthUnique"></div>
+          </div>
+          <div class="card">
+            <h3>Terrain <span class="tag">&middot; walkable overlay</span></h3>
+            <div class="row"><div class="rl">Interior fill<small>wash over walkable cells</small></div>
+              <span class="trow-ctl">
+                <input type="color" class="i-color" data-tcolor="interiorColor">
+                <input type="range" class="op" min="0" max="100" data-topacity="interiorOpacity">
+                <span class="opv" data-topv="interiorOpacity">—</span></span></div>
+            <div class="row"><div class="rl" style="color:var(--poi)">Wall edge<small>outlines around rooms</small></div>
+              <span class="trow-ctl">
+                <input type="color" class="i-color" data-tcolor="edgeColor">
+                <input type="range" class="op" min="0" max="100" data-topacity="edgeOpacity">
+                <span class="opv" data-topv="edgeOpacity">—</span></span></div>
+            <div class="row"><div class="rl hint-row">Edits rebuild the terrain bitmap; use &ldquo;Show terrain&rdquo; above to hide it entirely.</div></div>
           </div>
           <div class="card" style="grid-column:1/-1">
             <h3>Radar Icons <span class="tag">&middot; shape &middot; color &middot; opacity &middot; size</span></h3>
@@ -468,7 +498,8 @@ async function loadSettings(){
     });
     styles = s.styles || null;
     hpBars = s.hpBars || null;
-    renderHpBars(); renderIcons(); renderMechanics();
+    terrain = s.terrain || null;
+    renderHpBars(); renderTerrain(); renderIcons(); renderMechanics();
   }catch(e){}
 }
 async function saveSetting(key,val){
@@ -490,8 +521,7 @@ const charToVk = s => { const c=(s||'').trim().toUpperCase().charCodeAt(0); retu
 const vkToChar = v => v ? String.fromCharCode(v) : '';
 
 /* ── icon / HP-bar / mechanics editors (nested objects: POST the whole {styles}/{hpBars}) ── */
-let styles=null, hpBars=null;
-const SHAPES=['Circle','Triangle','Star','Diamond','Plus','Square'];
+let styles=null, hpBars=null, terrain=null;
 const ICON_KEYS=[
   ['monsterNormal','Monster · Normal'],['monsterMagic','Monster · Magic'],
   ['monsterRare','Monster · Rare'],['monsterUnique','Monster · Unique'],
@@ -499,19 +529,82 @@ const ICON_KEYS=[
   ['chestUnique','Chest · Unique'],['transition','Transition'],
   ['poi','Point of Interest'],['landmark','Landmark']];
 const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-const shapeOpts=sel=>SHAPES.map(s=>`<option${s===sel?' selected':''}>${s}</option>`).join('');
 const pct=o=>Math.round((o==null?1:o)*100);
+
+/* ── SVG icon library (served by /api/icons): drives both the in-page previews and the picker grid. ── */
+let ICONS=[]; const ICONMAP={};
+async function loadIcons(){
+  try{ ICONS=await getJSON('/api/icons')||[]; }catch(e){ ICONS=[]; }
+  for(const k in ICONMAP) delete ICONMAP[k];
+  ICONS.forEach(d=>ICONMAP[(d.name||'').toLowerCase()]=d);
+}
+const iconDef=name=>ICONMAP[(name||'').toLowerCase()]||null;
+function iconSvg(name,color){
+  const d=iconDef(name); if(!d) return '';
+  const c=color||'currentColor';
+  return `<svg viewBox="${d.viewBox}" preserveAspectRatio="xMidYMid meet">`
+    + (d.paths||[]).map(p=>`<path d="${esc(p)}" fill="${c}"/>`).join('') + `</svg>`;
+}
+function pickerHtml(name,color){
+  const d=iconDef(name), nm=d?d.name:(name||'Circle');
+  return `<span class="iconpick" data-val="${esc(nm)}"><span class="ipreview" style="color:${color||'var(--ink)'}">`
+    + iconSvg(nm,color) + `</span><span class="ipname">${esc(nm)}</span><span class="ipcar">▼</span></span>`;
+}
+function refreshPicker(pk,name,color){
+  const d=iconDef(name), nm=d?d.name:(name||'Circle');
+  pk.dataset.val=nm;
+  const pv=pk.querySelector('.ipreview'); pv.style.color=color||'var(--ink)'; pv.innerHTML=iconSvg(nm,color);
+  pk.querySelector('.ipname').textContent=nm;
+}
+let _iconPop=null;
+function ensureIconPop(){
+  if(_iconPop) return _iconPop;
+  _iconPop=document.createElement('div'); _iconPop.id='iconPop'; document.body.appendChild(_iconPop);
+  document.addEventListener('mousedown',e=>{
+    if(_iconPop.classList.contains('open') && !_iconPop.contains(e.target) && !e.target.closest('.iconpick')) _iconPop.classList.remove('open');
+  });
+  return _iconPop;
+}
+function openIconPicker(anchor,current,cb){
+  const pop=ensureIconPop();
+  pop.innerHTML='<div class="ipop-grid">'+ICONS.map(d=>
+    `<div class="ipop-cell${d.name.toLowerCase()===(current||'').toLowerCase()?' sel':''}" data-n="${esc(d.name)}" title="${esc(d.name)}">`
+    + iconSvg(d.name) + `<span class="cn">${esc(d.name)}</span></div>`).join('')+'</div>';
+  pop.querySelectorAll('.ipop-cell').forEach(c=>c.onclick=()=>{ pop.classList.remove('open'); cb(c.dataset.n); });
+  pop.classList.add('open');
+  const r=anchor.getBoundingClientRect(), pw=pop.offsetWidth, ph=pop.offsetHeight;
+  let left=Math.min(r.left, innerWidth-8-pw), top=r.bottom+4;
+  if(top+ph>innerHeight-8) top=Math.max(8, r.top-4-ph);
+  pop.style.left=Math.max(8,left)+'px'; pop.style.top=top+'px';
+}
 const saveStyles=()=>{ if(styles) saveSetting('styles',styles); };
 const saveHpBars=()=>{ if(hpBars) saveSetting('hpBars',hpBars); };
 
 function renderHpBars(){ if(!hpBars) return; $$('[data-hp]').forEach(el=>{ if(hpBars[el.dataset.hp]!==undefined) el.value=hpBars[el.dataset.hp]; }); }
 function wireHpBars(){ $$('[data-hp]').forEach(el=>{ el.onchange=()=>{ const v=parseFloat(el.value); if(!isNaN(v)&&hpBars){ hpBars[el.dataset.hp]=v; saveHpBars(); } }; }); }
 
+/* ── terrain color/transparency (POSTs the whole {terrain} object; rebuilds the terrain bitmap) ── */
+const saveTerrain=()=>{ if(terrain) saveSetting('terrain',terrain); };
+function renderTerrain(){
+  if(!terrain) return;
+  $$('[data-tcolor]').forEach(el=>{ el.value=terrain[el.dataset.tcolor]||'#ffffff'; });
+  $$('[data-topacity]').forEach(el=>{ el.value=Math.round((terrain[el.dataset.topacity]??1)*100); });
+  $$('[data-topv]').forEach(el=>{ el.textContent=Math.round((terrain[el.dataset.topv]??1)*100)+'%'; });
+}
+function wireTerrain(){
+  $$('[data-tcolor]').forEach(el=>{ el.onchange=()=>{ if(terrain){ terrain[el.dataset.tcolor]=el.value; saveTerrain(); } }; });
+  $$('[data-topacity]').forEach(el=>{
+    const k=el.dataset.topacity, v=$(`[data-topv="${k}"]`);
+    el.oninput=()=>{ if(v) v.textContent=el.value+'%'; };
+    el.onchange=()=>{ if(terrain){ terrain[k]=(+el.value)/100; saveTerrain(); } };
+  });
+}
+
 function iconRow(key,label,o){
   return `<div class="stylerow" data-k="${key}">
     <label class="sw"><input type="checkbox" class="i-en"${o.enabled?' checked':''}><span class="track"></span><span class="knob"></span></label>
     <span class="nm">${label}</span>
-    <select class="sel2 i-shape">${shapeOpts(o.shape)}</select>
+    ${pickerHtml(o.shape,o.color)}
     <input type="color" class="i-color" value="${o.color||'#ffffff'}">
     <input type="range" class="op i-op" min="0" max="100" value="${pct(o.opacity)}">
     <span class="opv">${pct(o.opacity)}%</span>
@@ -523,9 +616,10 @@ function renderIcons(){
   $('#iconStyles').innerHTML=ICON_KEYS.map(([k,l])=>iconRow(k,l,styles[k]||{})).join('');
   $$('#iconStyles .stylerow').forEach(row=>{
     const o=styles[row.dataset.k]; if(!o) return;
+    const pk=row.querySelector('.iconpick');
     row.querySelector('.i-en').onchange=e=>{ o.enabled=e.target.checked; saveStyles(); };
-    row.querySelector('.i-shape').onchange=e=>{ o.shape=e.target.value; saveStyles(); };
-    row.querySelector('.i-color').onchange=e=>{ o.color=e.target.value; saveStyles(); };
+    pk.onclick=()=>openIconPicker(pk,o.shape,n=>{ o.shape=n; refreshPicker(pk,n,o.color); saveStyles(); });
+    row.querySelector('.i-color').onchange=e=>{ o.color=e.target.value; refreshPicker(pk,o.shape,o.color); saveStyles(); };
     const op=row.querySelector('.i-op'), opv=row.querySelector('.opv');
     op.oninput=()=>{ opv.textContent=op.value+'%'; };
     op.onchange=()=>{ o.opacity=(+op.value)/100; saveStyles(); };
@@ -542,7 +636,7 @@ function mechRow(m,i){
     </div>
     <input class="matchin m-match" placeholder="match terms, comma-separated (e.g. Strongbox, StrongBoxes)" value="${esc((m.match||[]).join(', '))}">
     <div class="ctl">
-      <select class="sel2 m-shape">${shapeOpts(m.shape)}</select>
+      ${pickerHtml(m.shape,m.color)}
       <input type="color" class="m-color" value="${m.color||'#ffffff'}">
       <input type="range" class="op m-op" min="0" max="100" value="${pct(m.opacity)}">
       <span class="opv">${pct(m.opacity)}%</span>
@@ -556,11 +650,12 @@ function renderMechanics(){
   $('#mechList').innerHTML=styles.mechanics.map((m,i)=>mechRow(m,i)).join('');
   $$('#mechList .mechrow').forEach(row=>{
     const m=styles.mechanics[+row.dataset.i]; if(!m) return;
+    const pk=row.querySelector('.iconpick');
     row.querySelector('.m-en').onchange=e=>{ m.enabled=e.target.checked; saveStyles(); };
     row.querySelector('.mname').onchange=e=>{ m.name=e.target.value; saveStyles(); };
     row.querySelector('.m-match').onchange=e=>{ m.match=e.target.value.split(',').map(s=>s.trim()).filter(Boolean); saveStyles(); };
-    row.querySelector('.m-shape').onchange=e=>{ m.shape=e.target.value; saveStyles(); };
-    row.querySelector('.m-color').onchange=e=>{ m.color=e.target.value; saveStyles(); };
+    pk.onclick=()=>openIconPicker(pk,m.shape,n=>{ m.shape=n; refreshPicker(pk,n,m.color); saveStyles(); });
+    row.querySelector('.m-color').onchange=e=>{ m.color=e.target.value; refreshPicker(pk,m.shape,m.color); saveStyles(); };
     const op=row.querySelector('.m-op'), opv=row.querySelector('.opv');
     op.oninput=()=>{ opv.textContent=op.value+'%'; };
     op.onchange=()=>{ m.opacity=(+op.value)/100; saveStyles(); };
@@ -588,7 +683,7 @@ function renderState(){
   $('#areaChip').innerHTML = (s.areaCode? s.areaCode : '—') + ' <b>·</b> ' + (s.inGame?'in game':'town/menu');
 }
 
-wireSettings(); wireHpBars(); loadSettings();
+wireSettings(); wireHpBars(); wireTerrain(); loadIcons().then(loadSettings);
 tick(); setInterval(tick, 1000);
 </script>
 </body>

@@ -20,6 +20,7 @@ namespace POE2Radar.Overlay.Web;
 ///       &amp;alive=true               — only entities with HP &gt; 0
 ///       &amp;radius=80                — only within N grid units of the player
 ///       &amp;limit=50                 — cap results (default 500)
+///   GET  /api/icons               — the icon library (name + viewBox + paths) for the dashboard pickers
 ///   GET  /api/settings            — current radar/visual settings (+ read-only flask mirror)
 ///   POST /api/settings            — write whitelisted radar/visual settings only (flags + calibration);
 ///                                   loopback-Host-gated; never exposes flask/automation writes
@@ -110,6 +111,14 @@ public sealed class ApiServer : IDisposable
                     landmarkCount = s.Landmarks.Count,
                     counts,
                 }, Json));
+                break;
+            }
+
+            case "/api/icons":
+            {
+                // Read-only icon library for the dashboard's icon picker previews (name + viewBox + paths).
+                var icons = IconLibrary.Ordered.Select(d => new { name = d.Name, viewBox = d.ViewBox, paths = d.Paths });
+                Write(ctx, 200, JsonSerializer.Serialize(icons, Json));
                 break;
             }
 
@@ -243,6 +252,7 @@ public sealed class ApiServer : IDisposable
         apiPort = _settings.ApiPort, // display only — changing it needs a restart
         styles = _settings.Styles,   // per-item icon shapes/colors/sizes + mechanic overrides
         hpBars = _settings.HpBars,   // monster HP-bar geometry (width/height/offset)
+        terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -285,6 +295,9 @@ public sealed class ApiServer : IDisposable
                 case "hpBars" when p.Value.ValueKind == JsonValueKind.Object:
                     if (TryParseHpBars(p.Value, out var hpBars)) { _settings.HpBars = hpBars; applied.Add(p.Name); }
                     break;
+                case "terrain" when p.Value.ValueKind == JsonValueKind.Object:
+                    if (TryParseTerrain(p.Value, out var terrain)) { _settings.Terrain = terrain; applied.Add(p.Name); }
+                    break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }
@@ -293,8 +306,6 @@ public sealed class ApiServer : IDisposable
         return applied.ToArray();
     }
 
-    private static readonly HashSet<string> AllowedShapes =
-        new(StringComparer.Ordinal) { "Circle", "Triangle", "Star", "Diamond", "Plus", "Square" };
     private static readonly Regex HexColor = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
 
     /// <summary>Deserialize + sanitize a full <see cref="RadarStyles"/> from posted JSON. Returns false
@@ -313,7 +324,7 @@ public sealed class ApiServer : IDisposable
             if (parsed.Mechanics.Count > 24) parsed.Mechanics = parsed.Mechanics.Take(24).ToList();
             foreach (var m in parsed.Mechanics)
             {
-                m.Shape = AllowedShapes.Contains(m.Shape) ? m.Shape : "Circle";
+                m.Shape = IconLibrary.Canonical(m.Shape) ?? "Circle";
                 m.Color = m.Color != null && HexColor.IsMatch(m.Color) ? m.Color.ToUpperInvariant() : "#FFFFFF";
                 m.Opacity = Math.Clamp(m.Opacity, 0f, 1f);
                 m.Size = Math.Clamp(m.Size, 0.5f, 40f);
@@ -332,7 +343,7 @@ public sealed class ApiServer : IDisposable
 
     private static void SanitizeIcon(IconStyle s)
     {
-        s.Shape = AllowedShapes.Contains(s.Shape) ? s.Shape : "Circle";
+        s.Shape = IconLibrary.Canonical(s.Shape) ?? "Circle";
         s.Color = s.Color != null && HexColor.IsMatch(s.Color) ? s.Color.ToUpperInvariant() : "#FFFFFF";
         s.Opacity = Math.Clamp(s.Opacity, 0f, 1f);
         s.Size = Math.Clamp(s.Size, 0.5f, 40f);
@@ -354,6 +365,25 @@ public sealed class ApiServer : IDisposable
             parsed.WidthRare = Math.Clamp(parsed.WidthRare, 4f, 400f);
             parsed.WidthUnique = Math.Clamp(parsed.WidthUnique, 4f, 400f);
             hp = parsed;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    /// <summary>Deserialize + sanitize a full <see cref="TerrainSettings"/> from posted JSON. Colors are
+    /// validated as #RRGGBB (falling back to the defaults) and opacities clamped to 0..1.</summary>
+    private static bool TryParseTerrain(JsonElement el, out TerrainSettings t)
+    {
+        t = new TerrainSettings();
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<TerrainSettings>(el.GetRawText(), Json);
+            if (parsed == null) return false;
+            parsed.InteriorColor = parsed.InteriorColor != null && HexColor.IsMatch(parsed.InteriorColor) ? parsed.InteriorColor.ToUpperInvariant() : "#506482";
+            parsed.EdgeColor = parsed.EdgeColor != null && HexColor.IsMatch(parsed.EdgeColor) ? parsed.EdgeColor.ToUpperInvariant() : "#3CDCFF";
+            parsed.InteriorOpacity = Math.Clamp(parsed.InteriorOpacity, 0f, 1f);
+            parsed.EdgeOpacity = Math.Clamp(parsed.EdgeOpacity, 0f, 1f);
+            t = parsed;
             return true;
         }
         catch (JsonException) { return false; }
