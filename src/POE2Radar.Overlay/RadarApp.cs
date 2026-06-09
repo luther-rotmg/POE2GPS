@@ -95,7 +95,7 @@ public sealed class RadarApp : IDisposable
     private DateTime _nextToggleAt = DateTime.MinValue;
     private DateTime _nextPathKeyAt = DateTime.MinValue;
     private DateTime _nextBrowserAt = DateTime.MinValue;
-    private float _hpPct = 100f, _manaPct = 100f;
+    private float _hpPct = 100f, _manaPct = 100f, _esPct = 100f;
     private string _flaskNote = "";
     private string _areaCode = "", _charName = "";
     private nint _charNameFor;   // local-player ptr the cached _charName was read for (re-read only on change)
@@ -411,7 +411,7 @@ public sealed class RadarApp : IDisposable
         }
 
         _state = new RadarState(inGame, _areaHash, areaLevel, map.IsVisible, map.Zoom, player, _entities, _landmarks,
-            _hpPct, _manaPct, _autoFlask, _flaskNote, _areaCode, _charName, _charLevel);
+            _hpPct, _manaPct, _esPct, _autoFlask, _flaskNote, _areaCode, _charName, _charLevel);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
@@ -433,6 +433,7 @@ public sealed class RadarApp : IDisposable
             OffsetY: _settings.OffY,
             HpPct: _hpPct,
             ManaPct: _manaPct,
+            EsPct: _esPct,
             FlaskNote: _flaskNote,
             AreaCode: _areaCode,
             CharLevel: _charLevel,
@@ -607,6 +608,8 @@ public sealed class RadarApp : IDisposable
     /// <summary>
     /// Auto-flask: press the life/mana flask key when the corresponding pool drops below its
     /// threshold. Hard-gated: enabled + PoE2 is the foreground window + per-flask cooldown.
+    /// The life flask's trigger pool is selectable (LifeFlaskMode): Health%, Energy Shield%, or
+    /// Either — ES is ignored on builds with no ES pool, so "Either" is safe for a pure-life build.
     /// </summary>
     private void TickAutoFlask(nint localPlayer)
     {
@@ -618,17 +621,27 @@ public sealed class RadarApp : IDisposable
             _flaskNote = "paused (vitals unreadable — offsets may have drifted)";
             return;
         }
-        _hpPct = v.HpPct; _manaPct = v.ManaPct;
+        _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct;
 
         if (!_autoFlask) { _flaskNote = "OFF (F8)"; return; }
         if (GetForegroundWindow() != _gameHwnd) { _flaskNote = "paused (PoE2 not focused)"; return; }
         _flaskNote = "armed";
 
-        var now = DateTime.UtcNow;
-        if (v.HpPct < _settings.LifeThresholdPct &&
-            now - _lifeFiredAt >= TimeSpan.FromMilliseconds(_settings.LifeCooldownMs))
+        // Which pool(s) the single life-flask key watches. ES only participates when a real ES pool is
+        // present (HasEs) — a build with no shield never trips the ES branch even in "Either" mode.
+        var hpLow = v.HpPct < _settings.LifeThresholdPct;
+        var esLow = v.HasEs && v.EsPct < _settings.EsThresholdPct;
+        var (lifeTrigger, lifeReason) = _settings.LifeFlaskMode switch
         {
-            SendInputNative.Tap((ushort)_settings.LifeKey); _lifeFiredAt = now; _flaskNote = $"life@{v.HpPct:F0}%";
+            "EnergyShield" => (esLow, $"es@{v.EsPct:F0}%"),
+            "Either"       => (hpLow || esLow, hpLow ? $"life@{v.HpPct:F0}%" : $"es@{v.EsPct:F0}%"),
+            _              => (hpLow, $"life@{v.HpPct:F0}%"), // "Health" (default)
+        };
+
+        var now = DateTime.UtcNow;
+        if (lifeTrigger && now - _lifeFiredAt >= TimeSpan.FromMilliseconds(_settings.LifeCooldownMs))
+        {
+            SendInputNative.Tap((ushort)_settings.LifeKey); _lifeFiredAt = now; _flaskNote = lifeReason;
         }
         if (v.ManaPct < _settings.ManaThresholdPct &&
             now - _manaFiredAt >= TimeSpan.FromMilliseconds(_settings.ManaCooldownMs))

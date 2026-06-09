@@ -94,6 +94,7 @@ internal static class DashboardHtml
   .bar{height:9px; border:1px solid var(--line); background:#0c0a07; border-radius:1px; overflow:hidden; position:relative}
   .bar > i{display:block; height:100%; transition:width .35s ease}
   .bar.hp > i{background:linear-gradient(90deg,#6e1f18,var(--blood-bright))}
+  .bar.es > i{background:linear-gradient(90deg,#1f6e63,#33e0c4)}
   .bar.mana > i{background:linear-gradient(90deg,#23306e,var(--magic))}
 
   .sect{font-family:"Cinzel","Georgia",serif; font-size:12px; letter-spacing:.22em; text-transform:uppercase; color:var(--gold); margin:24px 0 12px; display:flex; align-items:center; gap:10px}
@@ -360,6 +361,10 @@ internal static class DashboardHtml
         <div class="bar hp"><i id="hpBar" style="width:0"></i></div>
       </div>
       <div class="vital">
+        <div class="vlabel"><span>Energy Shield</span><span class="num" id="esNum">—</span></div>
+        <div class="bar es"><i id="esBar" style="width:0"></i></div>
+      </div>
+      <div class="vital">
         <div class="vlabel"><span>Mana</span><span class="num" id="mpNum">—</span></div>
         <div class="bar mana"><i id="mpBar" style="width:0"></i></div>
       </div>
@@ -542,8 +547,16 @@ internal static class DashboardHtml
           </div>
           <div class="card">
             <h3>Auto-Flask</h3>
+            <div class="row"><div class="rl">Life flask triggers on<small>which pool the life flask key watches &mdash; ES is ignored if your build has none</small></div>
+              <select class="numin selin" data-set="lifeFlaskMode">
+                <option value="Health">Health %</option>
+                <option value="EnergyShield">Energy Shield %</option>
+                <option value="Either">Either (HP or ES)</option>
+              </select></div>
             <div class="row"><div class="rl">Life threshold %<small>tap life flask below this Life %</small></div>
               <input class="numin" type="number" step="1" min="0" max="100" data-set="lifeThresholdPct"></div>
+            <div class="row"><div class="rl">ES threshold %<small>tap life flask below this Energy Shield % (ES / Either modes)</small></div>
+              <input class="numin" type="number" step="1" min="0" max="100" data-set="esThresholdPct"></div>
             <div class="row"><div class="rl">Mana threshold %<small>tap mana flask below this Mana %</small></div>
               <input class="numin" type="number" step="1" min="0" max="100" data-set="manaThresholdPct"></div>
             <div class="row"><div class="rl">Life flask key</div>
@@ -621,6 +634,7 @@ function wireSettings(){
     const k=el.dataset.set;
     if(el.type==='checkbox') el.onchange=()=>saveSetting(k,el.checked);
     else if(el.classList.contains('keyin')) el.onchange=()=>{ const vk=charToVk(el.value); if(vk) saveSetting(k,vk); el.value=vkToChar(vk); };
+    else if(el.tagName==='SELECT') el.onchange=()=>saveSetting(k,el.value); // string value (e.g. flask mode)
     else el.onchange=()=>{ const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v); };
   });
 }
@@ -1155,9 +1169,9 @@ $$('#atlasViewCatalog,#atlasViewRegion,#atlasViewNodes').forEach(b=>b?.addEventL
 /* ── left rail ── */
 function renderState(){
   const s=state; if(!s) return;
-  const hp=Math.max(0,Math.min(100,s.hpPct||0)), mp=Math.max(0,Math.min(100,s.manaPct||0));
-  $('#hpBar').style.width=hp+'%'; $('#mpBar').style.width=mp+'%';
-  $('#hpNum').textContent=hp.toFixed(0)+'%'; $('#mpNum').textContent=mp.toFixed(0)+'%';
+  const hp=Math.max(0,Math.min(100,s.hpPct||0)), mp=Math.max(0,Math.min(100,s.manaPct||0)), es=Math.max(0,Math.min(100,s.esPct||0));
+  $('#hpBar').style.width=hp+'%'; $('#mpBar').style.width=mp+'%'; $('#esBar').style.width=es+'%';
+  $('#hpNum').textContent=hp.toFixed(0)+'%'; $('#mpNum').textContent=mp.toFixed(0)+'%'; $('#esNum').textContent=es.toFixed(0)+'%';
   const areaName=(s.areaName&&s.areaName!==s.areaCode)?s.areaName:'';
   $('#kAreaName').textContent=areaName||s.areaCode||'—';
   $('#kArea').textContent=s.areaCode||'—';

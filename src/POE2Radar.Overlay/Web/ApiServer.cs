@@ -142,7 +142,7 @@ public sealed class ApiServer : IDisposable
                     areaName = ZoneGuide.Shared.FriendlyName(s.AreaCode),
                     areaAct = ZoneGuide.Shared.Area(s.AreaCode)?.Act ?? 0,
                     mapVisible = s.MapVisible, zoom = s.Zoom,
-                    hpPct = s.HpPct, manaPct = s.ManaPct, autoFlask = s.AutoFlask, flask = s.FlaskNote,
+                    hpPct = s.HpPct, manaPct = s.ManaPct, esPct = s.EsPct, autoFlask = s.AutoFlask, flask = s.FlaskNote,
                     player = new { x = s.Player.X, y = s.Player.Y },
                     entityCount = s.Entities.Count,
                     poiCount = s.Entities.Count(e => e.Poi),
@@ -447,7 +447,9 @@ public sealed class ApiServer : IDisposable
         scaleMul = _settings.ScaleMul,
         offX = _settings.OffX,
         offY = _settings.OffY,
+        lifeFlaskMode = _settings.LifeFlaskMode,
         lifeThresholdPct = _settings.LifeThresholdPct,
+        esThresholdPct = _settings.EsThresholdPct,
         manaThresholdPct = _settings.ManaThresholdPct,
         lifeCooldownMs = _settings.LifeCooldownMs,
         manaCooldownMs = _settings.ManaCooldownMs,
@@ -489,7 +491,10 @@ public sealed class ApiServer : IDisposable
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
                 case "hpBarRare" when TryBool(p.Value, out var b): _settings.HpBarRare = b; applied.Add(p.Name); break;
                 case "hpBarUnique" when TryBool(p.Value, out var b): _settings.HpBarUnique = b; applied.Add(p.Name); break;
+                case "lifeFlaskMode" when p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() is { } m
+                    && (m is "Health" or "EnergyShield" or "Either"): _settings.LifeFlaskMode = m; applied.Add(p.Name); break;
                 case "lifeThresholdPct" when TryFloat(p.Value, out var f): _settings.LifeThresholdPct = Math.Clamp(f, 0f, 100f); applied.Add(p.Name); break;
+                case "esThresholdPct" when TryFloat(p.Value, out var f): _settings.EsThresholdPct = Math.Clamp(f, 0f, 100f); applied.Add(p.Name); break;
                 case "manaThresholdPct" when TryFloat(p.Value, out var f): _settings.ManaThresholdPct = Math.Clamp(f, 0f, 100f); applied.Add(p.Name); break;
                 case "lifeCooldownMs" when TryInt(p.Value, out var n): _settings.LifeCooldownMs = Math.Clamp(n, 0, 60000); applied.Add(p.Name); break;
                 case "manaCooldownMs" when TryInt(p.Value, out var n): _settings.ManaCooldownMs = Math.Clamp(n, 0, 60000); applied.Add(p.Name); break;
@@ -861,6 +866,7 @@ public sealed record RadarState(
     IReadOnlyList<Poe2Live.Landmark> Landmarks,
     float HpPct,
     float ManaPct,
+    float EsPct,
     bool AutoFlask,
     string FlaskNote,
     string AreaCode,
@@ -869,5 +875,5 @@ public sealed record RadarState(
 {
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,
-            Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), 100, 100, false, "", "", "", 0);
+            Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), 100, 100, 100, false, "", "", "", 0);
 }

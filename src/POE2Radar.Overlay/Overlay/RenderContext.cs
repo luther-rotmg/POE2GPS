@@ -50,6 +50,7 @@ public sealed record RenderContext(
     // Auto-flask status.
     float HpPct,
     float ManaPct,
+    float EsPct,
     string FlaskNote,
     // Area / character HUD.
     string AreaCode,

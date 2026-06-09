@@ -31,6 +31,9 @@ if (HasFlag(args, "--aob"))
 if (HasFlag(args, "--chain"))
     return RunChainProbe(process, reader);
 
+if (HasFlag(args, "--vitals"))
+    return RunVitals(process, reader);
+
 if (HasFlag(args, "--find-entities"))
     return RunFindEntities(process, reader, TryGetIntArg(args, "--window") ?? 0x4000);
 
@@ -3588,6 +3591,46 @@ static int RunChainProbe(ProcessHandle process, MemoryReader reader)
     Console.WriteLine($"InGameState  : 0x{inGameState:X16}");
     Console.WriteLine($"AreaInstance : 0x{areaInstance:X16}");
     Console.WriteLine($"LocalPlayer  : 0x{localPlayer:X16}  ({ReadEntityMetadata(reader, localPlayer)})");
+    return 0;
+}
+
+// ── Vitals: dump the local player's Life component for per-patch re-validation ──
+// Resolves the Life component, prints what the CONFIGURED Health/Mana/EnergyShield offsets read,
+// then scans the whole component for EVERY valid-looking VitalStruct (offset-ascending). Run it in
+// game with known HP/Mana/ES to (a) confirm the table offsets still land on the right pools after a
+// patch, and (b) see the "decoy" structs between the real pools — the reason ordinal "Nth pool"
+// guessing is unsafe and self-heal must anchor near each known offset.
+static int RunVitals(ProcessHandle process, MemoryReader reader)
+{
+    var (_, _, _, lp) = ResolveChain(process, reader);
+    if (lp == 0) { Console.Error.WriteLine("Could not resolve LocalPlayer (in game?)."); return 1; }
+    var life = ResolveComponentAddr(reader, lp, "Life");
+    if (life == 0) { Console.Error.WriteLine("Could not resolve Life component."); return 1; }
+    Console.WriteLine($"LocalPlayer 0x{lp:X}  Life 0x{life:X}");
+
+    void Show(string label, int off)
+    {
+        var ok = reader.TryReadStruct<VitalStruct>(life + off, out var v);
+        var valid = ok && v.LooksValid();
+        Console.WriteLine($"  configured {label,-12} @0x{off:X3} -> {(ok ? $"{v.Current}/{v.Max} reservedFlat={v.ReservedFlat} reservedFrac={v.ReservedFraction} regen={v.Regen:F2}" : "<unreadable>")}  {(valid ? "VALID" : "invalid")}");
+    }
+    Console.WriteLine("Configured table offsets (Poe2.Life):");
+    Show("Health", Poe2.Life.Health);
+    Show("Mana", Poe2.Life.Mana);
+    Show("EnergyShield", Poe2.Life.EnergyShield);
+
+    Console.WriteLine("All valid VitalStructs in the component (offset-ascending — 1st=Health, then decoys/Mana/ES):");
+    for (var off = 0x80; off <= 0x400;)
+    {
+        if (reader.TryReadStruct<VitalStruct>(life + off, out var v) && v.LooksValid())
+        {
+            var tag = off == Poe2.Life.Health ? " <- Health" : off == Poe2.Life.Mana ? " <- Mana"
+                : off == Poe2.Life.EnergyShield ? " <- EnergyShield" : "";
+            Console.WriteLine($"  @0x{off:X3}  {v.Current,7}/{v.Max,-7} reservedFlat={v.ReservedFlat,-5} reservedFrac={v.ReservedFraction,-5} regen={v.Regen,8:F2}{tag}");
+            off += 0x34; // skip past this struct's extent so the overlapping +4 alias isn't double-counted
+        }
+        else off += 4;
+    }
     return 0;
 }
 

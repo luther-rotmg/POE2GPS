@@ -66,7 +66,9 @@ clearly gated — a personal QoL tool, not a headless bot.
   `/api/icons` — the icon library for the dashboard's SVG-preview shape pickers).
 - `Input/SendInputNative.cs` — scancode `SendInput` for auto-flask.
 
-**Research** (`src/POE2Radar.Research/Program.cs`) — probes: `--hp` (value-scan), `--chain`,
+**Research** (`src/POE2Radar.Research/Program.cs`) — probes: `--hp` (value-scan), `--vitals`
+(dump the local player's Life component — what the configured Health/Mana/ES offsets read + every
+valid VitalStruct in the component; the per-patch re-validation for the auto-flask pools), `--chain`,
 `--entity`, `--find`/`--find-entities`/`--find-terrain`/`--find-map`, `--tiles`, `--rarity`,
 `--info`, `--watch` (area-change logger), `--dump`, `--presence` (walk-stable before/after diff to
 find a buffed scalar), `--devtree` (browser-based live memory/UI/entity explorer at

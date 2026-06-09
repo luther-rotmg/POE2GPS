@@ -92,7 +92,12 @@ public sealed class RadarSettings
     public bool AtlasShowRoute { get; set; } = true;
 
     // ── Auto-flask thresholds + per-flask cooldowns (milliseconds). ──
+    // What the (single) life-flask key triggers on: "Health" watches HP% only (default — unchanged
+    // behavior), "EnergyShield" watches ES% only (for CI / ES-stacking builds), "Either" fires when
+    // EITHER pool drops below its own threshold. ES is ignored when the build has no ES pool.
+    public string LifeFlaskMode { get; set; } = "Health";
     public float LifeThresholdPct { get; set; } = 65f;
+    public float EsThresholdPct { get; set; } = 50f;
     public float ManaThresholdPct { get; set; } = 30f;
     public int LifeCooldownMs { get; set; } = 2500;
     public int ManaCooldownMs { get; set; } = 2000;
