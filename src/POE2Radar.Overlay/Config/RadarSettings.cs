@@ -87,6 +87,9 @@ public sealed class RadarSettings
     // DEBUG: draw EVERY atlas node (overriding the highlight-only rule) — for offset/coverage diagnostics.
     // Off by default: normally only nodes matching AtlasHighlightTags (or manually selected) are drawn.
     public bool AtlasDrawAll { get; set; } = false;
+    // Atlas routing: F10 over a tile sets it as the route destination; the overlay draws the shortest path
+    // (through the node connection graph) from the player's current node to it. On by default.
+    public bool AtlasShowRoute { get; set; } = true;
 
     // ── Auto-flask thresholds + per-flask cooldowns (milliseconds). ──
     public float LifeThresholdPct { get; set; } = 65f;

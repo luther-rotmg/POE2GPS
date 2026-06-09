@@ -21,15 +21,15 @@ public readonly record struct LegendEntry(NavTarget Target, int ColorSlot, bool 
 /// its draw/legend color and the smoothed grid-cell waypoints. Empty <see cref="Points"/> = no path.</summary>
 public readonly record struct SelectedPath(int ColorSlot, IReadOnlyList<(int x, int y)> Points);
 
-/// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the node's canvas-space
-/// RelativePos; the renderer projects them to screen via the atlas calibration (scale + offset).</summary>
-public readonly record struct AtlasMark(float X, float Y, bool Selected, bool HasContent, bool Visited, bool Unlocked, int Biome, int IconType, string? Label = null, string? Color = null, bool Arrow = false);
+/// <summary>A monster HP bar to draw, with everything expensive already decided at world rate: the style
+/// (width + packed 0xAARRGGBB fill/border colors) was resolved once when the entity set was built; only
+/// <see cref="World"/> + <see cref="Frac"/> are refreshed live every render frame (cheap per-entity reads)
+/// so the bar tracks the moving monster smoothly. The renderer just projects + fills.</summary>
+public readonly record struct HpBarTarget(Vector3 World, float Frac, float Width, uint Fill, float BorderWidth, uint Border);
 
-/// <summary>The tile-inspector tooltip: <see cref="X"/>/<see cref="Y"/> are the inspected node's
-/// canvas-space RelativePos (projected each frame like a mark, so it tracks pan/zoom); <see cref="Lines"/>
-/// are the readable fields to show (map name, content tags, biome/flags) so the user can see exactly what
-/// to type as a filter. Set by the inspect hotkey, drawn near the tile while the Atlas is open.</summary>
-public readonly record struct AtlasInspect(float X, float Y, IReadOnlyList<string> Lines);
+/// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the node's canvas-space
+/// RelativePos; the renderer projects them to screen via the atlas transform (scale + offset).</summary>
+public readonly record struct AtlasMark(float X, float Y, bool Selected, bool HasContent, bool Visited, bool Unlocked, int Biome, int IconType, string? Label = null, string? Color = null, bool Arrow = false);
 
 /// <summary>What the PoE2 renderer needs each frame. Built fresh by <see cref="RadarApp"/>.</summary>
 public sealed record RenderContext(
@@ -82,6 +82,9 @@ public sealed record RenderContext(
     // ── User-tweakable icon style table + HP-bar geometry (mirrored from RadarSettings). ──
     RadarStyles Styles,
     HpBarSettings HpBars,
+    // Monster HP bars: style decided at world rate, position/HP refreshed live each render frame so bars
+    // track moving mobs smoothly. Null/empty → none. Replaces the old per-frame resolve over all entities.
+    IReadOnlyList<HpBarTarget>? HpBarTargets,
     // Walkable-terrain bitmap colors/transparency (mirrored from RadarSettings).
     TerrainSettings TerrainStyle,
     // ── Unified display-rule engine (Phase 1). Resolves an entity to the first matching display rule
@@ -92,8 +95,8 @@ public sealed record RenderContext(
     // (styling pass) or null. Lets a rule restyle/hide a surfaced landmark; null → default Landmark style.
     Func<string, Web.DisplayRule?>? ResolveTile = null,
     // ── Atlas overlay (takes precedence over the minimap/radar when the Atlas screen is open). ──
-    bool AtlasOpen = false,                       // the Atlas screen is open → draw atlas highlights, suppress radar
-    IReadOnlyList<AtlasMark>? AtlasNodes = null,   // nodes to highlight (canvas-space coords)
+    bool AtlasOpen = false,                       // the Atlas screen is open → draw atlas highlights + route, suppress radar
+    IReadOnlyList<AtlasMark>? AtlasNodes = null,   // tracked/arrowed nodes to highlight (canvas-space coords)
     // Atlas canvas→screen homography coefficients (h0..h7; h8=1). Shear/persp 0 ⇒ plain affine.
     float AtlasScale = 0.5f,   // h0
     float AtlasScaleY = 0.5f,  // h4
@@ -103,5 +106,9 @@ public sealed record RenderContext(
     float AtlasShearY = 0f,    // h3
     float AtlasPersX = 0f,     // h6
     float AtlasPersY = 0f,     // h7
-    // Tile-inspector tooltip (null = nothing to show). Drawn only while the Atlas is open.
-    AtlasInspect? AtlasInspect = null);
+    // Atlas route (F10 workflow): START/END tiles in canvas-space (relPos), and the graph path between them.
+    // Projected with the same atlas homography as the marks. Start/End draw as markers even before a path
+    // exists; AtlasRoute (≥2 pts) is the graph polyline, else the renderer draws a straight START→END line.
+    NumVec2? AtlasStart = null,
+    NumVec2? AtlasEnd = null,
+    IReadOnlyList<NumVec2>? AtlasRoute = null);

@@ -335,8 +335,45 @@ public static class Poe2
         public const int State       = 0x32C; // (community) u8 state (seen =1 on loaded nodes)
         public const int Biome       = 0x32E; // ✓ u8 biome index (0..12)
         public const int Flags       = 0x32F; // (community) u8: bit0 unlocked, bit1 visited
+        public const int GridPos     = 0x320; // ✓ live 2026-06-08 — StdTuple2D<int> atlas grid coord (X,Y); 1:1 with node, range small (e.g. X[-16..31] Y[0..47]). The key for node-graph pathfinding. (GameHelper2-sourced)
         public const int Completion  = 0x339; // (community) u8 per-node completion id
         public const int ContentVec  = 0x350; // (community) StdVector begin (content list); End @ +0x358
+
+        /// <summary>Alternate node-DATA model (GameHelper2): <c>*(*(node+0x10)+0x20)</c> → a struct with
+        /// biome <c>+0x2CE</c> / status byte <c>+0x2CF</c> (bit0 accessible, bit1 completed) / mapId at
+        /// <c>+0x2A0</c> (ptr→ptr→ptr→UTF-16 "MapXxx"). Validated live 2026-06-08 (biome matches the
+        /// element's own <see cref="Biome"/> 200/200). POE2Radar reads biome/mapId DIRECTLY off the
+        /// element (<see cref="Biome"/>, <see cref="MapNodeId"/> + the +0x300 EndgameMaps row), so this
+        /// deeper model is an alternate source, not required.</summary>
+        public const int DataStorage = 0x10;   // *(node+0x10) → storage
+        public const int DataModel   = 0x20;   // *(storage+0x20) → nodeData
+        public const int DataBiome   = 0x2CE;  // u8 within nodeData
+        public const int DataStatus  = 0x2CF;  // u8 within nodeData: bit0 accessible, bit1 completed
+        public const int DataMapId   = 0x2A0;  // ptr chain → UTF-16 "MapXxx"
+    }
+
+    /// <summary>Atlas CONNECTION GRAPH (✓ live 2026-06-08, GameHelper2-sourced). The node canvas (the
+    /// parent holding the most node-class children — POE2Radar's detected <c>_nodeCanvas</c>) carries a
+    /// <c>StdVector</c> of edges at <c>+0x5A8</c>. Each edge is 20 bytes: <c>{ int unknown; StdTuple2D&lt;int&gt;
+    /// source; StdTuple2D&lt;int&gt; target }</c> — source @ +0x04, target @ +0x0C, both in node grid
+    /// coords (<see cref="AtlasNode.GridPos"/>). Live: 291 edges, 100% endpoints on real grid positions,
+    /// avg degree 2.9 / max 5 (a real sparse atlas graph). This is what enables "route from the player's
+    /// current node to a target node in the fewest hops" (A* over the graph, per GH2's FindShortestPathAStar).
+    /// Re-discover after a patch with <c>POE2Radar.Research --atlas-graph</c>.</summary>
+    public static class AtlasGraph
+    {
+        public const int ConnectionsVec = 0x5A8; // on the node canvas: StdVector<edge> begin; End @ +0x5B0
+        public const int EdgeStride     = 20;
+        public const int EdgeSourceOff  = 0x04;  // StdTuple2D<int>
+        public const int EdgeTargetOff  = 0x0C;  // StdTuple2D<int>
+
+        /// <summary>Current-location ("player icon") marker: the SINGLE non-node UiElement in the atlas
+        /// UI subtree whose <c>+0x300</c> field points at a node-class element. That target node is the map
+        /// the player is currently in (✓ live 2026-06-08 — held even while standing in a hideout). The
+        /// accessor is structural, not vtable-keyed (the marker's class drifts per patch), so it's found by
+        /// "the lone non-node element whose +0x300 ∈ node set". <c>currentNode = *(marker + 0x300)</c>, then
+        /// read the node's <see cref="AtlasNode.GridPos"/>. Re-discover with <c>--atlas-marker</c>.</summary>
+        public const int CurrentMarkerNodePtr = 0x300;
     }
 
     /// <summary>Atlas screen panel — a PERSISTENT direct child of UiRoot (the element at

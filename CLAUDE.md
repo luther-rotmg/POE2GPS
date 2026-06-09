@@ -74,7 +74,9 @@ find a buffed scalar), `--devtree` (browser-based live memory/UI/entity explorer
 DevTree), and `--atlas-probe` (one-shot ATLAS PROJECTION recovery/validation — run with the Atlas map
 open after a patch: re-locates the node class + canvas, validates every offset (PASS/⚠DRIFT), and prints
 the derived projection + paste-ready offsets; the `--atlas-{xform,canvas,nodes2,readnodes,corr}` probes
-remain for deep re-discovery).
+remain for deep re-discovery), and `--atlas-graph` (validates the node GRAPH — per-node grid coords
+`AtlasNode.GridPos +0x320` + the connection-edge `StdVector` `AtlasGraph.ConnectionsVec` on the canvas
+`+0x5A8`; brute-scans for both so it self-heals on drift — the basis for node-to-node atlas pathfinding).
 
 **Atlas overlay projection** (✓ live, pan + zoom): atlas nodes are UiElements; a node's screen pos is
 `screen = (UIscale × zoom) × relPos + offset` — relPos `+0x118` (read live; PAN is baked in), zoom =

@@ -100,10 +100,10 @@ public sealed class OverlayRenderer : IDisposable
             // over other apps when you alt-tab. (The cleared frame above hides prior content.)
             if (ctx.Active && ctx.InGame && ctx.AtlasOpen)
             {
-                // The Atlas screen is open: its overlay takes precedence — draw ONLY the atlas node
-                // highlights, never the world radar/minimap (which would be meaningless over the atlas).
-                DrawAtlas(rt, ctx);
-                DrawAtlasInspect(rt, ctx);                 // tile-inspector tooltip (F10)
+                // The Atlas screen is open: draw the highlight rings + off-screen arrows and the F10 route,
+                // never the world radar/minimap (meaningless over the atlas).
+                DrawAtlasRoute(rt, ctx);                   // F10 route line + START/END markers (under the rings)
+                DrawAtlas(rt, ctx);                        // tracked-map rings + off-screen arrows
                 _legendRowRects.Clear();
             }
             else if (ctx.Active && ctx.InGame)
@@ -127,12 +127,52 @@ public sealed class OverlayRenderer : IDisposable
         _window.Present();
     }
 
+    /// <summary>The F10 atlas route: the shortest path (through the node connection graph) from the player's
+    /// current node to the picked destination. Each canvas-space (relPos) waypoint is projected with the same
+    /// atlas homography as the rings, then drawn as a connected polyline (dark underlay + bright cyan line for
+    /// contrast over the busy atlas), with a node dot at each hop, a green START disc and a gold GOAL ring.
+    /// Off-screen segments are simply clipped by Direct2D, so the route still reads when the destination has
+    /// been panned off-screen. Drawn UNDER the highlight rings.</summary>
+    private void DrawAtlasRoute(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        var start = ctx.AtlasStart; var end = ctx.AtlasEnd; var route = ctx.AtlasRoute;
+        if (start is null && end is null && (route is null || route.Count == 0)) return;
+        float h0 = ctx.AtlasScale, h1 = ctx.AtlasShearX, h2 = ctx.AtlasOffX,
+              h3 = ctx.AtlasShearY, h4 = ctx.AtlasScaleY, h5 = ctx.AtlasOffY,
+              h6 = ctx.AtlasPersX, h7 = ctx.AtlasPersY;
+        NumVec2 Proj(NumVec2 p) { var w = h6 * p.X + h7 * p.Y + 1f; if (MathF.Abs(w) < 1e-6f) w = 1f; return new NumVec2((h0 * p.X + h1 * p.Y + h2) / w, (h3 * p.X + h4 * p.Y + h5) / w); }
+
+        var dark = new Color4(0f, 0f, 0f, 0.6f);
+        var bright = new Color4(0.235f, 0.86f, 1f, 0.95f);   // cyan
+        var green = new Color4(0.43f, 0.91f, 0.53f, 1f);
+        var gold = new Color4(0.878f, 0.702f, 0.255f, 1f);
+
+        if (route is { Count: >= 2 })
+        {
+            // Graph polyline: dark underlay then bright line (cheap outline for contrast over the atlas), hop dots.
+            var pts = new NumVec2[route.Count];
+            for (var i = 0; i < route.Count; i++) pts[i] = Proj(route[i]);
+            _bStyle!.Color = dark; for (var i = 1; i < pts.Length; i++) rt.DrawLine(pts[i - 1], pts[i], _bStyle, 7f);
+            _bStyle.Color = bright; for (var i = 1; i < pts.Length; i++) rt.DrawLine(pts[i - 1], pts[i], _bStyle, 3.5f);
+            _bStyle.Color = bright; for (var i = 1; i < pts.Length - 1; i++) rt.DrawEllipse(new Ellipse(pts[i], 4f, 4f), _bStyle, 2f);
+        }
+        else if (start is { } sa && end is { } eb)
+        {
+            // No graph path between the two — draw a direct dashed-ish straight line so the link is still shown.
+            var a = Proj(sa); var b = Proj(eb);
+            _bStyle!.Color = dark; rt.DrawLine(a, b, _bStyle, 6f);
+            _bStyle.Color = gold; rt.DrawLine(a, b, _bStyle, 2.5f);
+        }
+
+        // START (green disc) + END (gold ring) markers — drawn whenever set, even before a path exists.
+        if (start is { } s) { var p = Proj(s); _bStyle!.Color = green; rt.DrawEllipse(new Ellipse(p, 8f, 8f), _bStyle, 3f); rt.DrawEllipse(new Ellipse(p, 3f, 3f), _bStyle, 2f); }
+        if (end is { } e) { var p = Proj(e); _bStyle!.Color = gold; rt.DrawEllipse(new Ellipse(p, 11f, 11f), _bStyle, 3f); rt.DrawEllipse(new Ellipse(p, 4f, 4f), _bStyle, 2f); }
+    }
+
     /// <summary>
     /// Atlas overlay: highlight atlas map nodes on the open Atlas screen. Each node's canvas-space
-    /// position (RelativePos) is projected to screen via the calibratable atlas transform
-    /// (screen = pos × AtlasScale + Atlas offset). Selected nodes (from the dashboard) draw a bright
-    /// cyan ring; otherwise content nodes are orange and un-run nodes green (config-free for now). This
-    /// is the calibration surface: click a node in the dashboard, see where its ring lands, adjust.
+    /// position (RelativePos) is projected to screen via the atlas transform. Tracked/arrowed maps draw a
+    /// ring in their rule colour; off-screen arrowed maps get an edge arrow pointing toward them.
     /// </summary>
     private void DrawAtlas(ID2D1RenderTarget rt, RenderContext ctx)
     {
@@ -190,39 +230,6 @@ public sealed class OverlayRenderer : IDisposable
         }
     }
 
-    /// <summary>The F10 tile-inspector tooltip: a small panel near the inspected tile listing its readable
-    /// fields (map name, content tags, biome, flags), so the user can see exactly what to type as a web-UI
-    /// filter. The tile's canvas relPos is projected with the same atlas transform as the rings, so the box
-    /// tracks pan/zoom. A cyan ring marks the inspected tile itself.</summary>
-    private void DrawAtlasInspect(ID2D1RenderTarget rt, RenderContext ctx)
-    {
-        if (ctx.AtlasInspect is not { Lines.Count: > 0 } ins) return;
-        float h0 = ctx.AtlasScale, h1 = ctx.AtlasShearX, h2 = ctx.AtlasOffX,
-              h3 = ctx.AtlasShearY, h4 = ctx.AtlasScaleY, h5 = ctx.AtlasOffY,
-              h6 = ctx.AtlasPersX, h7 = ctx.AtlasPersY;
-        var w = h6 * ins.X + h7 * ins.Y + 1f;
-        if (MathF.Abs(w) < 1e-6f) return;
-        var sx = (h0 * ins.X + h1 * ins.Y + h2) / w;
-        var sy = (h3 * ins.X + h4 * ins.Y + h5) / w;
-
-        var cyan = new Color4(0.235f, 0.86f, 1f, 1f);
-        // Mark the inspected tile.
-        _bStyle!.Color = cyan;
-        rt.DrawEllipse(new Ellipse(new NumVec2(sx, sy), 13f, 13f), _bStyle, 2.5f);
-
-        // Tooltip box, offset down-right of the tile, clamped on-screen.
-        const float lh = 16f, padX = 9f, padY = 7f, boxW = 250f;
-        float boxH = padY * 2f + lh * ins.Lines.Count;
-        float bx = Math.Clamp(sx + 16f, 0f, MathF.Max(0f, ctx.WindowWidth - boxW));
-        float by = Math.Clamp(sy + 14f, 0f, MathF.Max(0f, ctx.WindowHeight - boxH));
-        var box = new Vortice.RawRectF(bx, by, bx + boxW, by + boxH);
-        rt.FillRectangle(box, _bPanel!);
-        _bStyle.Color = cyan;
-        rt.DrawRectangle(box, _bStyle, 1.5f);
-        for (var i = 0; i < ins.Lines.Count; i++)
-            rt.DrawText(ins.Lines[i], _tf!, new Rect(bx + padX, by + padY + i * lh, bx + boxW - 4f, by + padY + (i + 1) * lh + 2f), _bText!, DrawTextOptions.Clip);
-    }
-
     /// <summary>Draw an edge arrow pointing from screen-centre toward an OFF-SCREEN atlas map (sx,sy), so
     /// you can pan toward high-value maps you can't zoom out far enough to see. Clamped to a screen-edge
     /// inset, coloured by the rule, labelled with the map/content.</summary>
@@ -261,40 +268,16 @@ public sealed class OverlayRenderer : IDisposable
     /// </summary>
     private void DrawNameplates(ID2D1RenderTarget rt, RenderContext ctx)
     {
-        if (ctx.CameraMatrix is not { } m) return;
+        if (ctx.CameraMatrix is not { } m || ctx.HpBarTargets is not { Count: > 0 } bars) return;
         float W = ctx.WindowWidth, H = ctx.WindowHeight;
         var hb = ctx.HpBars;
-        foreach (var e in ctx.Entities)
+        var bh = hb.Height;
+        // All the expensive per-entity decisions (rarity gate, rule resolve, colour parse) were done at
+        // world rate in RadarApp.BuildHpSpecs; here we only project the LIVE position (refreshed this frame
+        // so the bar tracks the moving mob) and fill. fill/border are pre-packed 0xAARRGGBB.
+        foreach (var t in bars)
         {
-            if (!e.IsAlive || e.HpMax <= 0) continue; // needs a live HP pool
-
-            // Per-rarity master toggle (Settings) — the sole on/off for monster HP bars. NonMonster
-            // rarities have no toggle ⇒ no bar.
-            var rarityOn = e.Rarity switch
-            {
-                Poe2Live.Rarity.Normal => ctx.HpBarNormal,
-                Poe2Live.Rarity.Magic  => ctx.HpBarMagic,
-                Poe2Live.Rarity.Rare   => ctx.HpBarRare,
-                Poe2Live.Rarity.Unique => ctx.HpBarUnique,
-                _                      => false,
-            };
-            if (!rarityOn) continue;
-
-            var rule = ctx.Resolve?.Invoke(e);
-            if (rule is null || rule.Hide) continue; // no bars over hidden mobs; fill follows the dot color
-
-            // Geometry per rarity; fill = the rule's dot color.
-            var (bw, colorHex, borderW, borderHex) = e.Rarity switch
-            {
-                Poe2Live.Rarity.Normal => (hb.WidthNormal, rule.Color, hb.BorderNormal, hb.BorderColorNormal),
-                Poe2Live.Rarity.Magic  => (hb.WidthMagic,  rule.Color, hb.BorderMagic,  hb.BorderColorMagic),
-                Poe2Live.Rarity.Rare   => (hb.WidthRare,   rule.Color, hb.BorderRare,   hb.BorderColorRare),
-                Poe2Live.Rarity.Unique => (hb.WidthUnique, rule.Color, hb.BorderUnique, hb.BorderColorUnique),
-                _                      => (0f, "#FFFFFF", 0f, "#FFFFFF"),
-            };
-            if (bw <= 0f) continue;
-
-            var w = e.World;
+            var w = t.World;
             var cw = w.X*m[3] + w.Y*m[7] + w.Z*m[11] + m[15];
             if (cw <= 0.0001f) continue;
             var cx = w.X*m[0] + w.Y*m[4] + w.Z*m[8] + m[12];
@@ -303,22 +286,25 @@ public sealed class OverlayRenderer : IDisposable
             var sy = (0.5f - cy/cw/2f) * H;
             if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
 
-            var bh = hb.Height;
+            var bw = t.Width;
             var bx = sx - bw / 2f + hb.OffsetX;
             var by = sy + hb.OffsetY; // OffsetY is relative to the mob (negative = above)
-            var frac = e.HpFraction;
-            var col = ParseColor(colorHex, 1f);
             var barRect = new Vortice.RawRectF(bx, by, bx + bw, by + bh);
             rt.FillRectangle(barRect, _bPanel!);
-            _bStyle!.Color = frac < 0.3f ? ColLowHp : col;
-            rt.FillRectangle(new Vortice.RawRectF(bx, by, bx + bw * frac, by + bh), _bStyle);
-            if (borderW > 0f) // per-rarity border: weight + color from config
+            _bStyle!.Color = t.Frac < 0.3f ? ColLowHp : ColorFromU(t.Fill);
+            rt.FillRectangle(new Vortice.RawRectF(bx, by, bx + bw * t.Frac, by + bh), _bStyle);
+            if (t.BorderWidth > 0f)
             {
-                _bStyle.Color = ParseColor(borderHex, 1f);
-                rt.DrawRectangle(barRect, _bStyle, borderW);
+                _bStyle.Color = ColorFromU(t.Border);
+                rt.DrawRectangle(barRect, _bStyle, t.BorderWidth);
             }
         }
     }
+
+    /// <summary>Unpack a 0xAARRGGBB color (precomputed in RadarApp.BuildHpSpecs) to a Color4 — no string
+    /// parse or allocation, runs per bar per frame.</summary>
+    private static Color4 ColorFromU(uint u)
+        => new(((u >> 16) & 0xFF) / 255f, ((u >> 8) & 0xFF) / 255f, (u & 0xFF) / 255f, ((u >> 24) & 0xFF) / 255f);
 
     /// <summary>
     /// Draw-only guidance routes rendered on the WORLD GROUND, shown when the big map is CLOSED.

@@ -239,7 +239,7 @@ public sealed class Poe2Atlas
     /// qualifiers, then space out CamelCase / underscores. "MapRustbowl"→"Rustbowl";
     /// "MapUberBoss_StoneCitadel"→"Stone Citadel"; "MapUniqueMerchant01_Oasis"→"Merchant Oasis". This is
     /// clearly DERIVED (the real localized display name isn't reliably adjacent in memory across builds).</summary>
-    private static string Prettify(string code)
+    public static string Prettify(string code)
     {
         if (string.IsNullOrEmpty(code)) return "";
         var s = code;
@@ -275,8 +275,11 @@ public sealed class Poe2Atlas
     public readonly record struct AtlasNodeLive(
         nint Element, uint Id, uint Content, byte State, byte Biome, byte Flags, byte Completion,
         float X, float Y, float W, float H, float Scale, bool Visible, int IconType,
-        string MapName, IReadOnlyList<string> Tags)
+        int GridX, int GridY, string MapName, IReadOnlyList<string> Tags)
     {
+        /// <summary>The node's atlas grid coordinate (<see cref="Poe2Offsets.AtlasNode.GridPos"/>) — the
+        /// key into the connection graph for routing (unique per node; stable while the atlas is open).</summary>
+        public (int X, int Y) Grid => (GridX, GridY);
         public bool Unlocked => (Flags & 0x01) != 0;
         public bool Visited => (Flags & 0x02) != 0;
         public bool HasContent => Content != 0;   // +0x310 (atlas-row ptr) non-null ⇒ has rolled content
@@ -293,6 +296,26 @@ public sealed class Poe2Atlas
     // (content is stable while the atlas is open) and resolved at a bounded rate to avoid a tick hitch.
     private readonly Dictionary<nint, (string map, string[] content)> _tagCache = new();
     private static readonly string[] NoTags = Array.Empty<string>();
+
+    // Atlas CONNECTION GRAPH (grid coord → neighbour grid coords), read from the canvas's edge vector
+    // (Poe2.AtlasGraph.ConnectionsVec). Static while the atlas is open, so it's read once per canvas and
+    // cached (rebuilt on Invalidate / canvas change). This is what enables node-to-node routing.
+    private readonly Dictionary<(int, int), List<(int, int)>> _graph = new();
+    private nint _graphCanvas;   // canvas the cached _graph was built from (0 = not built)
+    // The current-location ("player icon") marker: the lone non-node element whose +0x300 → a node. Located
+    // during DetectNodeClass (vtable-independent — see Poe2.AtlasGraph.CurrentMarkerNodePtr). *(marker+0x300)
+    // is the node the player is currently in (the route's true start).
+    private nint _currentMarker;
+
+    /// <summary>Cheap "is the Atlas screen open?" check (the persistent panel's visible bit, ~4 reads) —
+    /// the same gate <see cref="ReadNodes"/> uses internally, exposed so callers can tell a TRANSIENT empty
+    /// read (atlas open, a node read just hiccupped) from the atlas genuinely being closed. Lets the overlay
+    /// hold its last marks through a read miss instead of blanking (the off-screen-arrow flicker).</summary>
+    public bool IsAtlasOpen(nint inGameState)
+    {
+        var uiRoot = Ptr(inGameState + Poe2.InGameState.UiRoot);
+        return uiRoot != 0 && AtlasPanelOpen(uiRoot);
+    }
 
     /// <summary>Read the live atlas node list. Atlas nodes are all children of one canvas container; we
     /// detect the node element-class + canvas once (BFS, vtable-grouped) and cache them, then each call
@@ -375,6 +398,8 @@ public sealed class Poe2Atlas
             _reader.TryReadStruct<float>(el + Poe2.UiElement.SizeW, out var w);
             _reader.TryReadStruct<float>(el + Poe2.UiElement.SizeH, out var h);
             _reader.TryReadStruct<float>(el + 0x130, out var scale);
+            _reader.TryReadStruct<int>(el + Poe2.AtlasNode.GridPos, out var gridX);     // StdTuple2D<int> atlas grid coord
+            _reader.TryReadStruct<int>(el + Poe2.AtlasNode.GridPos + 4, out var gridY); // → the routing graph key
             _reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var uiFlags);
             var visible = ((uiFlags >> Poe2.UiElement.FlagVisibleBit) & 1) != 0;
             // The node's content/icon TYPE lives on a nested sigil-icon child (content int 1..~50);
@@ -392,10 +417,11 @@ public sealed class Poe2Atlas
                 if (resolveBudget > 0) { resolved = ResolveTags(el); _tagCache[el] = resolved; resolveBudget--; }
                 else { resolved = ("", NoTags); allCached = false; } // budget spent — retried next call (not cached)
             }
-            outNodes.Add(new AtlasNodeLive(el, id, content, state, biome, flags, compl, x, y, w, h, scale, visible, iconType, resolved.map, resolved.content));
+            outNodes.Add(new AtlasNodeLive(el, id, content, state, biome, flags, compl, x, y, w, h, scale, visible, iconType, gridX, gridY, resolved.map, resolved.content));
         }
         if (matched < 8) { Invalidate(); return false; }          // canvas no longer the node container
         AllTagsResolved = allCached;   // true once every node's tags are cached (seed defaults only then)
+        EnsureGraph();                 // (re)read the connection-edge vector once per canvas (cached)
         return true;
     }
 
@@ -404,7 +430,117 @@ public sealed class Poe2Atlas
     /// defaults only when the full map/content set is available.</summary>
     public bool AllTagsResolved { get; private set; }
 
-    private void Invalidate() { _nodeCanvas = 0; _nodeVtable = 0; _hiddenTicks = 0; _tagCache.Clear(); }
+    private void Invalidate() { _nodeCanvas = 0; _nodeVtable = 0; _hiddenTicks = 0; _tagCache.Clear(); _graph.Clear(); _graphCanvas = 0; _currentMarker = 0; }
+
+    /// <summary>The player's CURRENT atlas node grid coord (the "player icon" tile), via the marker element
+    /// (<see cref="Poe2Offsets.AtlasGraph.CurrentMarkerNodePtr"/>): <c>*(marker+0x300)</c> → current node →
+    /// its <see cref="Poe2Offsets.AtlasNode.GridPos"/>. Returns null when the marker isn't located or has
+    /// gone stale (caller keeps its last-known start). Thread-safe; read each tick — it tracks the player as
+    /// they run maps. The marker is found during <see cref="DetectNodeClass"/>.</summary>
+    public (int X, int Y)? CurrentNodeGrid()
+    {
+        lock (_nodeLock)
+        {
+            var m = _currentMarker;
+            if (m == 0 || Ptr(m + Poe2.UiElement.Self) != m) return null;   // not located / stale
+            var node = Ptr(m + Poe2.AtlasGraph.CurrentMarkerNodePtr);
+            if (node == 0) return null;
+            if (!_reader.TryReadStruct<int>(node + Poe2.AtlasNode.GridPos, out var gx)) return null;
+            if (!_reader.TryReadStruct<int>(node + Poe2.AtlasNode.GridPos + 4, out var gy)) return null;
+            return (gx, gy);
+        }
+    }
+
+    /// <summary>Read the canvas's connection-edge <see cref="StdVector"/> (<see cref="Poe2Offsets.AtlasGraph"/>)
+    /// once per canvas and build the bidirectional adjacency by grid coord. Each 20-byte edge is
+    /// <c>{ int unknown; StdTuple2D&lt;int&gt; source@+0x04; StdTuple2D&lt;int&gt; target@+0x0C }</c>. Bulk-reads
+    /// the whole vector in one pass (cheap, ~300 edges). No-op when already built for this canvas. Caller
+    /// holds <see cref="_nodeLock"/>.</summary>
+    private void EnsureGraph()
+    {
+        if (_nodeCanvas == 0 || _graphCanvas == _nodeCanvas) return;
+        _graph.Clear(); _graphCanvas = _nodeCanvas;
+        var begin = Ptr(_nodeCanvas + Poe2.AtlasGraph.ConnectionsVec);
+        if (begin == 0 || !_reader.TryReadStruct<nint>(_nodeCanvas + Poe2.AtlasGraph.ConnectionsVec + 8, out var end)) return;
+        var bytes = (long)end - (long)begin;
+        if (bytes <= 0 || bytes % Poe2.AtlasGraph.EdgeStride != 0) return;
+        var count = (int)(bytes / Poe2.AtlasGraph.EdgeStride);
+        if (count is <= 0 or > 200000) return;
+        var buf = new byte[count * Poe2.AtlasGraph.EdgeStride];
+        if (_reader.TryReadBytes(begin, buf) < buf.Length) return;
+        for (var i = 0; i < count; i++)
+        {
+            var o = i * Poe2.AtlasGraph.EdgeStride;
+            var sx = BitConverter.ToInt32(buf, o + Poe2.AtlasGraph.EdgeSourceOff);
+            var sy = BitConverter.ToInt32(buf, o + Poe2.AtlasGraph.EdgeSourceOff + 4);
+            var dx = BitConverter.ToInt32(buf, o + Poe2.AtlasGraph.EdgeTargetOff);
+            var dy = BitConverter.ToInt32(buf, o + Poe2.AtlasGraph.EdgeTargetOff + 4);
+            if (sx == dx && sy == dy) continue;
+            AddEdge((sx, sy), (dx, dy));
+            AddEdge((dx, dy), (sx, sy));
+        }
+    }
+
+    private void AddEdge((int, int) a, (int, int) b)
+    {
+        if (!_graph.TryGetValue(a, out var list)) { list = new List<(int, int)>(4); _graph[a] = list; }
+        if (!list.Contains(b)) list.Add(b);
+    }
+
+    /// <summary>A* over the atlas connection graph from <paramref name="start"/> to <paramref name="goal"/>
+    /// (both grid coords). Returns the ordered grid-coord path (start … goal inclusive), or null when either
+    /// endpoint is absent or the two aren't connected. Cost + heuristic are Euclidean grid distance, so the
+    /// result is the fewest-hops / shortest route through the unlocked node mesh. Thread-safe (snapshots the
+    /// graph under <see cref="_nodeLock"/>); safe to call from the tick thread alongside ReadNodes.</summary>
+    /// <summary>Number of nodes in the cached connection graph (0 ⇒ not built / atlas closed). Diagnostic.</summary>
+    public int GraphNodeCount { get { lock (_nodeLock) return _graph.Count; } }
+
+    /// <summary>True if the given grid coord is a vertex in the connection graph (has ≥1 edge). Diagnostic —
+    /// a node with no edges can't be a route endpoint.</summary>
+    public bool GraphHas((int, int) grid) { lock (_nodeLock) return _graph.ContainsKey(grid); }
+
+    public List<(int X, int Y)>? FindPath((int X, int Y) start, (int X, int Y) goal)
+    {
+        Dictionary<(int, int), List<(int, int)>> g;
+        lock (_nodeLock)
+        {
+            if (!_graph.ContainsKey(start) || !_graph.ContainsKey(goal)) return null;
+            // Snapshot so the search doesn't race a concurrent EnsureGraph rebuild.
+            g = new Dictionary<(int, int), List<(int, int)>>(_graph);
+        }
+        if (start == goal) return new List<(int X, int Y)> { start };
+
+        static float Dist((int X, int Y) a, (int X, int Y) b)
+        { float dx = a.X - b.X, dy = a.Y - b.Y; return MathF.Sqrt(dx * dx + dy * dy); }
+
+        var cameFrom = new Dictionary<(int, int), (int, int)>();
+        var gScore = new Dictionary<(int, int), float> { [start] = 0f };
+        var open = new PriorityQueue<(int, int), float>();   // lazy PQ: stale entries are filtered via gScore
+        open.Enqueue(start, Dist(start, goal));
+
+        while (open.Count > 0)
+        {
+            var cur = open.Dequeue();
+            if (cur == goal)
+            {
+                var path = new List<(int X, int Y)> { cur };
+                while (cameFrom.TryGetValue(cur, out var prev)) { cur = prev; path.Add(cur); }
+                path.Reverse();
+                return path;
+            }
+            if (!g.TryGetValue(cur, out var neighbours)) continue;
+            var baseG = gScore[cur];
+            foreach (var nb in neighbours)
+            {
+                var tentative = baseG + Dist(cur, nb);
+                if (gScore.TryGetValue(nb, out var old) && tentative >= old) continue;
+                cameFrom[nb] = cur;
+                gScore[nb] = tentative;
+                open.Enqueue(nb, tentative + Dist(nb, goal));
+            }
+        }
+        return null;
+    }
 
     /// <summary>Resolve a node's content TAGS (display names) via its EndgameMapAtlas row (+0x310):
     /// the headline content (row+0x38 → content row +0x30 name, e.g. "Powerful Map Boss") plus the league
@@ -571,6 +707,19 @@ public sealed class Poe2Atlas
         }
         if (parentCount.Count == 0) return false;
         _nodeCanvas = parentCount.OrderByDescending(k => k.Value).First().Key;
+
+        // Current-location marker: the lone NON-node element whose +0x300 points at a node-class element
+        // (*(marker+0x300) = the node the player is currently in). Structural, so no vtable to drift. The BFS
+        // above already visited every element (grouped in byVtable); scan them once.
+        _currentMarker = 0;
+        var nodeSet = new HashSet<nint>(byVtable[bestVt]);
+        foreach (var el in byVtable.Values.SelectMany(v => v))
+        {
+            if (nodeSet.Contains(el)) continue;
+            var p = Ptr(el + Poe2.AtlasGraph.CurrentMarkerNodePtr);
+            if (p != 0 && nodeSet.Contains(p)) { _currentMarker = el; break; }
+        }
+
         return _nodeCanvas != 0;
     }
 }

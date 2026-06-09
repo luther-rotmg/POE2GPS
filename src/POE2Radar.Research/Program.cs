@@ -205,6 +205,18 @@ if (HasFlag(args, "--atlas-content"))
 if (HasFlag(args, "--atlas-resolve"))
     return RunAtlasResolve(process, reader);
 
+if (HasFlag(args, "--atlas-graph"))
+    return RunAtlasGraph(process, reader);
+
+if (HasFlag(args, "--atlas-current"))
+    return RunAtlasCurrent(process, reader);
+
+if (HasFlag(args, "--atlas-findcur"))
+    return RunAtlasFindCur(process, reader);
+
+if (HasFlag(args, "--atlas-marker"))
+    return RunAtlasMarker(process, reader);
+
 if (HasFlag(args, "--atlas-readnodes"))
 {
     var (_, igs2, _, _) = ResolveChain(process, reader);
@@ -2389,6 +2401,407 @@ static int RunAtlasProbe(ProcessHandle process, MemoryReader reader)
     Console.WriteLine("    AtlasNode:  MapNodeId +0x300  Content +0x310  State +0x32C  Biome +0x32E  Flags +0x32F  Completion +0x339");
     Console.WriteLine($"    node-class vtable (drifts every patch): module +0x{(long)nodeVt - (long)process.MainModuleBase:X}");
     Console.WriteLine("\nDONE. If any line above is ⚠ DRIFT, that offset moved — re-discover with --atlas-canvas / --atlas-nodes2.");
+    return 0;
+}
+
+// ── Atlas GRAPH probe: validate the GameHelper2-sourced node GRID COORDINATES + CONNECTION GRAPH ──
+// (resources/GameHelper2-main .../ImportantUiElements.cs). These are the two structures POE2Radar
+// currently LACKS — they're what enables node-to-node atlas pathfinding ("route from here to that map
+// in the fewest hops"). GH2 reads: grid pos @ nodeElem+0x320 (StdTuple2D<int>); connection edges @
+// atlasPanel+0x5A8 (StdVector of {int unknown; Tuple2D<int> src; Tuple2D<int> dst}); and a node-DATA
+// model two derefs in (*(*(node+0x10)+0x20)) carrying biome+0x2CE / status+0x2CF / mapId+0x2A0 chain.
+// We BRUTE-SCAN for each offset (don't trust GH2 blindly — it may be a different build) and report the
+// discovered offset + PASS/DRIFT vs GH2's value. Run with the Atlas MAP view open.
+static int RunAtlasGraph(ProcessHandle process, MemoryReader reader)
+{
+    var (_, igs, _, _) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("no chain (in game?)."); return 1; }
+    Console.WriteLine("ATLAS GRAPH PROBE — grid coords + connection graph (GameHelper2 structures)\n=========================================================================");
+
+    var (vt, canvas, nodes) = FindAtlasNodeClass(reader, igs);
+    if (vt == 0 || nodes.Count < 50) { Console.Error.WriteLine($"FAIL: atlas-node class not found ({nodes.Count} instances). Open the Atlas MAP view, then re-run."); return 1; }
+    Console.WriteLine($"[0] node class 0x{vt:X}  canvas 0x{canvas:X}  ({nodes.Count} node instances)\n");
+    var sample = nodes.Take(800).ToList();
+
+    // ── [1] GRID COORDINATES — scan node element +0x300..+0x360 for an (int32,int32) pair that is small
+    //        (|v|≤512), finite, and highly distinct per node (a real grid coord), then report best off. ──
+    Console.WriteLine("[1] GRID COORDINATE field (expect GH2 +0x320):");
+    (int off, int score, int distinct, int inRange, int minX, int maxX, int minY, int maxY) bestGrid = (-1, 0, 0, 0, 0, 0, 0, 0);
+    for (var o = 0x300; o <= 0x35C; o += 4)
+    {
+        var pairs = new HashSet<(int, int)>(); int inRange = 0, total = 0;
+        int mnx = int.MaxValue, mxx = int.MinValue, mny = int.MaxValue, mxy = int.MinValue;
+        foreach (var el in sample)
+        {
+            if (!reader.TryReadStruct<int>(el + o, out var x) || !reader.TryReadStruct<int>(el + o + 4, out var y)) continue;
+            total++;
+            if (x is >= -512 and <= 512 && y is >= -512 and <= 512) { inRange++; pairs.Add((x, y)); if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (y < mny) mny = y; if (y > mxy) mxy = y; }
+        }
+        if (total == 0) continue;
+        // A grid field: nearly all in range AND many distinct pairs (not a constant/type id).
+        var score = (inRange * 100 / Math.Max(1, total)) + pairs.Count;
+        if (inRange > total * 0.9 && pairs.Count > sample.Count / 2 && score > bestGrid.score)
+            bestGrid = (o, score, pairs.Count, inRange, mnx, mxx, mny, mxy);
+    }
+    var gridOff = bestGrid.off;
+    if (gridOff < 0) Console.WriteLine("    ⚠ no grid-coord-like (int,int) field found in +0x300..+0x360.");
+    else Console.WriteLine($"    {(gridOff == 0x320 ? "PASS" : "⚠ DRIFT")}  grid coords @ +0x{gridOff:X3}  (GH2=+0x320)  {bestGrid.distinct} distinct, {bestGrid.inRange}/{sample.Count} in-range, X[{bestGrid.minX}..{bestGrid.maxX}] Y[{bestGrid.minY}..{bestGrid.maxY}]");
+
+    // Build the grid-position set (used to validate connection edges below).
+    var gridSet = new HashSet<(int, int)>();
+    var gridByEl = new Dictionary<nint, (int, int)>();
+    if (gridOff >= 0)
+        foreach (var el in nodes)
+            if (reader.TryReadStruct<int>(el + gridOff, out var gx) && reader.TryReadStruct<int>(el + gridOff + 4, out var gy)
+                && gx is >= -512 and <= 512 && gy is >= -512 and <= 512)
+            { gridSet.Add((gx, gy)); gridByEl[el] = (gx, gy); }
+    Console.WriteLine($"    → {gridSet.Count} distinct grid positions across all {nodes.Count} nodes\n");
+
+    // ── [2] CONNECTION GRAPH — scan the canvas (and the atlas panel ancestors) for a StdVector whose
+    //        elements are edges {int; Tuple2D<int> src; Tuple2D<int> dst} with src+dst in the grid set. ──
+    Console.WriteLine("[2] CONNECTION edge vector (expect GH2 panel +0x5A8, edge stride 20 = {int,src,dst}):");
+    // Candidate containers: the canvas + a few ancestors (GH2's "atlas" element may be an ancestor of
+    // the canvas that actually parents the node children).
+    var containers = new List<(string label, nint addr)> { ("canvas", canvas) };
+    { var cur = canvas; for (var i = 0; i < 3; i++) { var p = SafePtr(reader, cur + 0xB8); if (p == 0 || p == cur) break; containers.Add(($"canvas.parent[{i + 1}]", p)); cur = p; } }
+
+    (string who, int off, int stride, int edges, int valid) bestConn = ("", -1, 0, 0, 0);
+    foreach (var (label, addr) in containers)
+    {
+        if (addr == 0) continue;
+        for (var o = 0x400; o <= 0x800; o += 8)
+        {
+            var begin = SafePtr(reader, addr + o);
+            if (!reader.TryReadStruct<nint>(addr + o + 8, out var end)) continue;
+            if (begin == 0 || end <= begin) continue;
+            var bytes = (long)end - (long)begin;
+            if (bytes is < 20 or > 20_000_000) continue;
+            foreach (var stride in new[] { 20, 24, 16 })
+            {
+                if (bytes % stride != 0) continue;
+                var count = (int)(bytes / stride);
+                if (count is < 8 or > 200000) continue;
+                // Sample edges: read {int @+0; src @+4; dst @+12} and count how many have BOTH endpoints
+                // in the grid set (the decisive signal that this is the connection graph).
+                int valid = 0, tested = 0;
+                for (var i = 0; i < count && tested < 200; i++)
+                {
+                    var e = begin + (nint)(i * stride); tested++;
+                    if (!reader.TryReadStruct<int>(e + 4, out var sx) || !reader.TryReadStruct<int>(e + 8, out var sy)) continue;
+                    if (!reader.TryReadStruct<int>(e + 12, out var dx) || !reader.TryReadStruct<int>(e + 16, out var dy)) continue;
+                    if (gridSet.Contains((sx, sy)) && gridSet.Contains((dx, dy))) valid++;
+                }
+                if (valid > bestConn.valid && valid >= tested / 2)
+                    bestConn = (label, o, stride, count, valid * 100 / Math.Max(1, tested));
+            }
+        }
+    }
+    if (bestConn.off < 0) Console.WriteLine("    ⚠ no edge vector found whose endpoints land on grid positions. (Grid offset wrong, or connections live elsewhere.)");
+    else
+    {
+        var on5A8 = bestConn.who == "canvas" && bestConn.off == 0x5A8;
+        Console.WriteLine($"    {(on5A8 ? "PASS" : "⚠ DRIFT")}  edges @ {bestConn.who}+0x{bestConn.off:X3}  stride {bestConn.stride}  (GH2=canvas+0x5A8 stride 20)");
+        Console.WriteLine($"    {bestConn.edges} edges, {bestConn.valid}% of sampled endpoints land on real grid positions");
+        // Build adjacency from the discovered vector and report degree stats — a real atlas graph is
+        // sparse (most nodes 2-6 neighbours).
+        var who = containers.First(c => c.label == bestConn.who).addr;
+        var begin = SafePtr(reader, who + bestConn.off);
+        var adj = new Dictionary<(int, int), HashSet<(int, int)>>();
+        for (var i = 0; i < bestConn.edges; i++)
+        {
+            var e = begin + (nint)(i * bestConn.stride);
+            if (!reader.TryReadStruct<int>(e + 4, out var sx) || !reader.TryReadStruct<int>(e + 8, out var sy)) continue;
+            if (!reader.TryReadStruct<int>(e + 12, out var dx) || !reader.TryReadStruct<int>(e + 16, out var dy)) continue;
+            if (!gridSet.Contains((sx, sy)) || !gridSet.Contains((dx, dy))) continue;
+            (adj.TryGetValue((sx, sy), out var a) ? a : adj[(sx, sy)] = new()).Add((dx, dy));
+            (adj.TryGetValue((dx, dy), out var b) ? b : adj[(dx, dy)] = new()).Add((sx, sy));
+        }
+        var degrees = adj.Values.Select(s => s.Count).ToList();
+        if (degrees.Count > 0) Console.WriteLine($"    graph: {adj.Count} connected nodes, avg degree {degrees.Average():F1}, max {degrees.Max()} (atlas graphs are sparse — expect 2-6)");
+    }
+    Console.WriteLine();
+
+    // ── [3] node-DATA model chain (GH2: *(*(node+0x10)+0x20) → biome+0x2CE / status+0x2CF / mapId+0x2A0).
+    //        Cross-check its biome against the element's own +0x32E biome we already trust. ──
+    Console.WriteLine("[3] node-DATA model chain (GH2: *(*(node+0x10)+0x20) → +0x2CE biome / +0x2CF status / +0x2A0 mapId):");
+    int dataOk = 0, biomeMatch = 0, mapIdOk = 0, tested3 = 0; string exMap = "";
+    foreach (var el in sample.Take(200))
+    {
+        tested3++;
+        var storage = SafePtr(reader, el + 0x10);
+        if (storage == 0) continue;
+        var data = SafePtr(reader, storage + 0x20);
+        if (data == 0) continue;
+        dataOk++;
+        reader.TryReadStruct<byte>(el + 0x32E, out var elemBiome);          // trusted element biome
+        reader.TryReadStruct<byte>(data + 0x2CE, out var dataBiome);
+        if (elemBiome == dataBiome) biomeMatch++;
+        var wrap = SafePtr(reader, data + 0x2A0);
+        if (wrap != 0) { var hdr = SafePtr(reader, wrap); if (hdr != 0) { var buf = SafePtr(reader, hdr); var s = buf != 0 ? reader.ReadStringUtf16(buf, 64) : ""; if (s.StartsWith("Map", StringComparison.Ordinal)) { mapIdOk++; if (exMap == "") exMap = s; } } }
+    }
+    Console.WriteLine($"    nodeData resolved: {dataOk}/{tested3}   biome matches element +0x32E: {biomeMatch}/{dataOk}   mapId 'Map…' read: {mapIdOk}/{dataOk}  e.g. \"{exMap}\"");
+    if (dataOk < tested3 / 2) Console.WriteLine("    ⚠ nodeData chain (*(*(node+0x10)+0x20)) mostly null — POE2Radar already reads biome/mapId DIRECTLY off the element (+0x32E / +0x300 row), so this model may be unneeded.");
+
+    Console.WriteLine("\nSUMMARY");
+    Console.WriteLine($"  grid coords : {(gridOff >= 0 ? $"+0x{gridOff:X3} ({gridSet.Count} positions)" : "NOT FOUND")}");
+    Console.WriteLine($"  connections : {(bestConn.off >= 0 ? $"{bestConn.who}+0x{bestConn.off:X3} stride {bestConn.stride} ({bestConn.edges} edges)" : "NOT FOUND")}");
+    Console.WriteLine("  → if both found, atlas node-graph pathfinding (player→target in fewest hops) is portable from GH2's A*.");
+    return 0;
+}
+
+// ── Atlas CURRENT-NODE discovery: find what marks the tile the player is standing in (the "player icon"
+//    tile). Hover that tile in-game, then run this — it identifies the hovered node and hunts for the
+//    distinguishing signal three ways: (A) a per-node FLAG that's unique to it, (B) an extra CHILD element
+//    (the player-icon sprite), (C) an external POINTER to it (InGameState / canvas / AreaInstance). ──
+static int RunAtlasCurrent(ProcessHandle process, MemoryReader reader)
+{
+    var (_, igs, ai, _) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("no chain (in game?)."); return 1; }
+    // AreaCode is TWO derefs: ai+AreaInfoPtr → AreaInfo; *AreaInfo → string ptr (matches Poe2Live.AreaCode).
+    var areaInfo = SafePtr(reader, ai + Poe2.AreaInstance.AreaInfoPtr);
+    var areaCode = reader.ReadStringUtf16(SafePtr(reader, areaInfo), 64);
+    Console.WriteLine($"ATLAS CURRENT-NODE DISCOVERY\n============================\ncurrent area code = \"{areaCode}\"\n");
+
+    var (vt, canvas, nodes) = FindAtlasNodeClass(reader, igs);
+    if (vt == 0 || nodes.Count < 50) { Console.Error.WriteLine($"FAIL: node class not found ({nodes.Count}). Open the Atlas MAP view."); return 1; }
+    Console.WriteLine($"node class 0x{vt:X}  canvas 0x{canvas:X}  ({nodes.Count} nodes)");
+
+    // Per-node: grid (+0x320) + raw map code via the data-model chain *(*(el+0x10)+0x20)+0x2A0.
+    string CodeOf(nint el)
+    {
+        var storage = SafePtr(reader, el + 0x10); if (storage == 0) return "";
+        var data = SafePtr(reader, storage + 0x20); if (data == 0) return "";
+        var wrap = SafePtr(reader, data + 0x2A0); if (wrap == 0) return "";
+        var hdr = SafePtr(reader, wrap); if (hdr == 0) return "";
+        var buf = SafePtr(reader, hdr); return buf == 0 ? "" : reader.ReadStringUtf16(buf, 64);
+    }
+    (int x, int y) GridOf(nint el)
+    { reader.TryReadStruct<int>(el + 0x320, out var gx); reader.TryReadStruct<int>(el + 0x324, out var gy); return (gx, gy); }
+
+    // Identify the HOVERED node (cursor inverse-projected into canvas/relPos units), like the F10 inspector.
+    var scales = new List<float>();
+    foreach (var el in nodes) if (reader.TryReadStruct<float>(el + 0x130, out var sc) && sc is > 0.01f and < 4f) scales.Add(sc);
+    scales.Sort(); float zoom = scales.Count > 0 ? scales[scales.Count / 2] : 0.85f;
+    int winH = Win.GetSystemMetrics(1); if (winH <= 0) winH = 1080;
+    float pscale = winH / 1600f * zoom; if (pscale < 1e-4f) pscale = 1f;
+    Win.GetCursorPos(out var cur);
+    double curX = cur.X / pscale, curY = cur.Y / pscale;
+    nint hovered = 0; double bIn = 1e18, bAny = 1e18; nint hoverAny = 0;
+    foreach (var el in nodes)
+    {
+        if (!reader.TryReadStruct<float>(el + 0x118, out var rx) || !reader.TryReadStruct<float>(el + 0x11C, out var ry)) continue;
+        reader.TryReadStruct<float>(el + 0x288, out var w); reader.TryReadStruct<float>(el + 0x28C, out var h);
+        double dx = curX - rx, dy = curY - ry, d = dx * dx + dy * dy;
+        if (d < bAny) { bAny = d; hoverAny = el; }
+        double hw = (w > 1 ? w : 40) * 0.5, hh = (h > 1 ? h : 40) * 0.5;
+        if (Math.Abs(dx) <= hw && Math.Abs(dy) <= hh && d < bIn) { bIn = d; hovered = el; }
+    }
+    hovered = hovered != 0 ? hovered : hoverAny;
+    if (hovered == 0) { Console.Error.WriteLine("no node under cursor."); return 1; }
+    Console.WriteLine($"hovered node 0x{hovered:X}  grid {GridOf(hovered)}  code \"{CodeOf(hovered)}\"  (zoom {zoom:F3}, win H {winH})");
+
+    // Nodes whose code matches the current area (there may be several — the player icon picks the real one).
+    var sameCode = nodes.Where(el => !string.IsNullOrEmpty(areaCode) && CodeOf(el).Equals(areaCode, StringComparison.OrdinalIgnoreCase)).ToList();
+    Console.WriteLine($"nodes matching area code \"{areaCode}\": {sameCode.Count}  [{string.Join(" ", sameCode.Take(12).Select(GridOf))}]\n");
+
+    // ── (A) UNIQUE PER-NODE FLAG: scan +0x100..+0x400 for a uint field where the hovered node's value is
+    //        rare (≤2 nodes) while a single modal value dominates (>70%) — a "you are here" flag pattern. ──
+    Console.WriteLine("[A] per-node fields where the HOVERED node stands out (candidate 'current' flag):");
+    int hitsA = 0;
+    for (var o = 0x100; o <= 0x3FC; o += 4)
+    {
+        if (!reader.TryReadStruct<uint>(hovered + o, out var hv)) continue;
+        var hist = new Dictionary<uint, int>();
+        foreach (var el in nodes) if (reader.TryReadStruct<uint>(el + o, out var v)) hist[v] = hist.GetValueOrDefault(v) + 1;
+        if (!hist.TryGetValue(hv, out var hvCount)) continue;
+        var modal = hist.OrderByDescending(k => k.Value).First();
+        if (hvCount <= 2 && hv != modal.Key && modal.Value > nodes.Count * 0.7)
+        { Console.WriteLine($"    +0x{o:X3}  hovered=0x{hv:X8} (shared by {hvCount}); modal=0x{modal.Key:X8} ({modal.Value}/{nodes.Count})"); hitsA++; }
+    }
+    if (hitsA == 0) Console.WriteLine("    (none — the marker isn't a simple unique uint on the node element)");
+
+    // ── (B) EXTRA CHILD: the player icon may be an extra child UiElement. Compare child counts. ──
+    int ChildCount(nint el)
+    { var f = SafePtr(reader, el + 0x10); if (f == 0 || !reader.TryReadStruct<nint>(el + 0x18, out var l)) return -1; var n = ((long)l - (long)f) / 8; return n is >= 0 and < 100000 ? (int)n : -1; }
+    var hChildren = ChildCount(hovered);
+    var childHist = new Dictionary<int, int>();
+    foreach (var el in nodes) { var c = ChildCount(el); if (c >= 0) childHist[c] = childHist.GetValueOrDefault(c) + 1; }
+    Console.WriteLine($"\n[B] child count: hovered={hChildren}; distribution {string.Join(" ", childHist.OrderBy(k => k.Key).Select(k => $"{k.Key}×{k.Value}"))}");
+    if (hChildren > 0)
+    {
+        var first = SafePtr(reader, hovered + 0x10);
+        for (var i = 0; i < hChildren && i < 8; i++)
+        { var ch = SafePtr(reader, first + (nint)(i * 8)); var cvt = SafePtr(reader, ch); Console.WriteLine($"      child[{i}] 0x{ch:X} vtable 0x{cvt:X} (mod +0x{(long)cvt - (long)process.MainModuleBase:X})"); }
+    }
+
+    // ── (C) ANY pointer-to-a-NODE in InGameState / canvas / AreaInstance — print the node it resolves to
+    //        (code + grid), independent of the cursor. A 'current location' field points to the SAME node
+    //        (your map) no matter where you hover; a 'hovered' field follows the cursor. Re-run hovering a
+    //        DIFFERENT tile: the offset whose target DOESN'T move is the current-location marker. ──
+    var nodeSet = new HashSet<nint>(nodes);
+    Console.WriteLine("\n[C] container fields that point AT a node (code/grid of the target):");
+    int hitsC = 0;
+    void ScanPtr(string who, nint baseAddr, int span)
+    {
+        var buf = new byte[span];
+        if (reader.TryReadBytes(baseAddr, buf) < buf.Length) return;
+        for (var o = 0; o + 8 <= span; o += 8)
+        {
+            var p = (nint)BitConverter.ToInt64(buf, o);
+            if (p != 0 && nodeSet.Contains(p))
+            { Console.WriteLine($"    {who}+0x{o:X3} → 0x{p:X} grid {GridOf(p)} code \"{CodeOf(p)}\"{(p == hovered ? "   <= HOVERED" : "")}"); hitsC++; }
+        }
+    }
+    ScanPtr("InGameState", igs, 0x1500);
+    ScanPtr("canvas", canvas, 0x1500);
+    ScanPtr("AreaInstance", ai, 0x1000);
+    if (hitsC == 0) Console.WriteLine("    (no field points at a node in the scanned ranges)");
+
+    // ── WATCH: sample canvas+0x420 vs the live hovered node for ~6s. MOVE THE MOUSE over different tiles.
+    //    If +0x420's target FOLLOWS the cursor → it's just 'hovered node'. If it STAYS on your map while the
+    //    hovered tile changes → it's the current-location pointer we want. ──
+    Console.WriteLine("\n[WATCH] move the mouse over DIFFERENT tiles for ~15s (Ctrl+C to stop early):");
+    nint lastA = 0, lastHov = 0;
+    for (var i = 0; i < 60; i++)
+    {
+        Win.GetCursorPos(out var c2); double hx = c2.X / pscale, hy = c2.Y / pscale;
+        nint hv2 = 0; double best = 1e18;
+        foreach (var el in nodes)
+        {
+            if (!reader.TryReadStruct<float>(el + 0x118, out var rx) || !reader.TryReadStruct<float>(el + 0x11C, out var ry)) continue;
+            double dx = hx - rx, dy = hy - ry, d = dx * dx + dy * dy;
+            if (d < best) { best = d; hv2 = el; }
+        }
+        var a420 = SafePtr(reader, canvas + 0x420);
+        if (a420 != lastA || hv2 != lastHov)
+        {
+            Console.WriteLine($"    hovered {GridOf(hv2)} \"{CodeOf(hv2)}\"    |    canvas+0x420 → {GridOf(a420)} \"{CodeOf(a420)}\"{(a420 == hv2 ? "  (==hovered)" : "  (FIXED ≠ hovered)")}");
+            lastA = a420; lastHov = hv2;
+        }
+        System.Threading.Thread.Sleep(250);
+    }
+    Console.WriteLine("\nVerdict: if canvas+0x420 stayed FIXED while 'hovered' changed → that's the current-location node.");
+    return 0;
+}
+
+// ── Characterise the CURRENT-LOCATION marker element: the (hypothesised unique) non-node UiElement whose
+//    +0x300 points at a node-class element. Confirms uniqueness + a STRUCTURAL accessor (no hardcoded
+//    vtable, which drifts per patch): "the element E with Ptr(E+0x300) ∈ node set". Dumps its node, vtable,
+//    position, and ancestry so we can wire the overlay to read currentNode = *(marker+0x300) each frame. ──
+static int RunAtlasMarker(ProcessHandle process, MemoryReader reader)
+{
+    var (_, igs, _, _) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("no chain (in game?)."); return 1; }
+    var (vt, canvas, nodes) = FindAtlasNodeClass(reader, igs);
+    if (vt == 0 || nodes.Count < 50) { Console.Error.WriteLine($"FAIL: node class not found ({nodes.Count})."); return 1; }
+    var nodeSet = new HashSet<nint>(nodes);
+    (int x, int y) GridOf(nint el) { reader.TryReadStruct<int>(el + 0x320, out var gx); reader.TryReadStruct<int>(el + 0x324, out var gy); return (gx, gy); }
+    string CodeOf(nint el)
+    { var st = SafePtr(reader, el + 0x10); if (st == 0) return ""; var d = SafePtr(reader, st + 0x20); if (d == 0) return ""; var w = SafePtr(reader, d + 0x2A0); if (w == 0) return ""; var h = SafePtr(reader, w); if (h == 0) return ""; var b = SafePtr(reader, h); return b == 0 ? "" : reader.ReadStringUtf16(b, 64); }
+
+    // BFS the whole UI tree; collect every element E (Self==self) whose +0x300 points at a node-class element.
+    var uiRoot = SafePtr(reader, igs + Poe2.InGameState.UiRoot);
+    var root = SafePtr(reader, uiRoot + 0xB8) is var tr && tr != 0 ? tr : uiRoot;
+    var queue = new Queue<nint>(); queue.Enqueue(root);
+    var visited = new HashSet<nint>();
+    var markers = new List<nint>();
+    while (queue.Count > 0 && visited.Count < 300000)
+    {
+        var el = queue.Dequeue();
+        if (el == 0 || !visited.Add(el) || SafePtr(reader, el + 0x08) != el) continue;
+        if (!nodeSet.Contains(el)) { var p300 = SafePtr(reader, el + 0x300); if (p300 != 0 && nodeSet.Contains(p300)) markers.Add(el); }
+        var first = SafePtr(reader, el + 0x10);
+        if (first != 0 && reader.TryReadStruct<nint>(el + 0x18, out var last))
+        { var n = ((long)last - (long)first) / 8; if (n is > 0 and <= 16384) for (long k = 0; k < n; k++) queue.Enqueue(SafePtr(reader, first + (nint)(k * 8))); }
+    }
+
+    Console.WriteLine($"ATLAS CURRENT-LOCATION MARKER\n=============================\nnodes {nodes.Count}  canvas 0x{canvas:X}");
+    Console.WriteLine($"non-node elements whose +0x300 → a node: {markers.Count}\n");
+    foreach (var m in markers)
+    {
+        var node = SafePtr(reader, m + 0x300);
+        reader.TryReadStruct<float>(m + 0x118, out var mrx); reader.TryReadStruct<float>(m + 0x11C, out var mry);
+        reader.TryReadStruct<uint>(m + 0x180, out var fl);
+        Console.WriteLine($"  marker 0x{m:X}  vt 0x{SafePtr(reader, m):X} (mod +0x{(long)SafePtr(reader, m) - (long)process.MainModuleBase:X})  relPos=({mrx:F0},{mry:F0})  visBit={((fl >> 0x0B) & 1)}");
+        Console.WriteLine($"      → current node 0x{node:X}  grid {GridOf(node)}  code \"{CodeOf(node)}\"");
+        // Ancestry: walk Parent (+0xB8) and show child indices, to find a stable path (canvas relation).
+        var chain = new List<nint>(); var cur = m; var g = 0;
+        while (cur != 0 && g++ < 12) { chain.Add(cur); var par = SafePtr(reader, cur + 0xB8); if (par == cur || par == 0) break; cur = par; }
+        Console.WriteLine($"      ancestry: {string.Join(" → ", chain.Select(a => $"0x{a:X}"))}");
+        Console.WriteLine($"      (canvas in ancestry: {chain.Contains(canvas)}; marker.parent==canvas.parent: {SafePtr(reader, m + 0xB8) == SafePtr(reader, canvas + 0xB8)})");
+    }
+    if (markers.Count == 0) Console.WriteLine("  (none right now — is the Atlas map view open with your player icon visible?)");
+    Console.WriteLine("\nIf exactly ONE marker and it points at your current map, currentNode = *(marker+0x300).");
+    Console.WriteLine("Accessor is structural (find the lone non-node element whose +0x300 ∈ node set) — vtable-independent.");
+    return 0;
+}
+
+// ── Back-scan for whatever points at the CURRENT node. Hover your current (player-icon) tile; this grabs
+//    that node via the hover pointer (canvas+0x420), then scans ALL memory for 8-byte-aligned pointers to
+//    it and classifies each: the hover field, the canvas children array (structural), or a CANDIDATE
+//    'current-location' field elsewhere. The candidate that's stable across maps is the marker we want. ──
+static int RunAtlasFindCur(ProcessHandle process, MemoryReader reader)
+{
+    var (_, igs, ai, _) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("no chain (in game?)."); return 1; }
+    var (vt, canvas, nodes) = FindAtlasNodeClass(reader, igs);
+    if (vt == 0 || nodes.Count < 50) { Console.Error.WriteLine($"FAIL: node class not found ({nodes.Count}). Open the Atlas MAP view."); return 1; }
+    var nodeSet = new HashSet<nint>(nodes);
+
+    string CodeOf(nint el)
+    { var st = SafePtr(reader, el + 0x10); if (st == 0) return ""; var d = SafePtr(reader, st + 0x20); if (d == 0) return ""; var w = SafePtr(reader, d + 0x2A0); if (w == 0) return ""; var h = SafePtr(reader, w); if (h == 0) return ""; var b = SafePtr(reader, h); return b == 0 ? "" : reader.ReadStringUtf16(b, 64); }
+    (int x, int y) GridOf(nint el)
+    { reader.TryReadStruct<int>(el + 0x320, out var gx); reader.TryReadStruct<int>(el + 0x324, out var gy); return (gx, gy); }
+
+    // Capture the current node from the hover pointer (hover your player-icon tile while this starts).
+    var target = SafePtr(reader, canvas + 0x420);
+    if (target == 0 || !nodeSet.Contains(target)) { Console.Error.WriteLine("Hover your CURRENT (player-icon) tile so canvas+0x420 captures it, then re-run."); return 1; }
+    Console.WriteLine($"ATLAS CURRENT-NODE BACK-SCAN\n============================\ntarget (current) node 0x{target:X}  grid {GridOf(target)}  code \"{CodeOf(target)}\"");
+
+    var childBegin = SafePtr(reader, canvas + 0x10);
+    reader.TryReadStruct<nint>(canvas + 0x18, out var childEnd);
+    Console.WriteLine($"canvas 0x{canvas:X}  children array [0x{childBegin:X}..0x{childEnd:X})  ({((long)childEnd - (long)childBegin) / 8} entries)");
+
+    // Baseline node B: an ordinary node (neither current nor hovered). Its only referrers are STRUCTURAL
+    // (self / child→parent / children-array), the same ones A has. Diffing A's referrers against B's cancels
+    // structure out; what's left for A (minus the hover pointer) is the current-location marker.
+    var baseline = nodes.First(n => n != target);
+    Console.WriteLine($"baseline node B 0x{baseline:X} grid {GridOf(baseline)} code \"{CodeOf(baseline)}\"\n");
+
+    // Normalised "signature" of a referrer, so A's and B's structural refs compare equal.
+    string Sig(nint h, nint tgt)
+    {
+        if (h == tgt + 0x08) return "self+0x08";
+        if (h >= childBegin && h < childEnd) return "children-array";
+        if (h == canvas + 0x420) return "HOVER canvas+0x420";
+        if (h >= igs && h < igs + 0x4000) return $"InGameState+0x{(long)h - (long)igs:X}";
+        if (h >= ai && h < ai + 0x4000) return $"AreaInstance+0x{(long)h - (long)ai:X}";
+        if (h >= canvas && h < canvas + 0x4000) return $"canvas+0x{(long)h - (long)canvas:X}";
+        nint owner = 0; for (var b = 0; b <= 0x600; b += 8) { var a = h - b; if (SafePtr(reader, a + 0x08) == a) { owner = a; break; } }
+        if (owner != 0) return $"UiElement(vt 0x{SafePtr(reader, owner):X})+0x{(long)h - (long)owner:X}";
+        return "raw-arena-ptr";
+    }
+
+    var aHits = ScanBytes(reader, BitConverter.GetBytes((long)target), allRegions: true, max: 4000, aligned: 8);
+    var bHits = ScanBytes(reader, BitConverter.GetBytes((long)baseline), allRegions: true, max: 4000, aligned: 8);
+    var bSigs = new Dictionary<string, int>();
+    foreach (var h in bHits) { var s = Sig(h, baseline); bSigs[s] = bSigs.GetValueOrDefault(s) + 1; }
+    var aBySig = new Dictionary<string, List<nint>>();
+    foreach (var h in aHits) { var s = Sig(h, target); (aBySig.TryGetValue(s, out var l) ? l : aBySig[s] = new()).Add(h); }
+
+    Console.WriteLine($"refs → A(current)={aHits.Count}  B(baseline)={bHits.Count}\n");
+    Console.WriteLine("A's referrers NOT shared with B (current-location candidates; HOVER excluded):");
+    var found = 0;
+    foreach (var (sig, list) in aBySig)
+    {
+        if (sig.StartsWith("HOVER")) { Console.WriteLine($"    [{sig}] ×{list.Count}  (hovered — ignore)"); continue; }
+        var extra = list.Count - bSigs.GetValueOrDefault(sig);
+        if (extra <= 0) continue;   // structural — B has the same, cancels
+        found++;
+        Console.WriteLine($"    ★ {sig}  ×{extra}   e.g. 0x{list[^1]:X}");
+    }
+    if (found == 0) Console.WriteLine("    (none — current node isn't referenced by a unique pointer; the marker likely stores its GRID/map-id)");
+    Console.WriteLine("\nThe ★ signature stable across maps is the current-location pointer.");
     return 0;
 }
 

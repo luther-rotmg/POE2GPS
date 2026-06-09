@@ -277,22 +277,33 @@ public sealed class DisplayRules
         public readonly DisplayRule Rule;
         private readonly bool _enabled;
         private readonly bool _isTile;                     // Categories contains "Tile" → matches terrain tiles
-        private readonly HashSet<string>? _cats;          // null = any
+        // Category/rarity are matched by ENUM, precompiled — NOT by e.Category.ToString()/e.Rarity.ToString()
+        // per call, which allocated a string for every entity × rule × frame (the dominant GC pressure during
+        // combat). _anyCat = no category filter; otherwise _catMask is indexed by (int)EntityCategory.
+        private readonly bool _anyCat;
+        private readonly bool[] _catMask = new bool[7];    // EntityCategory has 7 members (Player..Other)
         private readonly (string sub, Regex? glob)[]? _match; // null = any
-        private readonly string? _rarity;                 // lowercased; null = any
+        private readonly bool _anyRarity;                  // true = no rarity filter
+        private readonly Poe2Live.Rarity _rarity;          // matched rarity enum (sentinel if unparseable → never matches)
         private readonly int _reaction, _life, _chest, _poi, _enc; // 0 any / 1 / 2
 
         public Compiled(DisplayRule r)
         {
             Rule = r;
             _enabled = r.Enabled;
-            _cats = r.Categories is { Count: > 0 }
-                ? new HashSet<string>(r.Categories, StringComparer.OrdinalIgnoreCase) : null;
-            _isTile = _cats?.Contains("Tile") ?? false;
+            _anyCat = r.Categories is not { Count: > 0 };
+            if (!_anyCat)
+                foreach (var c in r.Categories)
+                {
+                    if (string.Equals(c, "Tile", StringComparison.OrdinalIgnoreCase)) _isTile = true;
+                    else if (Enum.TryParse<Poe2Live.EntityCategory>(c, ignoreCase: true, out var ec)) _catMask[(int)ec] = true;
+                }
             _match = r.Match is { Count: > 0 }
                 ? r.Match.Where(m => !string.IsNullOrEmpty(m)).Select(CompileTerm).ToArray() : null;
             if (_match is { Length: 0 }) _match = null;
-            _rarity = string.IsNullOrEmpty(r.Rarity) ? null : r.Rarity;
+            _anyRarity = string.IsNullOrEmpty(r.Rarity);
+            _rarity = _anyRarity ? default
+                : Enum.TryParse<Poe2Live.Rarity>(r.Rarity, ignoreCase: true, out var rr) ? rr : (Poe2Live.Rarity)int.MaxValue;
             _reaction = Code(r.Reaction, "Friendly", "Hostile");
             _life     = Code(r.Life, "Alive", "Dead");
             _chest    = Code(r.Chest, "Opened", "Unopened");
@@ -303,9 +314,9 @@ public sealed class DisplayRules
         public bool Matches(in Poe2Live.EntityDot e)
         {
             if (!_enabled) return false;
-            if (_cats != null && !_cats.Contains(e.Category.ToString())) return false;
+            if (!_anyCat) { var ci = (int)e.Category; if ((uint)ci >= (uint)_catMask.Length || !_catMask[ci]) return false; }
             if (_match != null && !AnyMatch(e.Metadata)) return false;
-            if (_rarity != null && !string.Equals(e.Rarity.ToString(), _rarity, StringComparison.OrdinalIgnoreCase)) return false;
+            if (!_anyRarity && e.Rarity != _rarity) return false;
             if (_reaction == 1 && !e.IsFriendly) return false;
             if (_reaction == 2 && e.IsFriendly) return false;
             if (_life == 1 && !e.IsAlive) return false;
