@@ -25,11 +25,15 @@ jobs:
       - name: Publish self-contained single-file overlay
         shell: pwsh
         run: |
+          # Derive the baked-in assembly version straight from the tag (v0.8.1 -> 0.8.1) so the
+          # binary can never disagree with the release it ships in, regardless of the csproj value.
+          $ver = "${{ github.ref_name }}".TrimStart('v')
           dotnet publish src/POE2Radar.Overlay/POE2Radar.Overlay.csproj `
             -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
             -p:EnableCompressionInSingleFile=true `
+            -p:Version=$ver `
             -p:DebugType=none -p:DebugSymbols=false `
             -p:Deterministic=true -p:ContinuousIntegrationBuild=true `
             -o publish

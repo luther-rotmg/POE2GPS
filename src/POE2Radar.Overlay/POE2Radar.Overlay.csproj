@@ -12,7 +12,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- App version — bump per release and tag the repo to match (vX.Y.Z). UpdateChecker compares this
          to the latest GitHub release/tag so the user is told when they're out of date. -->
-    <Version>0.7.3</Version>
+    <Version>0.8.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
