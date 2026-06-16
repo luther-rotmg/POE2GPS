@@ -311,6 +311,8 @@ public sealed class RadarApp : IDisposable
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         Console.WriteLine("Hotkeys: F6=add nearest path target  F7=clear path targets  "
                           + "F8=auto-flask  F9=quit  F12=open dashboard");
+        Console.WriteLine("         F10 (Atlas open) = inspect hovered tile (dumps map name + code + content"
+                          + " to console for web-UI filters) and set route START->END (3rd press resets)");
         // Best-effort version check against GitHub (non-blocking; never fails startup).
         _ = Task.Run(async () =>
         {
@@ -1007,6 +1009,14 @@ public sealed class RadarApp : IDisposable
             if (Math.Abs(dx) <= hw && Math.Abs(dy) <= hh && d < bdIn) { bdIn = d; bestIn = n; } // cursor inside the tile box
         }
         if ((bestIn ?? bestAny) is not { } b) { Console.WriteLine("\n[atlas route] no tile under cursor (is the Atlas open?)."); return; }
+
+        // Dump the hovered tile's full identity so the user can set web-UI filters even when the display
+        // name is unusual: the REAL map name (WorldAreas +0x08), the raw internal code (never localized,
+        // always a safe match key), the rolled content tags, biome and grid coord.
+        var content = b.Tags.Count > 0 ? string.Join(", ", b.Tags) : "(none)";
+        Console.WriteLine($"\n[atlas tile] \"{b.MapName}\"  code={b.MapCode}  grid={b.Grid}  biome={b.Biome}");
+        Console.WriteLine($"             content: {content}");
+        Console.WriteLine($"             web-UI filters -> Map: \"{b.MapName}\"" + (b.Tags.Count > 0 ? $"   Content: {content}" : ""));
 
         // 1st press → set START · 2nd press → set END (route computed each tick) · 3rd → reset. The grids
         // are read by the world thread (UpdateAtlas/BuildAtlasRoute), so mutate them under _atlasLock —

@@ -79,6 +79,12 @@ if (HasFlag(args, "--mods"))
 if (HasFlag(args, "--item"))
     return RunItem(process, reader, TryGetIntArg(args, "--max") ?? 6);
 
+if (HasFlag(args, "--inventory"))
+    return RunInventory(process, reader, TryGetIntArg(args, "--inv") ?? -1, HasFlag(args, "--itemmods"));
+
+if (TryGetHexArg(args, "--itemdump") is { } itemAddr)
+    return RunItemDump(reader, itemAddr);
+
 if (HasFlag(args, "--groundlabels"))
     return RunGroundLabels(process, reader, TryGetIntArg(args, "--delay") ?? 0);
 
@@ -237,6 +243,9 @@ if (HasFlag(args, "--atlas-resolve"))
 
 if (HasFlag(args, "--atlas-graph"))
     return RunAtlasGraph(process, reader);
+
+if (HasFlag(args, "--atlas-mapname"))
+    return RunAtlasMapName(process, reader, TryGetIntArg(args, "--max") ?? 12);
 
 if (HasFlag(args, "--atlas-current"))
     return RunAtlasCurrent(process, reader);
@@ -461,6 +470,460 @@ static int RunServerDataDiff(ProcessHandle process, MemoryReader reader)
     Console.WriteLine("For a clean read: flip ONE quest with minimal zoning between baseline and diff.");
     return 0;
 }
+
+// ── Player inventory + item-structure probe ────────────────────────────────
+// Walks the GameHelper2 inventory chain (re-derived for our drifted build) and dumps every
+// inventory + every item's identity (metadata, rarity, identified, art, stack) and mod ids.
+//   AreaInstance +0x580 -> ServerData
+//   ServerData   +0x48  -> StdVector PlayerServerData ; [0] -> ServerDataStructure
+//   ServerDataStructure +0x320 -> StdVector PlayerInventories (InventoryArrayStruct, stride 0x18)
+//     InventoryArrayStruct: +0x00 int Id, +0x08 ptr Inventory, +0x10 ptr(=+0x08 - 0x10)
+//   InventoryStruct: +0x150 TotalBoxes(int x,int y), +0x170 StdVector ItemList(ptr InventoryItem), +0x1E8 int ReqCounter
+//     InventoryItemStruct: +0x00 ptr Item(entity), +0x08 SlotStart(x,y), +0x10 SlotEnd(x,y)
+// Self-validates the most drift-prone hops (PlayerInventories vec, ItemList vec) with brute fallbacks.
+static int RunInventory(ProcessHandle process, MemoryReader reader, int onlyInv, bool dumpMods)
+{
+    var (_, _, ai, _) = ResolveChain(process, reader);
+    if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
+
+    var serverData = SafePtr(reader, ai + Poe2.AreaInstance.ServerDataPtr);
+    var localPlayer = SafePtr(reader, ai + Poe2.AreaInstance.LocalPlayer);
+    Console.WriteLine($"AreaInstance 0x{ai:X}  ServerData(+0x580) 0x{serverData:X}  LocalPlayer(+0x5A0) 0x{localPlayer:X}");
+    if (serverData == 0) { Console.Error.WriteLine("ServerData null."); return 1; }
+
+    // Step 1 — PlayerServerData vector @ ServerData+0x48; element [0] = the player's ServerDataStructure.
+    var sdStruct = ResolveServerDataStruct(reader, serverData);
+    if (sdStruct == 0) { Console.Error.WriteLine("Could not resolve ServerDataStructure (PlayerServerData vec)."); return 1; }
+    Console.WriteLine($"ServerDataStructure 0x{sdStruct:X}");
+
+    // Step 2 — PlayerInventories vector (InventoryArrayStruct, stride 0x18). Try +0x320, else brute.
+    var (invVecOff, invVec, invCount) = FindPlayerInventoriesVec(reader, sdStruct, 0x320);
+    if (invVecOff < 0) { Console.Error.WriteLine("Could not locate PlayerInventories vector in ServerDataStructure."); return 1; }
+    Console.WriteLine($"PlayerInventories vec @ ServerDataStructure+0x{invVecOff:X}  ({invCount} entries)  First=0x{invVec.First:X}\n");
+
+    // Step 3 — list every inventory, then dump items for the requested one(s).
+    for (long i = 0; i < invCount; i++)
+    {
+        var rec = invVec.First + (nint)(i * 0x18);
+        reader.TryReadStruct<int>(rec + 0x00, out var invId);
+        var invPtr = SafePtr(reader, rec + 0x08);
+        var invPtr1 = SafePtr(reader, rec + 0x10);
+        if (invPtr == 0) continue;
+        var name = InvName(invId);
+        // Peek box count + item-list length without committing to the dump.
+        var (boxX, boxY, itemListOff, itemVec, itemCount) = ProbeInventoryStruct(reader, invPtr);
+        var flag = (invPtr1 == invPtr - 0x10) ? "" : "  (ptr1 invariant FAIL)";
+        Console.WriteLine($"[{invId,3}] {name,-26} inv=0x{invPtr:X}  boxes={boxX}x{boxY}  items~{itemCount}{flag}");
+
+        if (onlyInv >= 0 && invId != onlyInv) continue;
+        if (onlyInv < 0 && itemCount <= 0) continue; // default: only dump non-empty inventories
+
+        if (itemListOff < 0) { Console.WriteLine("      (could not locate ItemList vector)"); continue; }
+        DumpInventoryItems(reader, invPtr, itemVec, itemCount, dumpMods);
+    }
+    Console.WriteLine("\nTip: --inventory --inv 1 dumps MainInventory only; add --mods for explicit/implicit mod ids.");
+    return 0;
+}
+
+// ServerData+0x48 is a StdVector<IntPtr>; element [0] is the player's ServerDataStructure. If the
+// offset drifted, brute-scan ServerData for a vector whose [0] target carries a valid inventory vec.
+static nint ResolveServerDataStruct(MemoryReader reader, nint serverData)
+{
+    nint Try(int off)
+    {
+        if (!reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(serverData + off, out var v)) return 0;
+        var span = (long)v.Last - (long)v.First;
+        if (v.First == 0 || span < 8 || span > 0x4000) return 0;
+        var first = SafePtr(reader, v.First);
+        if (first == 0) return 0;
+        return FindPlayerInventoriesVec(reader, first, 0x320).off >= 0 ? first : 0;
+    }
+    var direct = Try(0x48);
+    if (direct != 0) return direct;
+    for (var off = 0x10; off <= 0x200; off += 8)
+    {
+        var hit = Try(off);
+        if (hit != 0) { Console.WriteLine($"(PlayerServerData vec found at ServerData+0x{off:X}, not +0x48)"); return hit; }
+    }
+    return 0;
+}
+
+// Locate the PlayerInventories StdVector inside a candidate ServerDataStructure. Strong fingerprint:
+// stride-0x18 records where InventoryId in 1..145, InventoryPtr0 is heap, InventoryPtr1 == Ptr0-0x10.
+static (int off, POE2Radar.Core.Game.StdVector vec, int count) FindPlayerInventoriesVec(
+    MemoryReader reader, nint sdStruct, int preferred)
+{
+    (int, POE2Radar.Core.Game.StdVector, int) Score(int off)
+    {
+        if (!reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(sdStruct + off, out var v))
+            return (-1, default, 0);
+        var span = (long)v.Last - (long)v.First;
+        if (v.First == 0 || span <= 0 || span % 0x18 != 0) return (-1, default, 0);
+        var count = (int)(span / 0x18);
+        if (count is <= 0 or > 400) return (-1, default, 0);
+        var good = 0; var check = Math.Min(count, 32);
+        for (var i = 0; i < check; i++)
+        {
+            var rec = v.First + (nint)(i * 0x18);
+            if (!reader.TryReadStruct<int>(rec, out var id) || id < 1 || id > 200) continue;
+            var p0 = SafePtr(reader, rec + 0x08);
+            var p1 = SafePtr(reader, rec + 0x10);
+            if (p0 != 0 && p1 == p0 - 0x10) good++;
+        }
+        return (good, v, count);
+    }
+    // Prefer the GH2 offset if it scores at all.
+    var (pg, pv, pc) = Score(preferred);
+    if (pg >= 1) return (preferred, pv, pc);
+    var best = (-1, default(POE2Radar.Core.Game.StdVector), 0); var bestOff = -1;
+    for (var off = 0x100; off <= 0x800; off += 8)
+    {
+        var (g, v, c) = Score(off);
+        if (g > best.Item1) { best = (g, v, c); bestOff = off; }
+    }
+    return best.Item1 >= 2 ? (bestOff, best.Item2, best.Item3) : (-1, default, 0);
+}
+
+// Read TotalBoxes (+0x150) and ItemList vector (+0x170) from an InventoryStruct, with brute fallback
+// for ItemList (a StdVector of 8-byte ptrs whose non-zero elements resolve to Metadata/Items entities).
+static (int boxX, int boxY, int itemListOff, POE2Radar.Core.Game.StdVector vec, int count) ProbeInventoryStruct(
+    MemoryReader reader, nint inv)
+{
+    reader.TryReadStruct<int>(inv + 0x150, out var boxX);
+    reader.TryReadStruct<int>(inv + 0x154, out var boxY);
+    if (boxX is < 0 or > 200) boxX = 0;
+    if (boxY is < 0 or > 200) boxY = 0;
+
+    int CountItemsLike(POE2Radar.Core.Game.StdVector v)
+    {
+        var span = (long)v.Last - (long)v.First;
+        if (v.First == 0 || span <= 0 || span % 8 != 0 || span > 0x8000) return -1;
+        var n = (int)(span / 8);
+        var hits = 0; var seen = 0;
+        for (var i = 0; i < Math.Min(n, 64) && seen < 12; i++)
+        {
+            var ii = SafePtr(reader, v.First + (nint)(i * 8));
+            if (ii == 0) continue;
+            seen++;
+            var item = SafePtr(reader, ii + 0x00);
+            if (item != 0 && ReadEntityMetadata(reader, item).StartsWith("Metadata/Items", StringComparison.Ordinal)) hits++;
+        }
+        return hits;
+    }
+
+    // Direct: ItemList @ +0x170.
+    if (reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(inv + 0x170, out var direct))
+    {
+        var span = (long)direct.Last - (long)direct.First;
+        if (direct.First != 0 && span > 0 && span % 8 == 0 && span <= 0x8000)
+        {
+            var n = (int)(span / 8);
+            // Accept if box-count matches OR elements look like items.
+            if ((boxX > 0 && boxY > 0 && n == boxX * boxY) || CountItemsLike(direct) >= 1)
+                return (boxX, boxY, 0x170, direct, n);
+        }
+    }
+    // Brute fallback.
+    var bestOff = -1; var bestHits = 0; POE2Radar.Core.Game.StdVector bestVec = default; var bestN = 0;
+    for (var off = 0x100; off <= 0x300; off += 8)
+    {
+        if (!reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(inv + off, out var v)) continue;
+        var h = CountItemsLike(v);
+        if (h > bestHits) { bestHits = h; bestOff = off; bestVec = v; bestN = (int)(((long)v.Last - (long)v.First) / 8); }
+    }
+    return bestHits >= 1 ? (boxX, boxY, bestOff, bestVec, bestN) : (boxX, boxY, -1, default, 0);
+}
+
+static void DumpInventoryItems(MemoryReader reader, nint inv, POE2Radar.Core.Game.StdVector itemVec, int count, bool dumpMods)
+{
+    var seen = new HashSet<nint>();
+    var slot = 0;
+    for (var i = 0; i < count; i++)
+    {
+        var iiPtr = SafePtr(reader, itemVec.First + (nint)(i * 8));
+        if (iiPtr == 0) continue;
+        var item = SafePtr(reader, iiPtr + 0x00);
+        if (item == 0 || !seen.Add(item)) continue; // de-dup multi-slot items
+        reader.TryReadStruct<int>(iiPtr + 0x08, out var sx);
+        reader.TryReadStruct<int>(iiPtr + 0x0C, out var sy);
+
+        var meta = ReadEntityMetadata(reader, item);
+        if (!meta.StartsWith("Metadata/Items", StringComparison.Ordinal)) continue;
+        slot++;
+
+        // Identity: rarity + identified (Mods component), art basename (RenderItem), stack count (Stack).
+        var mods = ResolveComponentAddr(reader, item, "Mods");
+        var rarity = -1; var identified = -1;
+        if (mods != 0)
+        {
+            reader.TryReadStruct<int>(mods + Poe2.ModsComponent.Rarity, out rarity);
+            reader.TryReadStruct<int>(mods + Poe2.ModsComponent.Identified, out identified);
+        }
+        var renderItem = ResolveComponentAddr(reader, item, "RenderItem");
+        var art = renderItem == 0 ? "" : ItemArtBasename(reader.ReadStringUtf16(SafePtr(reader, renderItem + Poe2.RenderItemComponent.ResourcePath), 128)) ?? "";
+        var stack = ResolveComponentAddr(reader, item, "Stack");
+        var stackN = -1; if (stack != 0) reader.TryReadStruct<int>(stack + 0x18, out stackN);
+
+        var rarStr = rarity switch { 0 => "Normal", 1 => "Magic", 2 => "Rare", 3 => "Unique", _ => $"?{rarity}" };
+        var idStr = identified == 1 ? "ID" : identified == 0 ? "unID" : "id?";
+        Console.WriteLine($"  #{slot,2} slot({sx},{sy})  {rarStr,-6} {idStr,-4} {(stackN > 0 ? $"x{stackN} " : "")}{art,-22} item=0x{item:X}");
+        Console.WriteLine($"        meta: {meta}");
+        Console.WriteLine($"        components: {string.Join(", ", ComponentNames(reader, item).OrderBy(s => s, StringComparer.Ordinal))}");
+
+        if (dumpMods && mods != 0)
+            foreach (var (kind, off) in new[] { ("implicit", 0xA0), ("explicit", 0xB8), ("enchant", 0xD0) })
+            {
+                var ids = ReadItemModIds(reader, mods + off);
+                if (ids.Count > 0) Console.WriteLine($"        {kind}: {string.Join(" | ", ids)}");
+            }
+    }
+    if (slot == 0) Console.WriteLine("      (no items resolved)");
+}
+
+// Read mod ids + rolled values from an AllModsType sub-vector, and render each to its English stat
+// line(s) via ItemModTranslator. ModArrayStruct (stride 0x40): +0x00 Values StdVector<int>,
+// +0x18 int Value0, +0x28 ModsPtr -> Mods.dat row (first qword -> UTF-16 internal mod id).
+static List<string> ReadItemModIds(MemoryReader reader, nint vecAddr)
+{
+    var ids = new List<string>();
+    if (!reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(vecAddr, out var v)) return ids;
+    var span = (long)v.Last - (long)v.First;
+    if (v.First == 0 || span <= 0 || span % 0x40 != 0 || span > 0x800) return ids;
+    var n = (int)(span / 0x40);
+    for (var i = 0; i < n; i++)
+    {
+        var rec = v.First + (nint)(i * 0x40);
+        var modsPtr = SafePtr(reader, rec + Poe2.ModsComponent.ModRecordPtr);
+        if (modsPtr == 0) continue;
+        var id = ReadModName(reader, modsPtr);
+        if (string.IsNullOrEmpty(id)) continue;
+        var vals = ReadModValueArray(reader, rec);
+        var text = string.Join("; ", POE2Radar.Core.Game.ItemModTranslator.Shared.RenderMod(id, vals));
+        ids.Add($"{id} [{string.Join(",", vals)}] → {text}");
+    }
+    return ids;
+}
+
+// The full ordered rolled-value array of one ModArrayStruct (Values StdVector<int> @ +0x00; falls back
+// to Value0 @ +0x18 when the vector is empty). One value per stat the mod grants, in stat order.
+static List<int> ReadModValueArray(MemoryReader reader, nint modArray)
+{
+    var outv = new List<int>();
+    if (reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(modArray + 0x00, out var vv))
+    {
+        var span = (long)vv.Last - (long)vv.First;
+        var count = vv.First == 0 || span <= 0 ? 0 : span / 4;
+        for (long i = 0; i < Math.Min(count, 8); i++)
+            if (reader.TryReadStruct<int>(vv.First + (nint)(i * 4), out var x)) outv.Add(x);
+    }
+    if (outv.Count == 0 && reader.TryReadStruct<int>(modArray + 0x18, out var v0)) outv.Add(v0);
+    return outv;
+}
+
+// Internal mod id: Mods.dat row's first qword -> UTF-16 string.
+static string ReadModName(MemoryReader reader, nint modsDatRow)
+{
+    var strPtr = SafePtr(reader, modsDatRow + Poe2.ModsComponent.ModRecordIdPtr);
+    return strPtr == 0 ? "" : reader.ReadStringUtf16(strPtr, 80);
+}
+
+// ── Deep single-item dump: --itemdump <hexItemEntityAddr> ───────────────────────────────────
+// For one item entity (address from --inventory output): metadata, every component, the Mods
+// rarity/identified + each affix's id/values + a Mods.dat ROW dump (string-pointer scan for the
+// affix display name + stat-key strings), and the Sockets component contents (socketed runes/gems).
+static int RunItemDump(MemoryReader reader, nint item)
+{
+    var meta = ReadEntityMetadata(reader, item);
+    Console.WriteLine($"Item 0x{item:X}  {meta}");
+    if (!meta.StartsWith("Metadata/Items", StringComparison.Ordinal))
+        Console.WriteLine("  (warning: metadata is not Metadata/Items — wrong address?)");
+
+    var comps = ComponentNamesAndAddrs(reader, item);
+    Console.WriteLine($"  components ({comps.Count}): {string.Join(", ", comps.Select(c => c.name).OrderBy(s => s, StringComparer.Ordinal))}");
+
+    // ── Mods component ──
+    var mods = comps.FirstOrDefault(c => c.name == "Mods").addr;
+    if (mods != 0)
+    {
+        reader.TryReadStruct<int>(mods + Poe2.ModsComponent.Rarity, out var rarity);
+        reader.TryReadStruct<int>(mods + Poe2.ModsComponent.Identified, out var ident);
+        Console.WriteLine($"\n  Mods @ 0x{mods:X}  rarity={rarity}  identified={ident}");
+        foreach (var (kind, off) in new[] { ("implicit", Poe2.ModsComponent.ImplicitMods),
+                                            ("explicit", Poe2.ModsComponent.ExplicitMods),
+                                            ("enchant",  Poe2.ModsComponent.EnchantMods) })
+        {
+            if (!reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(mods + off, out var v)) continue;
+            var span = (long)v.Last - (long)v.First;
+            if (v.First == 0 || span <= 0 || span % 0x40 != 0 || span > 0x800) continue;
+            var n = (int)(span / 0x40);
+            if (n == 0) continue;
+            Console.WriteLine($"    {kind} ({n}):");
+            for (var i = 0; i < n; i++)
+            {
+                var rec = v.First + (nint)(i * 0x40);
+                var row = SafePtr(reader, rec + Poe2.ModsComponent.ModRecordPtr);
+                var id = ReadModName(reader, row);
+                var vals = ReadModValueArray(reader, rec);
+                var text = string.Join("; ", POE2Radar.Core.Game.ItemModTranslator.Shared.RenderMod(id, vals));
+                var sids = POE2Radar.Core.Game.ItemModTranslator.Shared.StatIdsFor(id);
+                Console.WriteLine($"      [{i}] {id} [{string.Join(",", vals)}] → {text}");
+                if (sids != null) Console.WriteLine($"            stats: {string.Join(", ", sids)}");
+                if (i == 0) DumpDatRow(reader, row, "            ");  // confirms affix Name + StatsKey storage
+            }
+        }
+    }
+
+    // ── LocalStats / Stats component (aggregated stat key->value the item grants) ──
+    foreach (var sc in new[] { "LocalStats", "Stats" })
+    {
+        var statc = comps.FirstOrDefault(c => c.name == sc).addr;
+        if (statc == 0) continue;
+        Console.WriteLine($"\n  {sc} @ 0x{statc:X} — StdVector<{{int key,int value}}> candidates:");
+        for (var off = 0; off + 24 <= 0x200; off += 8)
+        {
+            if (!reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(statc + off, out var v)) continue;
+            var span = (long)v.Last - (long)v.First;
+            if (v.First == 0 || span <= 0 || span % 8 != 0 || span > 0x400) continue;
+            var n = (int)(span / 8); var pairs = new List<string>(); var ok = true;
+            for (var i = 0; i < n && ok; i++)
+            {
+                if (!reader.TryReadStruct<int>(v.First + (nint)(i * 8), out var k) ||
+                    !reader.TryReadStruct<int>(v.First + (nint)(i * 8) + 4, out var val)) { ok = false; break; }
+                if (k is < 0 or > 0x20000) { ok = false; break; } // key = stat index, small
+                pairs.Add($"{k}={val}");
+            }
+            if (ok && pairs.Count > 0) Console.WriteLine($"    +0x{off:X3}: [{string.Join(", ", pairs)}]");
+        }
+    }
+
+    // ── Sockets component ──
+    var sockets = comps.FirstOrDefault(c => c.name == "Sockets").addr;
+    if (sockets != 0)
+    {
+        Console.WriteLine($"\n  Sockets @ 0x{sockets:X} — scanning for socketed-item ptrs + vectors:");
+        ScanComponentForItems(reader, sockets, 0x120);
+    }
+    return 0;
+}
+
+// Hunt a Mods.dat row for string/foreign-key columns. PoE .dat rows are PACKED (mixed-width, NOT
+// aligned), so we scan at 1-BYTE stride for any qword that is a valid heap pointer, and classify it:
+//   (a) direct UTF-16/UTF-8 string  -> the mod Id or affix Name column;
+//   (b) pointer whose target's first qword -> a snake_case string -> a Stats.dat row (StatsKey column):
+//       this resolves mod -> stat ids ENTIRELY in-memory, leaving only stat-id->template as external data.
+// Dedupes by resolved string so the 1-byte overlap doesn't spam.
+static void DumpDatRow(MemoryReader reader, nint row, string indent)
+{
+    if (row == 0) return;
+    Console.WriteLine($"{indent}Mods.dat row 0x{row:X} — 1-byte-stride pointer/string scan (0x180):");
+    var seenStr = new HashSet<string>();
+    var seenStat = new HashSet<string>();
+    for (var off = 0; off < 0x180; off += 1)
+    {
+        var q = SafePtr(reader, row + off);
+        if (q == 0) continue;
+        // (a) direct string column
+        var w = reader.ReadStringUtf16(q, 64);
+        if (Printable(w) && seenStr.Add(w)) { Console.WriteLine($"{indent}  +0x{off:X3} -> str \"{w}\""); continue; }
+        var a = reader.ReadStringUtf8(q, 64);
+        if (Printable(a) && IsStatId(a) && seenStr.Add(a)) { Console.WriteLine($"{indent}  +0x{off:X3} -> str \"{a}\""); continue; }
+        // (b) foreign-row pointer -> target's first qword -> snake_case stat id (Stats.dat)
+        var inner = SafePtr(reader, q);
+        if (inner != 0)
+        {
+            var sid = reader.ReadStringUtf8(inner, 64);
+            if (IsStatId(sid) && seenStat.Add(sid))
+                Console.WriteLine($"{indent}  +0x{off:X3} -> statRow 0x{q:X} -> id \"{sid}\"");
+        }
+    }
+    if (seenStat.Count == 0) Console.WriteLine($"{indent}  (no Stats.dat-row pointers found — StatsKeys likely stored as row indices, not pointers)");
+}
+
+// A PoE stat id: lowercase snake_case ASCII, length >= 4, e.g. "local_energy_shield".
+static bool IsStatId(string? s) =>
+    !string.IsNullOrEmpty(s) && s.Length is >= 4 and <= 96 &&
+    s.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '_') && s.Contains('_');
+
+// Scan a component's first `len` bytes for (a) pointers to item entities (socketed gems/runes) and
+// (b) StdVectors of such pointers — to map the Sockets layout.
+static void ScanComponentForItems(MemoryReader reader, nint comp, int len)
+{
+    for (var off = 0; off + 8 <= len; off += 8)
+    {
+        var p = SafePtr(reader, comp + off);
+        if (p == 0) continue;
+        var m = ReadEntityMetadata(reader, p);
+        if (m.StartsWith("Metadata/", StringComparison.Ordinal))
+            Console.WriteLine($"    +0x{off:X2}: entity 0x{p:X}  {m}");
+        // StdVector of entity ptrs?
+        if (reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(comp + off, out var v))
+        {
+            var span = (long)v.Last - (long)v.First;
+            if (v.First != 0 && span > 0 && span % 8 == 0 && span <= 0x200)
+            {
+                var n = (int)(span / 8); var hit = new List<string>();
+                for (var i = 0; i < n; i++)
+                {
+                    var e = SafePtr(reader, v.First + (nint)(i * 8));
+                    var em = e == 0 ? "" : ReadEntityMetadata(reader, e);
+                    if (em.StartsWith("Metadata/", StringComparison.Ordinal)) hit.Add($"{em}");
+                }
+                if (hit.Count > 0) Console.WriteLine($"    +0x{off:X2}: vec[{n}] -> {string.Join(", ", hit)}");
+            }
+        }
+    }
+}
+
+// Like ComponentNames but returns (name, componentAddr) pairs.
+static List<(string name, nint addr)> ComponentNamesAndAddrs(MemoryReader reader, nint entity)
+{
+    var result = new List<(string, nint)>();
+    var details = SafePtr(reader, entity + Poe2.Entity.EntityDetailsPtr);
+    var lookup = details == 0 ? 0 : SafePtr(reader, details + Poe2.EntityDetails.ComponentLookUpPtr);
+    if (lookup == 0) return result;
+    if (!reader.TryReadStruct<POE2Radar.Core.Game.StdVector>(entity + Poe2.Entity.ComponentList, out var cl)) return result;
+    var compCount = ((long)cl.Last - (long)cl.First) / 8;
+    if (compCount is <= 0 or > 256) return result;
+    var bFirst = SafePtr(reader, lookup + Poe2.ComponentLookUp.NameAndIndexBucket);
+    if (!reader.TryReadStruct<nint>(lookup + Poe2.ComponentLookUp.NameAndIndexBucket + 8, out var bLast)) return result;
+    var entries = ((long)bLast - (long)bFirst) / Poe2.ComponentLookUp.EntryStride;
+    if (bFirst == 0 || entries is <= 0 or > 256) return result;
+    for (long i = 0; i < entries; i++)
+    {
+        var e = bFirst + (nint)(i * Poe2.ComponentLookUp.EntryStride);
+        if (!reader.TryReadStruct<int>(e + 8, out var index) || index < 0 || index >= compCount) continue;
+        var nm = reader.ReadStringUtf8(SafePtr(reader, e), 40);
+        if (!string.IsNullOrEmpty(nm)) result.Add((nm, SafePtr(reader, cl.First + (nint)(index * 8))));
+    }
+    return result;
+}
+
+// All component names on an entity (mirrors the ResolveComponentAddr bucket walk).
+static List<string> ComponentNames(MemoryReader reader, nint entity)
+{
+    var names = new List<string>();
+    var details = SafePtr(reader, entity + Poe2.Entity.EntityDetailsPtr);
+    var lookup = details == 0 ? 0 : SafePtr(reader, details + Poe2.EntityDetails.ComponentLookUpPtr);
+    if (lookup == 0) return names;
+    var bFirst = SafePtr(reader, lookup + Poe2.ComponentLookUp.NameAndIndexBucket);
+    if (!reader.TryReadStruct<nint>(lookup + Poe2.ComponentLookUp.NameAndIndexBucket + 8, out var bLast)) return names;
+    var entries = ((long)bLast - (long)bFirst) / Poe2.ComponentLookUp.EntryStride;
+    if (bFirst == 0 || entries is <= 0 or > 256) return names;
+    for (long i = 0; i < entries; i++)
+    {
+        var nm = reader.ReadStringUtf8(SafePtr(reader, bFirst + (nint)(i * Poe2.ComponentLookUp.EntryStride)), 40);
+        if (!string.IsNullOrEmpty(nm)) names.Add(nm);
+    }
+    return names;
+}
+
+static string InvName(int id) => id switch
+{
+    1 => "MainInventory", 2 => "BodyArmour", 3 => "Weapon1", 4 => "Offhand1", 5 => "Helm",
+    6 => "Amulet", 7 => "Ring1", 8 => "Ring2", 9 => "Gloves", 10 => "Boots", 11 => "Belt",
+    12 => "Flask", 13 => "Cursor", 14 => "Map", 15 => "Weapon2", 16 => "Offhand2",
+    64 => "Currency", 128 => "Ring3", _ => $"Inv{id}"
+};
 
 // ── PoE2 entity / component-map probe ──────────────────────────────────────
 // Validates the GameHelper2 PoE2 layout: Entity{Id@0x80, IsValid@0x84, ItemBase{
@@ -3462,6 +3925,79 @@ static int RunAtlasAnyHover(ProcessHandle process, MemoryReader reader)
             prev[i] = f;
         }
         Thread.Sleep(200);
+    }
+}
+
+// ── Atlas map-NAME discovery: find the localized display name in the EndgameMaps row ───────────
+// The overlay currently Prettify()s the internal "MapXxx" code (node+0x300 row, +0x00) into a display
+// name, which mismatches what the player sees for some maps. This walks visible atlas nodes and, for a
+// few DISTINCT maps, scans their EndgameMaps row (1-byte stride) for string columns — directly AND one
+// pointer-level deep (the localized name may live in a referenced WorldAreas row) — so we can spot the
+// real display-name column offset to read instead of Prettify. Run with the Atlas MAP open.
+static int RunAtlasMapName(ProcessHandle process, MemoryReader reader, int maxDistinct)
+{
+    var (_, igs, _, _) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("no chain."); return 1; }
+    var uiRoot = SafePtr(reader, igs + 0x2F0);
+    var root = SafePtr(reader, uiRoot + 0xB8) is var tr && tr != 0 ? tr : uiRoot;
+
+    var queue = new Queue<nint>(); queue.Enqueue(root);
+    var visited = new HashSet<nint>();
+    var seenCodes = new HashSet<string>(StringComparer.Ordinal);
+    var shown = 0;
+    Console.WriteLine("Walking UI tree for atlas nodes (Atlas MAP must be open)…\n");
+    while (queue.Count > 0 && visited.Count < 200000 && shown < maxDistinct)
+    {
+        var el = queue.Dequeue();
+        if (el == 0 || !visited.Add(el) || SafePtr(reader, el + 0x08) != el) continue;
+        var first = SafePtr(reader, el + 0x10);
+        if (first != 0 && reader.TryReadStruct<nint>(el + 0x18, out var last))
+        { var n = ((long)last - (long)first) / 8; if (n is > 0 and <= 16384) for (long k = 0; k < n; k++) queue.Enqueue(SafePtr(reader, first + (nint)(k * 8))); }
+
+        // Atlas node: el+0x300 → EndgameMaps row; row+0x00 → "MapXxx" code wstring (sometimes one ptr deeper).
+        var row = SafePtr(reader, el + 0x300);
+        if (row == 0) continue;
+        var w = SafePtr(reader, row);
+        var code = w != 0 ? reader.ReadStringUtf16(w, 64) : "";
+        if (!code.StartsWith("Map", StringComparison.Ordinal))
+        {
+            var w2 = SafePtr(reader, w);
+            code = w2 != 0 ? reader.ReadStringUtf16(w2, 64) : code;
+        }
+        if (!code.StartsWith("Map", StringComparison.Ordinal) || !seenCodes.Add(code)) continue;
+
+        shown++;
+        Console.WriteLine($"════════ code=\"{code}\"  Prettify=\"{Poe2Atlas.Prettify(code)}\"  row=0x{row:X}");
+        ScanRowForNames(reader, row, "    ");
+        Console.WriteLine();
+    }
+    Console.WriteLine($"Dumped {shown} distinct maps. Identify the column whose UTF-16 string = the in-game");
+    Console.WriteLine("display name; note its +offset (direct, or 'row->ptr+off') to wire into Poe2Atlas.");
+    return 0;
+}
+
+// Scan an EndgameMaps row (the code+0xEF stride keeps it to one row) for printable string columns at
+// 1-byte stride. For each direct string-pointer column it prints the string; for each pointer-to-a-row
+// column it follows ONE level and scans THAT row's first 0x40 bytes for its own string columns — so a
+// referenced WorldAreas / BaseItemType display name surfaces as "+off -> row -> +inner \"Name\"".
+static void ScanRowForNames(MemoryReader reader, nint row, string indent)
+{
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+    for (var off = 0; off < 0xE0; off += 1)        // < 0xEF: stay within this row (next row's code starts there)
+    {
+        var q = SafePtr(reader, row + off);
+        if (q == 0) continue;
+        var w = reader.ReadStringUtf16(q, 64);
+        if (Printable(w)) { if (seen.Add(w)) Console.WriteLine($"{indent}+0x{off:X3} -> \"{w}\""); continue; }
+        // q is a pointer to another .dat row — scan its first columns for strings (the display name may be here).
+        for (var io = 0; io < 0x40; io += 1)
+        {
+            var ip = SafePtr(reader, q + io);
+            if (ip == 0) continue;
+            var iw = reader.ReadStringUtf16(ip, 64);
+            if (Printable(iw) && seen.Add($"{off:X3}/{io:X2}:{iw}"))
+                Console.WriteLine($"{indent}+0x{off:X3} -> row 0x{q:X} +0x{io:X2} -> \"{iw}\"");
+        }
     }
 }
 
