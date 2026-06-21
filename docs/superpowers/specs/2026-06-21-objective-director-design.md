@@ -1,7 +1,7 @@
 # Objective Director ("Campaign Director") — Design Spec
 
 - **Date:** 2026-06-21
-- **Status:** Draft for review
+- **Status:** Approved 2026-06-21
 - **Topic:** A read-only, per-zone objective director for POE2GPS that auto-selects + routes to the highest-priority in-zone objective, reusing the existing navigation pipeline.
 
 ---
@@ -63,7 +63,18 @@ Live, event-driven: re-selection fires on **zone change** and when the **active 
 
 ## 6. The catalog (data — the upkeep surface)
 
-A priority-ranked list, matched against the live entity/landmark fields the radar already reads. Matcher fields mirror `DisplayRule` (ANY-of semantics, `?`=any), compiled once for allocation-free per-entity matching:
+A priority-ranked list, matched against the live entity/landmark fields the radar already reads. Matcher fields mirror `DisplayRule` (ANY-of semantics, `?`=any), compiled once for allocation-free per-entity matching.
+
+**Default routing flow (the v1 seed priority order):** clear optional content first, progress last.
+
+| Tier | Category | Priority | What it matches |
+|---|---|---|---|
+| 1 | **Seasonal event** (`League`) | 100 | the current league mechanic (e.g. Runes of Aldur) |
+| 2 | **Side bosses** (`SideBoss`) | 80 | optional bosses / passive-point trials |
+| 3 | **Side zones** (`SideZone`) | 60 | transitions into known optional areas |
+| 4 | **Main progression** (`MainProgression`) | 10 | the zone exit / next-area transition — a **catch-all, always-present fallback** |
+
+Ties within a tier break by nearest. The `MainProgression` catch-all means the director **always has a "next" target**: once the seasonal event, side bosses, and side zones in the zone are done (no longer detected), it routes you to the exit — completing the "clear, then progress" loop. Distinguishing a *side-zone* transition from the *main* one is data-driven: known optional-area transitions are tagged `SideZone` by pattern; every other `Transition` falls through to `MainProgression` at priority 10.
 
 ```json
 [
@@ -71,22 +82,27 @@ A priority-ranked list, matched against the live entity/landmark fields the rada
     "priority": 100, "enabled": true,
     "match": { "metadata": ["RunesOfAldur"], "poi": "Yes" } },
 
-  { "id": "passive-boss", "label": "+2 Passive boss", "category": "PassivePoints",
-    "priority": 90, "enabled": true,
+  { "id": "passive-boss", "label": "+2 Passive boss", "category": "SideBoss",
+    "priority": 80, "enabled": true,
     "match": { "metadata": ["*Ascendancy*", "*Trial*"] } },
 
-  { "id": "tile:arena", "label": "Boss arena (tile)", "category": "Bosses",
-    "priority": 80, "enabled": true,
-    "match": { "landmarkPath": ["*Arena*"] } }
+  { "id": "side-zone", "label": "Optional side area", "category": "SideZone",
+    "priority": 60, "enabled": true,
+    "match": { "categories": ["Transition"], "metadata": ["*Optional*", "*Side*"] } },
+
+  { "id": "main-progression", "label": "Continue (zone exit)", "category": "MainProgression",
+    "priority": 10, "enabled": true,
+    "match": { "categories": ["Transition"] } }
 ]
 ```
+(Catalog order does not matter — `priority` decides ranking; `MainProgression` sits last because its `match` is the broad `Transition` catch-all that the more specific `SideZone` entries out-rank.)
 - **Match surface:** entity objectives match `EntityDot.Metadata` (substring/glob, ANY-of) + optional `category`/`poi`/`rarity`; tile objectives match `Landmark.Path`/`CuratedName`. Position for distance ranking comes from `EntityDot.Grid` / `Landmark.Center`.
 - Community-editable, import/export — same affordances as watchlists/landmarks.
 - **Honest caveat (the real constraint):** an objective is only targetable if its entity/landmark is in the live `_entities`/`_landmarks` set. v1's seed catalog is bounded by **what your radar actually surfaces** — we'll confirm your priority content (seasonal event, passive bosses) qualifies during planning. Content the radar doesn't yet detect is out of v1 (and is really an upstream-detection contribution to Sikaka).
 
 ## 7. Director logic
 
-- **Rank:** among enabled catalog entries with a present match in the zone, sort by `priority` desc, then nearest (`distance(player, grid)`) asc. The top match is the **active** objective; the rest are the **queue**.
+- **Rank:** among enabled catalog entries with a present match in the zone, sort by `priority` desc, then nearest (`distance(player, grid)`) asc. The top match is the **active** objective; the rest are the **queue**. The default catalog encodes the flow **seasonal event → side bosses → side zones → main progression** (§6), and the `MainProgression` catch-all guarantees the active selection is never empty (it falls back to the zone exit once optional content is cleared).
 - **Select:** set the nav selection to the single active objective's id (`e:`/`t:`), via the existing `_selectedIds` layer under `_navLock` (the same way `OnAreaChanged` does). v1 routes **one objective at a time** (matches the "event → then bosses" mental model); multi-route (top-N) is a later config knob.
 - **Advance / complete:** re-select on zone change and when the active objective is gone/`IconComplete` (reusing `PruneCompletedTargets` + live id-resolution). No persisted state.
 - **Manual override:** between triggers the director leaves the selection alone, so a manual F-key/dashboard pick sticks until the next trigger or zone change.
