@@ -32,22 +32,26 @@ jobs:
             -c Release -r win-x64 --self-contained true `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:EnableCompressionInSingleFile=true `
+            -p:EnableCompressionInSingleFile=false `
             -p:Version=$ver `
             -p:DebugType=none -p:DebugSymbols=false `
             -p:Deterministic=true -p:ContinuousIntegrationBuild=true `
             -o publish
           Remove-Item publish/*.pdb -Force -ErrorAction SilentlyContinue
+          # Identity hygiene: scrub credit/URL tokens from the shipped exe (compression off above so
+          # the scrub can reach bundled managed strings).
+          pwsh scripts/scrub-strings.ps1 -ExePath publish/Overlay.exe
+          if ($LASTEXITCODE -ne 0) { throw "string-scrub failed" }
 
       - name: Package
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
           Copy-Item README.md, LICENSE publish/
-          Compress-Archive -Path publish/* -DestinationPath "POE2Radar-$tag-win-x64.zip" -Force
+          Compress-Archive -Path publish/* -DestinationPath "POE2GPS-$tag-win-x64.zip" -Force
 
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: POE2Radar-*-win-x64.zip
+          files: POE2GPS-*-win-x64.zip
           generate_release_notes: true

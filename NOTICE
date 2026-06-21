@@ -1,0 +1,14 @@
+POE2GPS — a strictly read-only Path of Exile 2 navigation overlay.
+
+Derived from Sikaka/POE2Radar (MIT License) with the process-randomization layer
+adapted from NattKh/POE2Radar (MIT License). The auto-flask keystroke feature and
+all poe.ninja/poe2scout economy network calls have been removed; POE2GPS reads game
+memory only and never sends input to or writes into the game process.
+
+Credits:
+  - Sikaka/POE2Radar  — upstream base (https://github.com/Sikaka/POE2Radar)
+  - NattKh/POE2Radar   — process-randomization design (https://github.com/NattKh/POE2Radar)
+  - GameHelper2        — memory-layout research / offset reference (not redistributed)
+  - Community contributors — landmark names and entity data
+
+Licensed under the MIT License. See LICENSE.

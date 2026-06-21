@@ -24,6 +24,6 @@ Remove-Item "$root/publish/*.pdb" -Force -ErrorAction SilentlyContinue
 if ($LASTEXITCODE -ne 0) { throw "string-scrub failed" }
 
 Copy-Item "$root/README.md", "$root/LICENSE" "$root/publish/" -Force
-$zip = "$root/POE2Radar-$Version-win-x64.zip"
+$zip = "$root/POE2GPS-$Version-win-x64.zip"
 Compress-Archive -Path "$root/publish/*" -DestinationPath $zip -Force
 Write-Host "Built: $zip"

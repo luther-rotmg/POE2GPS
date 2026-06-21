@@ -419,6 +419,7 @@ resources/_reference/
 # release build output
 publish/
 POE2Radar-*-win-x64.zip
+POE2GPS-*-win-x64.zip
 
 
 # local-only scratch + reference material (community notes, third-party dumps)
