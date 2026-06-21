@@ -215,6 +215,8 @@ public sealed class RadarApp : IDisposable
     private bool _selectionCapWarned;                                    // log the "cap reached" notice once
     private readonly CampaignObjectives _campaign;
     private readonly POE2Radar.Core.Campaign.ObjectiveDirector _director = new();
+    private volatile IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective> _directorQueue =
+        Array.Empty<POE2Radar.Core.Campaign.RankedObjective>();
     private nint _navTargetsArea = -1;                                   // AreaInstance the auto-nav was applied for
     // Per-instance nav memory: the nav selection for each AreaInstance hash, so returning to a zone
     // (e.g. after a town trip, which re-resolves a fresh AreaInstance) RESTORES what was selected
@@ -822,7 +824,7 @@ public sealed class RadarApp : IDisposable
 
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
-            snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _fps);
+            snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
@@ -1398,7 +1400,7 @@ public sealed class RadarApp : IDisposable
                 if (decision.DesiredActiveId != null) _selectedIds.Add(decision.DesiredActiveId);
             }
         }
-        // The ranked queue lives in _director.Queue; Task 5 publishes it to a field for the dashboard.
+        _directorQueue = _director.Queue;
     }
 
     /// <summary>

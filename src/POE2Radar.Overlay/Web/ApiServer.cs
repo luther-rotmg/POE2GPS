@@ -162,6 +162,9 @@ public sealed class ApiServer : IDisposable
                         bestEx = m.BestEx, bestName = m.BestName, color = m.Color,
                         rewards = m.Rewards.Select(r => new { name = r.Name, count = r.Count, ex = r.Ex, size = r.Size, runes = r.Runes }),
                     }),
+                    // Objective Director: active objective + queue for the dashboard panel (read-only).
+                    director = (s.Director ?? Array.Empty<POE2Radar.Core.Campaign.RankedObjective>())
+                        .Select(o => new { id = o.Id, label = o.Label, category = o.Category, priority = o.Priority }),
                 }, Json));
                 break;
             }
@@ -461,6 +464,7 @@ public sealed class ApiServer : IDisposable
         showMonsters = _settings.ShowMonsters,
         showTerrain = _settings.ShowTerrain,
         showPlayerBlip = _settings.ShowPlayerBlip,
+        enableDirector = _settings.EnableDirector,
         fpsCap = _settings.FpsCap,
         hpBarNormal = _settings.HpBarNormal,
         hpBarMagic = _settings.HpBarMagic,
@@ -501,6 +505,7 @@ public sealed class ApiServer : IDisposable
                 case "showMonsters" when TryBool(p.Value, out var b): _settings.ShowMonsters = b; applied.Add(p.Name); break;
                 case "showTerrain" when TryBool(p.Value, out var b): _settings.ShowTerrain = b; applied.Add(p.Name); break;
                 case "showPlayerBlip" when TryBool(p.Value, out var b): _settings.ShowPlayerBlip = b; applied.Add(p.Name); break;
+                case "enableDirector" when TryBool(p.Value, out var b): _settings.EnableDirector = b; applied.Add(p.Name); break;
                 case "fpsCap" when TryInt(p.Value, out var n): _settings.FpsCap = Math.Clamp(n, 15, 360); applied.Add(p.Name); break;
                 case "hpBarNormal" when TryBool(p.Value, out var b): _settings.HpBarNormal = b; applied.Add(p.Name); break;
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
@@ -901,6 +906,8 @@ public sealed record RadarState(
     // Runeshape monoliths in the current area (slot count, anchor, best value + full priced reward set) —
     // served to the dashboard's Monolith Rewards card. Empty when none / feature disabled.
     IReadOnlyList<MonolithMarker>? Monoliths = null,
+    // Objective Director queue (active objective first) for the dashboard panel; null/empty when off.
+    IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective>? Director = null,
     // Measured effective render FPS (rolling window) — for verifying the overlay actually hits FpsCap.
     float Fps = 0)
 {

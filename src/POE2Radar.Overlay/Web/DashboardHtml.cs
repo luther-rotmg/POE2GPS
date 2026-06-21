@@ -392,6 +392,11 @@ internal static class DashboardHtml
         <div id="monoList" class="znotes" style="display:block"></div>
       </div>
 
+      <div id="dirCard" hidden>
+        <div class="sect">Objective Director</div>
+        <div id="dirList" class="znotes" style="display:block"></div>
+      </div>
+
       <div style="height:24px"></div>
     </aside>
 
@@ -517,6 +522,8 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="hideJunk"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Navigation paths<small>draw A&#42; routes to selected landmarks</small></div>
               <label class="sw"><input type="checkbox" data-set="showPath"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Objective Director<small>auto-route campaign objectives: event &rarr; bosses &rarr; side zones &rarr; exit</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableDirector"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Curated landmark names<small>community labels (boss / reward / exits)</small></div>
               <label class="sw"><input type="checkbox" data-set="useCuratedLandmarks"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Overlay FPS cap<small>lower = less load on the game; 60 is smooth for a radar (15&ndash;360)</small></div>
@@ -1331,6 +1338,17 @@ function renderState(){
            + '<div style="font-size:12px;opacity:.9;padding-left:8px">'+(rows||'<span style="opacity:.6">no priced rewards</span>')+'</div></div>';
     }).join('');
   } else { mc.hidden=true; ml.innerHTML=''; }
+
+  // Objective Director (from /state): the active objective then the queued ones, priority order.
+  const dc=$('#dirCard'), dl=$('#dirList');
+  const dir=(s.director||[]);
+  if(dir.length){
+    dc.hidden=false;
+    dl.innerHTML = dir.map((o,i)=>
+      '<div style="display:flex;justify-content:space-between;gap:8px'+(i===0?';font-weight:600':';opacity:.75')+'">'
+      + '<span>'+(i===0?'▶ ':'')+esc(o.label)+'</span>'
+      + '<span style="opacity:.7">'+esc(o.category)+'</span></div>').join('');
+  } else { dc.hidden=true; dl.innerHTML=''; }
 
   // Zone leveling notes (from /api/zone): title + note text, hidden when there's nothing to show.
   const zn=$('#zoneNotes');
