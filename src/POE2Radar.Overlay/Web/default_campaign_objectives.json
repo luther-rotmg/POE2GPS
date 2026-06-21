@@ -1,0 +1,10 @@
+[
+  { "id": "league-event", "label": "Seasonal event", "category": "League",
+    "priority": 100, "enabled": true, "metadata": ["RunesOfAldur"], "poi": "Yes" },
+  { "id": "side-boss", "label": "Side boss / passive trial", "category": "SideBoss",
+    "priority": 80, "enabled": true, "metadata": ["*Ascendancy*", "*Trial*"] },
+  { "id": "side-zone", "label": "Optional side area", "category": "SideZone",
+    "priority": 60, "enabled": true, "categories": ["Transition"], "metadata": ["*Optional*", "*Side*"] },
+  { "id": "main-progression", "label": "Continue (zone exit)", "category": "MainProgression",
+    "priority": 10, "enabled": true, "categories": ["Transition"] }
+]
