@@ -1,7 +1,7 @@
 # POE2GPS — Design Spec
 
 - **Date:** 2026-06-21
-- **Status:** Draft for review
+- **Status:** Approved 2026-06-21
 - **Author:** Ryan Duke (with Claude Code)
 - **Topic:** A read-only PoE2 GPS/navigation overlay derived from Sikaka/POE2Radar + NattKh/POE2Radar
 
@@ -182,7 +182,7 @@ loses the git-merge path to Sikaka, forcing manual offset chasing every game pat
 in `RadarApp.cs` (`BuildItemLabels`, `UpdateRuneforge`, `UpdateRitualRewards`, `UpdateLootTags`,
 `UpdateMonoliths`) are **trimmed, not deleted**: keep the item/reward **name labels**, drop the
 **value chips**. Navigation and loot awareness are unaffected; only economy pricing disappears.
-*(Open for review — see §15.)*
+*(Confirmed 2026-06-21 — §15.)*
 
 ---
 
@@ -213,9 +213,10 @@ possible so it doubles as Upstream PR #1 and stays low-conflict on merges.
    Trivial.
 4. **Character-name hiding** — locate where Sikaka's (more elaborate, config-driven) HUD prints the
    player name and remove it from the render path. The medium-risk part; needs care.
-5. **(Optional) Real string-scrub** — add a genuine post-build step that scrubs identifying ASCII/
-   UTF-16 strings from the published binary. *Not present in NattKh.* Recommended if "full
-   anti-detection" is to be more than naming hygiene. *(Open for review — see §15.)*
+5. **Real string-scrub** — add a genuine post-build step that scrubs identifying ASCII/UTF-16
+   strings from the published binary. *Not present in NattKh.* **Adopted** (§15) so "full
+   anti-detection" is more than naming hygiene; the randomization unit tests assert the scrubbed
+   output carries no `POE2`/`PoE`/`Radar` identity strings.
 
 The module exposes a single startup hook so its blast radius is one call site.
 
@@ -338,15 +339,15 @@ CI proof — and states plainly that memory reading is ToS-gray (tolerated, not 
 
 ---
 
-## 15. Open decisions (for user review)
+## 15. Resolved decisions (confirmed 2026-06-21)
 
-1. **Pricing trim (§6.1):** keep item/reward **name labels** while dropping value chips (default),
-   *or* remove those loot/reward overlays entirely?
-2. **Real string-scrub (§8.5):** add a genuine post-build binary string-scrub (recommended for
-   "full anti-detection"), *or* replicate NattKh's naming-hygiene-only approach?
-3. **Upstream PR #2 scope (§11):** confirm F1–F5 only, **excluding** `GameVisualTweaks` (strongly
-   recommended).
-4. **Randomization default in PR #1:** opt-in/flagged-off by default upstream (recommended), or on?
+1. **Pricing trim (§6.1):** ✅ Keep item/reward **name labels**, drop the value chips. The loot/
+   reward overlays stay; only poe.ninja value numbers and the network layer go.
+2. **Real string-scrub (§8.5):** ✅ Adopt a genuine post-build binary string-scrub — "full
+   anti-detection" should be more than a generic assembly name.
+3. **Upstream PR #2 scope (§11):** ✅ F1–F5 (`CheatManager`/`CheatDefinition`) only; **exclude** the
+   dead `GameVisualTweaks` system entirely.
+4. **Randomization default in PR #1:** ✅ Offer to Sikaka **opt-in / flagged-off by default**.
 
 ---
 
