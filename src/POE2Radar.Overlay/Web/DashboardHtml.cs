@@ -16,7 +16,7 @@ internal static class DashboardHtml
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>POE2Radar — Console</title>
+<title>Overlay</title>
 <!-- Self-contained: no external fonts/CDNs. Falls back to local system serif/mono fonts. -->
 <style>
   :root{
@@ -350,7 +350,7 @@ internal static class DashboardHtml
 <div class="shell">
   <header>
     <div class="mark">
-      <h1>POE2RADAR</h1>
+      <h1>OVERLAY</h1>
     </div>
     <div class="hgap"></div>
     <div class="area-chip" id="areaChip">— <b>·</b></div>

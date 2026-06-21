@@ -104,7 +104,7 @@ public sealed class OverlayWindow : IDisposable
             uFlags           = OverlayNative.NIF_MESSAGE | OverlayNative.NIF_ICON | OverlayNative.NIF_TIP,
             uCallbackMessage = WmTrayCallback,
             hIcon            = OverlayNative.LoadIconW(0, OverlayNative.IDI_APPLICATION),
-            szTip            = "POE2Radar — right-click to Exit",
+            szTip            = "Overlay — right-click to Exit",
             szInfo           = "",
             szInfoTitle      = "",
         };
@@ -127,7 +127,7 @@ public sealed class OverlayWindow : IDisposable
     {
         var menu = OverlayNative.CreatePopupMenu();
         if (menu == 0) return;
-        OverlayNative.AppendMenuW(menu, OverlayNative.MF_STRING, MenuExitId, "Exit POE2Radar");
+        OverlayNative.AppendMenuW(menu, OverlayNative.MF_STRING, MenuExitId, "Exit");
         OverlayNative.GetCursorPos(out var pt);
         OverlayNative.SetForegroundWindow(_hwnd); // standard tray-menu idiom so it dismisses correctly
         var cmd = OverlayNative.TrackPopupMenu(menu,
