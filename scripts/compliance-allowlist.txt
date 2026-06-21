@@ -1,0 +1,4 @@
+# Approved benign hits for the compliance gate: "relpath:line:Symbol | justification"
+# Format is matched exactly (path uses forward slashes, relative to repo root).
+# (none yet — Sikaka has zero process-write symbols; the only input path is auto-flask,
+#  removed in Phase 1. Add entries here only for verified own-overlay-window operations.)
