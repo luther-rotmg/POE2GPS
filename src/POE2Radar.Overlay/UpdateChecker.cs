@@ -13,7 +13,7 @@ namespace POE2Radar.Overlay;
 /// </summary>
 internal static class UpdateChecker
 {
-    private const string Repo = "Sikaka/POE2Radar";
+    private const string Repo = "luther-rotmg/POE2GPS";
     public static readonly string ReleasesPage = $"https://github.com/{Repo}/releases";
 
     /// <summary>This build's version ("0.7.0"), from the assembly version baked in by the csproj.</summary>
@@ -31,7 +31,7 @@ internal static class UpdateChecker
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("POE2Radar-UpdateCheck");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("POE2GPS-UpdateCheck");
             http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
 
             string? latest = null; var url = ReleasesPage;
