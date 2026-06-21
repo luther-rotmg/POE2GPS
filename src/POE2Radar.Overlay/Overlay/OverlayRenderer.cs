@@ -129,8 +129,7 @@ public sealed class OverlayRenderer : IDisposable
             if (ctx.Active && ctx.InGame)
             {
                 DrawRuneforge(rt, ctx);
-                DrawRitualRewards(rt, ctx);            // value chips on the ritual tribute-shop tiles (screen-space)
-                DrawLootTags(rt, ctx);                 // value chips on the game's own loot tags (screen-space)
+                DrawRitualRewards(rt, ctx);            // name labels on the ritual tribute-shop tiles (screen-space)
                 DrawMonolithPanel(rt, ctx);            // nearby-monolith reward list (screen-space)
             }
         }
@@ -476,29 +475,6 @@ public sealed class OverlayRenderer : IDisposable
             if (r.Highlight) { _bStyle!.Color = ColItemHi; rt.DrawRectangle(box, _bStyle, 2f); }
             _bStyle!.Color = ColorFromU(r.Color);
             rt.DrawText(r.Text, _tf!, new Rect(box.Left + 3f, top + 1f, box.Right - 2f, top + boxH - 1f),
-                _bStyle, DrawTextOptions.Clip);
-        }
-    }
-
-    /// <summary>Value chips drawn ON the game's own loot tags. Each rect is the tag's LIVE screen rect
-    /// (from Poe2Live.TryUiElementRect, re-read per frame in RadarApp) — game-computed, so the chip tracks
-    /// the tag exactly with no world projection and no jitter. Covers items the game already names (currency,
-    /// runes, essences, fragments, identified uniques); unidentified uniques use the world-projected reveal
-    /// in DrawItemLabels. High-value matches get a gold border (same palette as the item labels).</summary>
-    private void DrawLootTags(ID2D1RenderTarget rt, RenderContext ctx)
-    {
-        if (ctx.LootTags is not { Count: > 0 } labels) return;
-        const float gap = 6f, boxH = 18f;
-        foreach (var t in labels)
-        {
-            var lx = t.X + t.W + gap;             // just past the tag's right edge
-            var cy = t.Y + t.H * 0.5f;            // vertically centered on the tag
-            var boxW = MathF.Max(40f, 7.5f * (t.Value.Length + 1));
-            var box = new Vortice.RawRectF(lx, cy - boxH * 0.5f, lx + boxW, cy + boxH * 0.5f);
-            rt.FillRectangle(box, _bPanel!);
-            if (t.Highlight) { _bStyle!.Color = ColItemHi; rt.DrawRectangle(box, _bStyle, 2f); }
-            _bStyle!.Color = t.Highlight ? ColItemHi : ColItemText;
-            rt.DrawText(t.Value, _tf!, new Rect(lx + 4f, cy - boxH * 0.5f + 1f, lx + boxW - 2f, cy + boxH * 0.5f - 1f),
                 _bStyle, DrawTextOptions.Clip);
         }
     }

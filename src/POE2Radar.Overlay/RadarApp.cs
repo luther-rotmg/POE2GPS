@@ -92,18 +92,6 @@ public sealed class RadarApp : IDisposable
 
     // ── Loot-tag value chips: the WORLD thread scans the visible UI tree for tag text, matches each to a
     //    priced item by name, and publishes a spec per match (the tag's UiElement address + value). The
-    //    RENDER thread re-reads each element's LIVE screen rect (game-computed → smooth) and draws on it.
-    //    Same lock-free published-record idiom as the runeforge/HP-bar pipelines. ──
-    private readonly record struct LootTagSpec(nint El, string TagText, string Value, bool Highlight);
-    private sealed record LootTagRender(IReadOnlyList<LootTagSpec> Specs)
-    {
-        public static readonly LootTagRender Empty = new(Array.Empty<LootTagSpec>());
-    }
-    private volatile LootTagRender _lootTags = LootTagRender.Empty;
-    private DateTime _nextLootScanUtc = DateTime.MinValue;        // world-thread scan throttle
-    private const int LootScanThrottleMs = 200;                  // re-scan the UI tree ~5×/s (cheap, pruned)
-    private readonly List<LootTagLabel> _lootTagFrame = new();   // render-thread scratch (rebuilt per frame)
-
     // ── Runeshape monoliths (priced offered rewards, read off the in-world device — works area-wide,
     //    before the panel is opened). World-space markers; published per area-hash for the zone-load guard. ──
     private readonly RuneMonolithCatalog _monoCatalog = RuneMonolithCatalog.Instance;
@@ -646,7 +634,6 @@ public sealed class RadarApp : IDisposable
             _builtAtlasOnce = false; _lastAtlasSig = 0;
         }
         if (!ReferenceEquals(_runeRender, RuneRender.Closed)) _runeRender = RuneRender.Closed;
-        if (!ReferenceEquals(_lootTags, LootTagRender.Empty)) _lootTags = LootTagRender.Empty;
     }
 
     /// <summary>Read the open "Runeshape Combinations" panel (cheap when closed) and publish a priced label
@@ -654,8 +641,8 @@ public sealed class RadarApp : IDisposable
     /// to draw on each row. Screen rects are scaled for the current game-window size. World thread.</summary>
     private void UpdateRuneforge(nint inGameState)
     {
-        var cfg = _settings.GroundItems;   // shares the ground-item pricing toggle + league
-        if (!cfg.Enabled || !_priceBook.IsLoaded)
+        var cfg = _settings.GroundItems;
+        if (!cfg.Enabled)
         {
             if (!ReferenceEquals(_runeRender, RuneRender.Closed)) _runeRender = RuneRender.Closed;
             return;
@@ -669,15 +656,8 @@ public sealed class RadarApp : IDisposable
         var labels = new List<RuneLabel>(rewards.Count);
         foreach (var r in rewards)
         {
-            if (_priceBook.TryByName(r.Name) is not { } pr) continue;     // unknown reward → no label
-            var count = Math.Max(1, r.Count);
-            var totalEx = pr.Exalted * count;
-            // Show ONLY the value of the offer itself (full-stack value) — no "N×" count prefix, which
-            // read confusingly next to the price (e.g. "2× greater chaos orbs" → just its value).
-            var text = _priceBook.Format(totalEx);
-            // Value tier (absolute Exalted): ≥5 ex green, <0.5 ex dim red, else amber.
-            var color = totalEx >= 5.0 ? 0xFF66E066u : totalEx < 0.5 ? 0xFFE06666u : 0xFFE6C84Du;
-            labels.Add(new RuneLabel(r.X, r.Y, r.W, r.H, text, color));
+            var text = r.Count > 1 ? $"{r.Name} ×{r.Count}" : r.Name;
+            labels.Add(new RuneLabel(r.X, r.Y, r.W, r.H, text, 0xFFE6C84Du));
         }
         _runeRender = new RuneRender(labels.Count > 0, labels);
     }
@@ -688,8 +668,8 @@ public sealed class RadarApp : IDisposable
     /// ground-item pricing toggle + league + value floor. World thread.</summary>
     private void UpdateRitualRewards(nint inGameState)
     {
-        var cfg = _settings.GroundItems;   // shares the ground-item pricing toggle + league + thresholds
-        if (!cfg.Enabled || !_priceBook.IsLoaded)
+        var cfg = _settings.GroundItems;
+        if (!cfg.Enabled)
         {
             if (!ReferenceEquals(_ritualRender, RitualRender.Closed)) _ritualRender = RitualRender.Closed;
             return;
@@ -703,77 +683,11 @@ public sealed class RadarApp : IDisposable
         var labels = new List<RitualLabel>(rewards.Count);
         foreach (var r in rewards)
         {
-            // Uniques key off art (each has its own icon; an unID unique's name is hidden); everything else
-            // keys off the base-type name (currency/omen tiers share one art). Same logic as BuildItemLabels.
-            var pr = r.Rarity == Poe2Live.Rarity.Unique
-                ? _priceBook.TryByArt(r.Art)
-                : (r.Name is { Length: > 0 } nm ? _priceBook.TryByName(nm) : null);
-            if (pr is not { } p) continue;                       // unknown reward → no label
-            var text = _priceBook.Format(p.Exalted);
-            // Value tier (absolute Exalted): ≥5 ex green, <0.5 ex dim red, else amber (same palette as runeforge).
-            var color = p.Exalted >= 5.0 ? 0xFF66E066u : p.Exalted < 0.5 ? 0xFFE06666u : 0xFFE6C84Du;
-            labels.Add(new RitualLabel(r.X, r.Y, r.W, r.H, text, color, p.Exalted >= cfg.HighlightMinEx));
+            var name = r.Name is { Length: > 0 } ? r.Name : (r.Art ?? "");
+            if (name.Length == 0) continue;
+            labels.Add(new RitualLabel(r.X, r.Y, r.W, r.H, name, 0xFFE6C84Du, false));
         }
         _ritualRender = new RitualRender(labels.Count > 0, labels);
-    }
-
-    /// <summary>Scan the visible UI tree for loot-tag text (world thread, THROTTLED + invisible-subtree
-    /// pruned, so it's cheap) and match each tag's first line to a priced item by NAME — the tag's text IS
-    /// the item name, so no item-entity link is needed. Publishes a spec per match (the tag's UiElement
-    /// address + formatted value + highlight); the render thread reads each element's LIVE screen rect
-    /// (<see cref="Poe2Live.TryUiElementRect"/> → game-computed, smooth, perfectly aligned) and draws a value
-    /// chip on it. Covers everything the game already names — currency, runes, essences, fragments, IDENTIFIED
-    /// uniques — leaving only UNIDENTIFIED uniques (name hidden by the game) to the world-projected reveal in
-    /// <see cref="BuildItemLabels"/>. Cheap no-op when disabled or between throttle windows.</summary>
-    private void UpdateLootTags(nint inGameState)
-    {
-        var cfg = _settings.GroundItems;
-        var enabled = cfg.Categories is { Count: > 0 }
-            ? new HashSet<string>(cfg.Categories, StringComparer.OrdinalIgnoreCase) : null;
-        if (!cfg.Enabled || !cfg.AnchorValuesToTags || !_priceBook.IsLoaded || enabled is null)
-        {
-            if (!ReferenceEquals(_lootTags, LootTagRender.Empty)) _lootTags = LootTagRender.Empty;
-            return;
-        }
-
-        var now = DateTime.UtcNow;
-        if (now < _nextLootScanUtc) return;   // between scans: keep the last published specs (render re-reads rects live)
-        _nextLootScanUtc = now.AddMilliseconds(LootScanThrottleMs);
-
-        var tags = _live.ScanLootLabels(inGameState);
-        if (tags.Count == 0)
-        {
-            if (!ReferenceEquals(_lootTags, LootTagRender.Empty)) _lootTags = LootTagRender.Empty;
-            return;
-        }
-
-        var specs = new List<LootTagSpec>();
-        var seen = new HashSet<nint>();
-        foreach (var (el, text) in tags)
-        {
-            if (!seen.Add(el)) continue;
-            // The tag's text is the item name; stacks may read "5x Chaos Orb" — try the raw line, then the
-            // count-stripped name. Uniques are indexed by name too, so identified-unique tags resolve here.
-            var pr = _priceBook.TryByName(text) ?? _priceBook.TryByName(StripCount(text));
-            if (pr is not { } p) continue;
-            if (cfg.MinQuantity > 0 && p.Quantity < cfg.MinQuantity) continue;
-            var group = CategoryGroup(p.Category);
-            if (!enabled.Contains(group)) continue;          // category group toggled off
-            if (p.Exalted < GroundFloor(group)) continue;    // below this bucket's value floor
-            specs.Add(new LootTagSpec(el, text, _priceBook.Format(p.Exalted), p.Exalted >= cfg.HighlightMinEx));
-        }
-        _lootTags = specs.Count > 0 ? new LootTagRender(specs) : LootTagRender.Empty;
-    }
-
-    /// <summary>Strip a leading "&lt;count&gt;x " from a stack tag ("5x Chaos Orb" → "Chaos Orb") so the name
-    /// matches the PriceBook key; returns the input trimmed when there's no count prefix.</summary>
-    private static string StripCount(string raw)
-    {
-        var name = raw?.Trim() ?? "";
-        var i = 0;
-        while (i < name.Length && char.IsDigit(name[i])) i++;
-        return i > 0 && i < name.Length && (name[i] == 'x' || name[i] == 'X')
-            ? name[(i + 1)..].TrimStart() : name;
     }
 
     /// <summary>Resolve every runeshape-monolith device in the area (the persistent Expedition2Encounter
@@ -784,7 +698,7 @@ public sealed class RadarApp : IDisposable
     private void UpdateMonoliths(nint areaInstance, int areaLevel, uint areaHash)
     {
         var cfg = _settings.Monoliths;
-        if (!cfg.Enabled || !_priceBook.IsLoaded || !_monoCatalog.IsLoaded)
+        if (!cfg.Enabled || !_monoCatalog.IsLoaded)
         {
             if (_monoRender.Markers.Count > 0) _monoRender = MonolithRender.Empty;
             return;
@@ -800,31 +714,15 @@ public sealed class RadarApp : IDisposable
 
             var offers = _monoCatalog.Offers(m.AnchorIdx, m.AnchorPos, m.HoleCount, m.IsUnique, areaLevel);
             var rewards = new List<MonolithReward>(offers.Count);
-            double best = 0; var bestName = "";
             foreach (var o in offers)
-            {
-                var ex = o.Name.Length > 0 && _priceBook.TryByName(o.Name) is { } pr ? pr.Exalted * Math.Max(1, o.Count) : 0;
-                rewards.Add(new MonolithReward(o.Name.Length > 0 ? o.Name : o.Description, o.Count, ex, o.Size, o.Runes));
-                if (ex > best) { best = ex; bestName = o.Name; }
-            }
-            rewards.Sort((a, b) => b.Ex.CompareTo(a.Ex));
+                rewards.Add(new MonolithReward(o.Name.Length > 0 ? o.Name : o.Description, o.Count, 0, o.Size, o.Runes));
 
             var anchor = m.IsUnique ? "Unique" : m.AnchorIdx >= 0 ? _monoCatalog.RuneName(m.AnchorIdx) : "?";
+            var headline = rewards.Count > 0 ? rewards[0].Name : anchor;
             markers.Add(new MonolithMarker(
-                e.Grid, m.HoleCount, m.IsUnique, m.Collected, anchor, best, bestName,
-                MonolithColor(best, cfg.HighlightMinEx), rewards));
+                e.Grid, m.HoleCount, m.IsUnique, m.Collected, anchor, 0, headline, 0xFFE6C84Du, rewards));
         }
         _monoRender = new MonolithRender(areaHash, markers);
-    }
-
-    /// <summary>Value tier for a monolith's best reward (packed 0xAARRGGBB): green at/above the threshold,
-    /// yellow from 0.6×, neutral white below (or when nothing priced). Mirrors the ground-item tiers.</summary>
-    private static uint MonolithColor(double bestEx, double threshold)
-    {
-        if (bestEx <= 0 || threshold <= 0) return 0xFFFFFFFFu;
-        if (bestEx >= threshold) return 0xFF66E066u;          // green
-        if (bestEx >= 0.6 * threshold) return 0xFFE6C84Du;    // amber
-        return 0xFFFFFFFFu;                                   // neutral
     }
 
     /// <summary>One RENDER frame (render thread): fast per-frame reads on the render reader stack
@@ -851,7 +749,6 @@ public sealed class RadarApp : IDisposable
         var rr = _runeRender;
         var rit = _ritualRender;
         var mr = _monoRender;
-        var lt = _lootTags;
 
         if (inGame)
         {
@@ -888,16 +785,6 @@ public sealed class RadarApp : IDisposable
                 _itemFrame.Add(new ItemLabel(w, s.Name, s.Value, s.Highlight, s.ShowName));
             }
 
-            // Loot-tag chips: re-read each matched tag's LIVE screen rect this frame on the render reader.
-            // TryUiElementRect returns false for a tag that's gone invisible (panel/map open) or whose
-            // element is stale after a zone change → it simply drops out. No projection → no jitter.
-            _lootTagFrame.Clear();
-            foreach (var s in lt.Specs)
-            {
-                if (!_liveRender.TryUiElementRect(s.El, _window.Width, _window.Height, out var rx, out var ry, out var rw, out var rh, requireFirstLine: s.TagText)) continue;
-                _lootTagFrame.Add(new LootTagLabel(rx, ry, rw, rh, s.Value, s.Highlight));
-            }
-
             // Atlas marks/routes: re-read each node's live RelativePos this frame so the rings + route lines
             // track the atlas pan at full FPS (the world walk only refreshes baked positions ~30 Hz). Cheap —
             // only the handful of DRAWN marks + route points, one atomic 8-byte read each; a stale/closed node
@@ -932,7 +819,7 @@ public sealed class RadarApp : IDisposable
                 }
             }
         }
-        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_lootTagFrame.Count > 0) _lootTagFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); }
+        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); }
 
         // Zone-load guard: the world snapshot lags the live chain by up to one world pass, so right after a
         // zone change its entities/terrain/route still belong to the PREVIOUS area. Only draw them once the
@@ -1026,9 +913,6 @@ public sealed class RadarApp : IDisposable
             RuneLabels: rr.Open ? rr.Labels : null,
             // Ritual tribute-shop reward prices (screen-space; only when the shop is open).
             RitualRewards: rit.Open ? rit.Labels : null,
-            // Loot-tag value chips (screen-space; rects re-read live each frame, so no zone-load gate needed —
-            // a stale element just fails the rect read and drops out).
-            LootTags: _lootTagFrame.Count > 0 ? _lootTagFrame : null,
             // Runeshape monoliths: value-coloured map markers + nearby reward panel (world-space).
             Monoliths: monoliths,
             ShowMonolithPanel: _settings.Monoliths.ShowPanel);
@@ -1126,8 +1010,7 @@ public sealed class RadarApp : IDisposable
         // immutable list so the render thread can read it lock-free off the published snapshot.
         var hpSpecs = BuildHpSpecs();
 
-        // Resolve + price unique ground drops (art basename → name + ex value) for the loot overlay.
-        _priceBook.RefreshIfDue();
+        // Name labels for already-named ground drops (read-only; no economy lookups).
         var itemLabels = BuildItemLabels();
 
         // Atlas F10 route — ReadNodes is cheap when the atlas is closed (it gates on the atlas
@@ -1139,10 +1022,6 @@ public sealed class RadarApp : IDisposable
         // visible-gate step). Publishes its own _runeRender bundle.
         UpdateRuneforge(inGameState);
         UpdateRitualRewards(inGameState);
-
-        // Loot-tag value chips — throttled, invisible-subtree-pruned UI scan; matches tag text → price.
-        // Publishes its own _lootTags bundle (render thread re-reads each tag's live rect).
-        UpdateLootTags(inGameState);
 
         // Runeshape monolith rewards — resolve each in-world monolith device + price its offered rewards
         // (area-wide, before the panel is opened). Publishes its own _monoRender bundle.
@@ -1297,78 +1176,15 @@ public sealed class RadarApp : IDisposable
     {
         var labels = new List<ItemLabelSpec>();
         var cfg = _settings.GroundItems;
-        if (!cfg.Enabled || !_priceBook.IsLoaded) return labels;
-        // User-enabled value categories (group keys). Empty ⇒ nothing shows.
-        var enabled = cfg.Categories is { Count: > 0 }
-            ? new HashSet<string>(cfg.Categories, StringComparer.OrdinalIgnoreCase) : null;
-        if (enabled is null) return labels;
+        if (!cfg.Enabled) return labels;
         foreach (var e in _entities)
         {
-            // Needs at least an art (uniques) or a rendered name (everything else) to resolve.
-            if (e.ItemArt is not { Length: > 0 } && e.ItemName is not { Length: > 0 }) continue;
-
-            // RESOLVE by the rendered base NAME for everything EXCEPT uniques. Currency/runes/essences share
-            // one .dds art across tiers, so art mis-prices them (a plain Exalted read as Perfect's 678ex);
-            // the exact name does not. UNIQUES use art — each unique has its own icon (no collision) AND an
-            // unidentified unique's name is hidden by the game, so art is the only key that works for them.
-            var isUnique = e.Rarity == Poe2Live.Rarity.Unique;
-            // When values are anchored to the game's loot tags, the world-projected label is reserved for
-            // UNIDENTIFIED uniques only — the game hides their name, so there's no tag text to match. Every
-            // other priced drop (currency/runes/essences/identified uniques) is drawn on its loot tag in
-            // UpdateLootTags instead, so skip it here to avoid a double label.
-            if (cfg.AnchorValuesToTags && !(isUnique && !e.ItemIdentified)) continue;
-            var lookup = isUnique
-                ? _priceBook.TryByArt(e.ItemArt)
-                : (e.ItemName is { Length: > 0 } nm ? _priceBook.TryByName(nm) : null);
-            if (lookup is not { } pr) continue;
-            if (cfg.MinQuantity > 0 && pr.Quantity < cfg.MinQuantity) continue; // skip low-confidence mislistings
-            var group = CategoryGroup(pr.Category);
-            if (!enabled.Contains(group)) continue;                 // category group toggled off
-            if (pr.Exalted < GroundFloor(group)) continue;          // below this bucket's value floor (Unique/Currency/Other)
+            if (e.ItemName is not { Length: > 0 } name) continue;   // name comes from game memory only
             if (!_live.TryBarComponents(e.Address, out var render, out _)) continue;
-            // Reveal the NAME only for an UNIDENTIFIED unique (the game's tag hides it). Everything else —
-            // identified uniques, currency, runes, essences, … — draws a value-only chip over the drop.
-            var showName = isUnique && !e.ItemIdentified;
-            labels.Add(new ItemLabelSpec(render, pr.Name, _priceBook.Format(pr.Exalted), pr.Exalted >= cfg.HighlightMinEx, ShowName: showName));
+            labels.Add(new ItemLabelSpec(render, name, "", false, ShowName: true));
         }
         return labels;
     }
-
-    /// <summary>Map a PriceBook category (the poe.ninja overview TYPE string — "Currency", "UniqueWeapons",
-    /// "SoulCores", …) to the user-facing ground-item GROUP key (<see cref="GroundItemSettings.Categories"/>).
-    /// The unique sub-types collapse to "Uniques"; the rest pass through. (Earlier this switched on poe2scout's
-    /// lowercase names and so returned "Other" for every poe.ninja type — the bug that hid all non-uniques.)</summary>
-    private static string CategoryGroup(string category)
-    {
-        if (category.StartsWith("Unique", StringComparison.OrdinalIgnoreCase)) return "Uniques";
-        return category switch
-        {
-            "PrecursorTablets" => "Tablets",
-            "Currency"   => "Currency",
-            "Runes"      => "Runes",
-            "SoulCores"  => "SoulCores",
-            "Essences"   => "Essences",
-            "Fragments"  => "Fragments",
-            "UncutGems"  => "UncutGems",
-            "Delirium"   => "Delirium",
-            "Breach"     => "Breach",
-            "Ritual"     => "Ritual",
-            "Abyss"      => "Abyss",
-            "Expedition" => "Expedition",
-            "Verisium"   => "Verisium",
-            "Idols"      => "Idols",
-            "LineageSupportGems" => "Gems",
-            _ => "Other",
-        };
-    }
-
-    /// <summary>The Exalted value FLOOR for a group, from its threshold bucket (Uniques / Currency / Other).</summary>
-    private double GroundFloor(string group) => group switch
-    {
-        "Uniques"  => _settings.GroundItems.UniqueMinEx,
-        "Currency" => _settings.GroundItems.CurrencyMinEx,
-        _          => _settings.GroundItems.OtherMinEx,
-    };
 
     /// <summary>Parse a "#RRGGBB" hex colour to packed 0xFFRRGGBB once (opacity = 1, matching the old
     /// per-frame ParseColor(hex, 1f) for HP bars). Falls back to opaque white on a malformed string.</summary>

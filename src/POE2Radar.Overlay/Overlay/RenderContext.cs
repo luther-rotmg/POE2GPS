@@ -67,10 +67,6 @@ public readonly record struct RitualLabel(float X, float Y, float W, float H, st
 /// <see cref="W"/>/<see cref="H"/> are the tag's live SCREEN rect (game-computed via
 /// <c>Poe2Live.TryUiElementRect</c> → no world projection, no jitter, perfectly aligned); the renderer
 /// draws <see cref="Value"/> just past the right edge, with a border when <see cref="Highlight"/>. The match
-/// is made at world rate (the tag's text == the item name == the price key); the rect is re-read every
-/// render frame so the chip tracks the tag as the player moves.</summary>
-public readonly record struct LootTagLabel(float X, float Y, float W, float H, string Value, bool Highlight);
-
 /// <summary>One reward a runeshape monolith will offer (computed BEFORE the panel is opened, from the
 /// device→station read + offline catalog). <see cref="Ex"/> is the priced full-stack value in Exalted
 /// (0 = unpriced); <see cref="Runes"/> is the rune pattern (for tooltips/detail).</summary>
@@ -182,9 +178,6 @@ public sealed record RenderContext(
     IReadOnlyList<RuneLabel>? RuneLabels = null,
     // Priced ritual tribute-shop reward labels (screen-space; drawn whenever the shop is open).
     IReadOnlyList<RitualLabel>? RitualRewards = null,
-    // Value chips drawn ON the game's own loot tags (screen-space rects, re-read live each frame). Covers
-    // items the game already names; unidentified uniques use the world-projected ItemLabels instead.
-    IReadOnlyList<LootTagLabel>? LootTags = null,
     // Runeshape monoliths to mark on the map (value-coloured icon + N badge + value/reward label) and
     // list in the nearby-monolith panel. World-space (grid). Null/empty → none.
     IReadOnlyList<MonolithMarker>? Monoliths = null,
