@@ -63,10 +63,6 @@ public readonly record struct RuneLabel(float X, float Y, float W, float H, stri
 /// + draws. Drawn whenever the tribute shop is open.</summary>
 public readonly record struct RitualLabel(float X, float Y, float W, float H, string Text, uint Color, bool Highlight);
 
-/// <summary>A value chip drawn ON the game's own loot-tag UI element. <see cref="X"/>/<see cref="Y"/>/
-/// <see cref="W"/>/<see cref="H"/> are the tag's live SCREEN rect (game-computed via
-/// <c>Poe2Live.TryUiElementRect</c> → no world projection, no jitter, perfectly aligned); the renderer
-/// draws <see cref="Value"/> just past the right edge, with a border when <see cref="Highlight"/>. The match
 /// <summary>One reward a runeshape monolith will offer (computed BEFORE the panel is opened, from the
 /// device→station read + offline catalog). <see cref="Ex"/> is the priced full-stack value in Exalted
 /// (0 = unpriced); <see cref="Runes"/> is the rune pattern (for tooltips/detail).</summary>
