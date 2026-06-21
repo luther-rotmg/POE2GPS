@@ -176,8 +176,6 @@ public sealed class RadarApp : IDisposable
     private DateTime _nextPathKeyAt = DateTime.MinValue;
     private DateTime _nextBrowserAt = DateTime.MinValue;
     private float _hpPct = 100f, _manaPct = 100f, _esPct = 100f;
-    private string _charName = "";   // render thread (RadarState.CharName); area code comes from the snapshot
-    private nint _charNameFor;   // local-player ptr the cached _charName was read for (re-read only on change)
     private float[]? _cameraMatrix;
 
     // Render inputs rebuilt at world rate (30 Hz), not per render frame: they only change with the
@@ -743,9 +741,6 @@ public sealed class RadarApp : IDisposable
             player = _liveRender.PlayerGrid(localPlayer) ?? NumVec2.Zero;
             playerWorld = _liveRender.PlayerWorld(localPlayer);   // same Render read PlayerGrid uses; live each frame
             map = _liveRender.ReadMap(inGameState, areaInstance);
-            // Player name reads a StdWString (allocates a string) — read it only when the local-player
-            // pointer changes (i.e. once per session), not every render frame.
-            if (localPlayer != _charNameFor) { _charNameFor = localPlayer; _charName = _liveRender.PlayerName(localPlayer); }
             _cameraMatrix = _liveRender.CameraMatrix(inGameState);
             if (_live.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }
 
@@ -824,7 +819,7 @@ public sealed class RadarApp : IDisposable
 
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
-            snap.AreaCode, _charName, snap.CharLevel, _worldMs, _renderMs, mr.Markers, _fps);
+            snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _fps);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
