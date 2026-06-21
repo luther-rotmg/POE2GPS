@@ -30,6 +30,10 @@ public sealed class RadarSettings
     // The player position blip at map-center. Default on (prior behavior); some prefer it off.
     public bool ShowPlayerBlip { get; set; } = true;
 
+    // Objective Director: when on, auto-select + route to the highest-priority in-zone objective
+    // (catalog-ranked), advancing as objectives complete. Read-only — only changes the nav selection.
+    public bool EnableDirector { get; set; } = false;
+
     // ── Overlay render/present rate (Hz). The overlay redraws + UpdateLayeredWindow-blits at this
     //    rate; lower = less CPU/GPU tax on the game (the blit cost is proportional to resolution).
     //    0 = AUTO: match the refresh rate of the monitor the game is on (re-detected ~1/s) — recommended,

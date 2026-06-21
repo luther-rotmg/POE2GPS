@@ -213,6 +213,8 @@ public sealed class RadarApp : IDisposable
     private readonly List<string> _selectedIds = new();                  // selected target ids (order drives the color slot)
     private List<SelectedPath> _selectedPaths = new();                   // one route per selected target (from trackers)
     private bool _selectionCapWarned;                                    // log the "cap reached" notice once
+    private readonly CampaignObjectives _campaign;
+    private readonly POE2Radar.Core.Campaign.ObjectiveDirector _director = new();
     private nint _navTargetsArea = -1;                                   // AreaInstance the auto-nav was applied for
     // Per-instance nav memory: the nav selection for each AreaInstance hash, so returning to a zone
     // (e.g. after a town trip, which re-resolves a fresh AreaInstance) RESTORES what was selected
@@ -253,6 +255,7 @@ public sealed class RadarApp : IDisposable
         _window.OnClientClick = OnOverlayClick;
         _hidden = new HiddenEntities(Path.Combine(ConfigDir, "hidden_entities.json"));
         _watched = new WatchedEntities(Path.Combine(ConfigDir, "watched_entities.json"));
+        _campaign = new CampaignObjectives(Path.Combine(ConfigDir, "campaign_objectives.json"));
         _landmarkPatterns = new LandmarkPatterns(Path.Combine(ConfigDir, "landmark_patterns.json"));
         _live.CustomLandmarkMatch = TileLandmarkMatch; // surface tiles via landmark patterns + Tile rules
         _landmarkGen = _landmarkPatterns.Generation;
@@ -1018,6 +1021,10 @@ public sealed class RadarApp : IDisposable
         // entity would otherwise keep resolving, so the route would keep pathing to it.
         PruneCompletedTargets();
 
+        // Objective Director: when enabled, rank the zone's catalog objectives and (if the director
+        // owns the selection) route to the top one. Read-only — only edits _selectedIds.
+        if (_settings.EnableDirector) DirectorReconcile(player);
+
         // Per-tick route maintenance (draw-only, NO A* on this thread). For each selected
         // target: cheaply advance its cursor; fire a BACKGROUND replan only on a real trigger.
         // Then drain finished routes and rebuild _selectedPaths from the trackers' cursors.
@@ -1352,7 +1359,7 @@ public sealed class RadarApp : IDisposable
                     if (!_selectedIds.Contains(id)) _selectedIds.Add(id);
                 }
             }
-            else
+            else if (!_settings.EnableDirector)
             {
                 // First visit to this instance: auto-select every target whose display rule opted into
                 // auto-pathing (the per-rule "Auto-path" flag), capped so colors/planning stay bounded.
@@ -1363,12 +1370,35 @@ public sealed class RadarApp : IDisposable
                         _selectedIds.Add(t.Id);
                 }
             }
+            // else: the Objective Director owns auto-selection this zone (DirectorReconcile, WorldTick).
             count = _selectedIds.Count;
         }
+        _director.ResetZone();
         _selectedPaths = new List<SelectedPath>();
 
         if (count > 0)
             Console.WriteLine($"\nNav: {(restored ? "restored" : "auto-selected")} {count} target(s) on zone change.");
+    }
+
+    /// <summary>
+    /// Rank the catalog objectives present in the current zone and, when the director owns the
+    /// selection (empty or exactly its last active id), set the route to the single top objective.
+    /// Reuses the existing id-selection → routing pipeline; never builds a path itself. Read-only.
+    /// </summary>
+    private void DirectorReconcile(NumVec2 player)
+    {
+        var ranked = _campaign.Rank(_entities, _landmarks, player);
+        lock (_navLock)
+        {
+            var decision = _director.Decide(ranked, _selectedIds);
+            if (decision.ChangeSelection)
+            {
+                _selectedIds.Clear();
+                _selectionCapWarned = false;
+                if (decision.DesiredActiveId != null) _selectedIds.Add(decision.DesiredActiveId);
+            }
+        }
+        // The ranked queue lives in _director.Queue; Task 5 publishes it to a field for the dashboard.
     }
 
     /// <summary>
