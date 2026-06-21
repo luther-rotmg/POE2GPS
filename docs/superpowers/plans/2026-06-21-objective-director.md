@@ -699,9 +699,8 @@ After `public bool ShowPlayerBlip { get; set; } = true;` add:
 ```csharp
     private readonly CampaignObjectives _campaign;
     private readonly POE2Radar.Core.Campaign.ObjectiveDirector _director = new();
-    private volatile IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective> _directorQueue =
-        Array.Empty<POE2Radar.Core.Campaign.RankedObjective>();
 ```
+(The `_directorQueue` publish field is added in Task 5, where it is read — adding it here would be an assigned-but-never-read field and fail the build under `TreatWarningsAsErrors`.)
 
 - [ ] **Step 3: Construct the store in the ctor** (`RadarApp.cs`, after the `_watched = new WatchedEntities(...)` line ~256)
 
@@ -779,14 +778,14 @@ Then, immediately after the `lock (_navLock) { ... }` block in `OnAreaChanged` (
                 if (decision.DesiredActiveId != null) _selectedIds.Add(decision.DesiredActiveId);
             }
         }
-        _directorQueue = _director.Queue; // for the dashboard (published via RadarState in Task 5)
+        // The ranked queue lives in _director.Queue; Task 5 publishes it to a field for the dashboard.
     }
 ```
 
 - [ ] **Step 7: Build + gate**
 
 Run: `dotnet build POE2Radar.slnx`
-Expected: 0W/0E. (`_directorQueue` is written but not yet read — that's fine; it's `volatile` and consumed in Task 5. If the warnings-as-errors flags it as unused, Task 5 immediately consumes it; if a build is committed between, suppress is unnecessary because a `volatile` field assignment is a use. Verify the build is clean before committing.)
+Expected: 0W/0E. (The ranked queue is held in `_director.Queue`; it isn't published to a field until Task 5, so there is no assigned-but-never-read field here.)
 Run: `powershell -ExecutionPolicy Bypass -File scripts/compliance-gate.ps1`
 Expected: PASS (no input/write symbols added).
 
@@ -807,7 +806,7 @@ git commit -m "feat(director): wire director into WorldTick + gate AutoPath when
 - Modify: `src/POE2Radar.Overlay/Web/DashboardHtml.cs` (settings card 508-524; sidebar ~390-393; renderState ~1318-1333)
 
 **Interfaces:**
-- Consumes: `_directorQueue` (Task 4), `EnableDirector` (Task 4).
+- Consumes: `_director.Queue` + `EnableDirector` (Task 4). Declares + publishes the `_directorQueue` field here (where it is first read).
 
 - [ ] **Step 1: Add `Director` to the `RadarState` record** (`ApiServer.cs`, after the `Monoliths` optional param, before `float Fps = 0`)
 
@@ -818,9 +817,22 @@ git commit -m "feat(director): wire director into WorldTick + gate AutoPath when
 
 (It's optional/defaulted, so `RadarState.Empty` needs no change. Place it before `float Fps = 0` to keep `Fps` last, matching the existing construction-site order.)
 
-- [ ] **Step 2: Pass it at the construction site** (`RadarApp.cs:820-822`)
+- [ ] **Step 2: Declare + publish the queue field, then pass it at the construction site** (`RadarApp.cs`)
 
-Change:
+First add the publish field next to `_director` (~line 215):
+
+```csharp
+    private volatile IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective> _directorQueue =
+        Array.Empty<POE2Radar.Core.Campaign.RankedObjective>();
+```
+
+Then publish the ranked queue at the end of `DirectorReconcile` (replacing the Task-4 placeholder comment after the `lock` block):
+
+```csharp
+        _directorQueue = _director.Queue;
+```
+
+Then change the `_state = new RadarState(...)` construction (820-822):
 
 ```csharp
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
