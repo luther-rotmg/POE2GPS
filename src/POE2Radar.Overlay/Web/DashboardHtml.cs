@@ -578,8 +578,8 @@ internal static class DashboardHtml
             <div class="row"><div class="rl hint-row">Adjust here &mdash; changes apply live (no in-game hotkeys).</div></div>
           </div>
           <div class="card">
-            <h3>Ground Item Pricing <span class="tag">&middot; poe.ninja</span></h3>
-            <div class="row"><div class="rl">Enabled<small>draw value labels over dropped items</small></div>
+            <h3>Ground Item Labels</h3>
+            <div class="row"><div class="rl">Enabled<small>draw name labels</small></div>
               <label class="sw"><input type="checkbox" data-gi="enabled"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl hint-row">Show a label for these categories:</div></div>
             <div class="chips" id="giCats">
@@ -598,20 +598,6 @@ internal static class DashboardHtml
               <span class="chip" data-gicat="Breach">Breach</span>
               <span class="chip" data-gicat="Expedition">Expedition</span>
             </div>
-            <div class="row"><div class="rl hint-row">Minimum value to show, per bucket (Ex):</div></div>
-            <div class="row"><div class="rl">Uniques min<small>hide uniques under this (Ex)</small></div>
-              <input class="numin" type="number" step="0.1" min="0" data-gi="uniqueMinEx"></div>
-            <div class="row"><div class="rl">Currency min<small>hide currency under this (Ex)</small></div>
-              <input class="numin" type="number" step="0.1" min="0" data-gi="currencyMinEx"></div>
-            <div class="row"><div class="rl">Other min<small>runes / essences / fragments / … (Ex)</small></div>
-              <input class="numin" type="number" step="0.1" min="0" data-gi="otherMinEx"></div>
-            <div class="row"><div class="rl">Highlight threshold<small>border/emphasis at or above this value (Ex)</small></div>
-              <input class="numin" type="number" step="1" min="0" data-gi="highlightMinEx"></div>
-            <div class="row"><div class="rl">Min listing quantity<small>skip low-confidence mislistings</small></div>
-              <input class="numin" type="number" step="1" min="0" data-gi="minQuantity"></div>
-            <div class="row"><div class="rl">League<small>blank = auto-detect current</small></div>
-              <input class="numin" type="text" data-gi="league" style="width:150px"></div>
-            <div class="row"><div class="rl hint-row">Unidentified uniques reveal their NAME + value; everything else (identified uniques, currency, runes, essences, …) shows the value only.</div></div>
           </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
@@ -668,7 +654,7 @@ async function loadSettings(){
   }catch(e){}
 }
 
-/* ── ground-item pricing (nested object: POST the whole {groundItems}) ── */
+/* ── ground-item labels (nested object: POST the whole {groundItems}) ── */
 let gi = null;
 function renderGround(){
   if(!gi) return;

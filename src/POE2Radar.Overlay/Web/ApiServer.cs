@@ -52,8 +52,6 @@ public sealed class ApiServer : IDisposable
     // Persistent catalog of every monster affix-mod id ever seen — the vocabulary the rule editor
     // browses to author a Mods matcher. Read-only provider supplied by RadarApp.
     private readonly Func<IReadOnlyList<string>> _knownMods;
-    // PriceBook status provider ({league, count, status, exPerDivine, exPerChaos}) for the dashboard.
-    private readonly Func<object>? _prices;
     // Atlas map-data provider (catalog + current-region map set). Read-only, computed on demand (it
     // scans memory + caches), returns a JSON-ready object. Null when atlas reading is unavailable.
     private readonly Func<object>? _atlas;
@@ -78,7 +76,6 @@ public sealed class ApiServer : IDisposable
         LandmarkStore landmarkStore,
         Func<IReadOnlyList<string>> tilesProvider,
         Func<IReadOnlyList<string>> knownModsProvider,
-        Func<object>? pricesProvider = null,
         Func<object>? atlasProvider = null,
         Action<IReadOnlyList<long>>? atlasSelect = null,
         Action<IReadOnlyList<(string tag, string color, bool track, bool nav, bool arrow)>>? atlasHighlight = null,
@@ -99,7 +96,6 @@ public sealed class ApiServer : IDisposable
         _landmarkStore = landmarkStore;
         _tiles = tilesProvider;
         _knownMods = knownModsProvider;
-        _prices = pricesProvider;
         _listener.Prefixes.Add($"http://localhost:{port}/");
     }
 
@@ -329,11 +325,6 @@ public sealed class ApiServer : IDisposable
                 // Every monster affix-mod id ever seen (persistent catalog) — the add-rule picker browses
                 // these so a Mods matcher can target any known aura/buff. Read-only.
                 Write(ctx, 200, JsonSerializer.Serialize(new { mods = _knownMods() }, Json));
-                break;
-
-            case "/api/prices":
-                // PriceBook status — league, loaded count, rates, last fetch (dashboard ground-item panel).
-                Write(ctx, 200, JsonSerializer.Serialize(_prices?.Invoke() ?? new { loaded = false, status = "pricing unavailable" }, Json));
                 break;
 
             case "/api/version":
@@ -644,12 +635,6 @@ public sealed class ApiServer : IDisposable
         {
             var parsed = JsonSerializer.Deserialize<GroundItemSettings>(el.GetRawText(), Json);
             if (parsed == null) return false;
-            parsed.HighlightMinEx = Math.Max(0, parsed.HighlightMinEx);
-            parsed.UniqueMinEx = Math.Max(0, parsed.UniqueMinEx);
-            parsed.CurrencyMinEx = Math.Max(0, parsed.CurrencyMinEx);
-            parsed.OtherMinEx = Math.Max(0, parsed.OtherMinEx);
-            parsed.MinQuantity = Math.Clamp(parsed.MinQuantity, 0, 100000);
-            parsed.League = (parsed.League ?? "").Trim();
             parsed.Categories = (parsed.Categories ?? new())
                 .Where(c => !string.IsNullOrWhiteSpace(c)).Distinct(StringComparer.OrdinalIgnoreCase).Take(32).ToList();
             g = parsed;

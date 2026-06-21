@@ -355,13 +355,6 @@ public sealed class TerrainSettings
     public float EdgeOpacity { get; set; } = 0.706f;      // → 180/255
 }
 
-/// <summary>
-/// Ground-item value overlay: draws a dropped UNIQUE's resolved name + Exalted price over its in-world
-/// loot icon (so unidentified uniques reveal what they are), with a border when the value clears
-/// <see cref="HighlightMinEx"/>. Prices come from the PriceBook (poe.ninja). <see cref="League"/> blank =
-/// auto-detect the current league; set it to override. <see cref="MinQuantity"/> filters low-volume
-/// mislistings out of the overlay.
-/// </summary>
 public sealed class MonolithSettings
 {
     public bool Enabled { get; set; } = true;
@@ -377,21 +370,7 @@ public sealed class MonolithSettings
 public sealed class GroundItemSettings
 {
     public bool Enabled { get; set; } = true;
-    public double HighlightMinEx { get; set; } = 10.0;   // border/emphasis when value ≥ this many Exalted
-    // Per-bucket value FLOORS (Exalted): a drop is labelled only if its value clears the floor for its
-    // bucket. Uniques / Currency / everything-else are tuned separately because their value scales differ.
-    public double UniqueMinEx { get; set; } = 5.0;       // uniques floor
-    public double CurrencyMinEx { get; set; } = 1.0;     // currency floor
-    public double OtherMinEx { get; set; } = 1.0;        // floor for everything else (runes/essences/fragments/…)
-    public int MinQuantity { get; set; } = 2;            // skip listings with fewer than N for sale (confidence)
-    public string League { get; set; } = "";             // blank = auto-detect current league
-    // Draw the value chip ON the game's own loot tag (game-computed rect → no projection, no jitter) for
-    // everything the game already names (currency/runes/essences/fragments/identified uniques), matched by
-    // the tag's text. UNIDENTIFIED uniques (name hidden by the game) always use the world-projected reveal.
-    // When false, every priced drop uses the older world-projected chip (the pre-tag behavior).
-    public bool AnchorValuesToTags { get; set; } = true;
-    // Which item-value category GROUPS get a ground label (see RadarApp.CategoryGroup). Default: uniques +
-    // the high-value stackables. Empty list ⇒ nothing shows.
+    // Which item categories get a ground name label. Empty list ⇒ nothing shows.
     public List<string> Categories { get; set; } = new()
     {
         "Uniques", "Currency", "Runes", "SoulCores", "Essences", "Fragments",

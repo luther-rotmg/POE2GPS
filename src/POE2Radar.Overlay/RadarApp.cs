@@ -48,12 +48,10 @@ public sealed class RadarApp : IDisposable
     private Func<string, DisplayRule?>? _resolveTileDraw;
     private readonly LandmarkStore _landmarkStore;
     private readonly ModCatalog _modCatalog;
-    private readonly Pricing.PriceBook _priceBook;
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
     private int _appliedClusterGap;
-    private string _appliedLeague = "";
     private nint _areaInstanceForApi;   // current AreaInstance, for the /api/tiles tile-path lookup
     private nint _inGameStateForApi;    // current InGameState, for the /api/atlas node read
     private volatile RadarState _state = RadarState.Empty;
@@ -485,11 +483,9 @@ public sealed class RadarApp : IDisposable
         _live.CuratedLookup = _landmarkStore.Lookup;
         _landmarkStoreGen = _landmarkStore.Generation;
         _modCatalog = new ModCatalog(Path.Combine(ConfigDir, "known_mods.json"));
-        _priceBook = new Pricing.PriceBook(Path.Combine(ConfigDir, "price_cache.json"), _settings.GroundItems.League);
-        _priceBook.RefreshIfDue(); // kick a background fetch on startup if the cache is stale
         Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
-                             _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All, PricesJson, AtlasJson, SetAtlasSelection,
+                             _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All, AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, _settings.ApiPort);
         try { _api.Start(); Console.WriteLine($"API on http://localhost:{_settings.ApiPort} (dashboard at /)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
@@ -511,18 +507,6 @@ public sealed class RadarApp : IDisposable
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.
     /// Lets the dashboard show an "update available" banner. Null-ish until the async check completes.</summary>
-    /// <summary>PriceBook status for the dashboard ground-item panel.</summary>
-    private object PricesJson() => new
-    {
-        loaded = _priceBook.IsLoaded,
-        league = _priceBook.League,
-        count = _priceBook.ItemCount,
-        exPerDivine = _priceBook.ExPerDivine,
-        exPerChaos = _priceBook.ExPerChaos,
-        lastFetchUtc = _priceBook.LastFetchUtc,
-        status = _priceBook.Status,
-    };
-
     private object VersionJson()
     {
         var u = _update;
@@ -996,12 +980,6 @@ public sealed class RadarApp : IDisposable
             _appliedClusterGap = _settings.LandmarkClusterGap;
             _live.LandmarkClusterGap = _appliedClusterGap;
             _live.InvalidateLandmarks();
-        }
-        // Live-apply a changed price league (dashboard/config edit) → re-fetch for that league.
-        if (_settings.GroundItems.League != _appliedLeague)
-        {
-            _appliedLeague = _settings.GroundItems.League;
-            _priceBook.SetLeagueOverride(_appliedLeague);
         }
         _landmarks = _live.Landmarks(areaInstance); // cached per area in Poe2Live
 
