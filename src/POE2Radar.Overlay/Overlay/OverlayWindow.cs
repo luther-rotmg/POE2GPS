@@ -81,8 +81,13 @@ public sealed class OverlayWindow : IDisposable
         return ow;
     }
 
+    private string _className = "POE2RadarOverlay";
+
     private void Initialize()
     {
+        // Opt-in (--stealth): randomize the window class + title so they carry no identifying tokens.
+        if (Stealth.Enabled)
+            _className = "wc_" + Path.GetRandomFileName().Replace(".", "");
         _hInstance = OverlayNative.GetModuleHandleW(null);
         _wndProcDelegate = WndProc;
         RegisterWindowClass();
@@ -136,7 +141,7 @@ public sealed class OverlayWindow : IDisposable
 
     private unsafe void RegisterWindowClass()
     {
-        var className = "POE2RadarOverlay\0";
+        var className = _className + "\0";
         fixed (char* pName = className)
         {
             var wc = new OverlayNative.WNDCLASSEXW
@@ -159,10 +164,11 @@ public sealed class OverlayWindow : IDisposable
                     | OverlayNative.WS_EX_NOACTIVATE
                     | OverlayNative.WS_EX_TOOLWINDOW;
 
+        var wndTitle = Stealth.Enabled ? "wt_" + Path.GetRandomFileName().Replace(".", "") : "POE2RadarOverlay";
         _hwnd = OverlayNative.CreateWindowExW(
             exStyle,
-            "POE2RadarOverlay",
-            "POE2RadarOverlay",
+            _className,
+            wndTitle,
             OverlayNative.WS_POPUP | OverlayNative.WS_VISIBLE,
             0, 0, 800, 600,
             0, 0, _hInstance, 0);
