@@ -10,13 +10,18 @@ dotnet publish "$root/src/POE2Radar.Overlay/POE2Radar.Overlay.csproj" `
     -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=true `
     -p:IncludeNativeLibrariesForSelfExtract=true `
-    -p:EnableCompressionInSingleFile=true `
+    -p:EnableCompressionInSingleFile=false `
     -p:DebugType=none -p:DebugSymbols=false `
     -p:Deterministic=true -p:ContinuousIntegrationBuild=true `
     -o "$root/publish"
 
 # Belt-and-suspenders: never ship .pdb (they embed the build path / dev username).
 Remove-Item "$root/publish/*.pdb" -Force -ErrorAction SilentlyContinue
+
+# Identity hygiene: same-length scrub of credit/URL tokens baked into the published exe.
+# (Compression is disabled above so the scrub can reach managed strings inside the bundle.)
+& "$PSScriptRoot/scripts/scrub-strings.ps1" -ExePath "$root/publish/Overlay.exe"
+if ($LASTEXITCODE -ne 0) { throw "string-scrub failed" }
 
 Copy-Item "$root/README.md", "$root/LICENSE" "$root/publish/" -Force
 $zip = "$root/POE2Radar-$Version-win-x64.zip"
