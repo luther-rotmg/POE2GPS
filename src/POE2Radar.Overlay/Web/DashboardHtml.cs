@@ -377,7 +377,6 @@ internal static class DashboardHtml
       <div class="kv"><span>Area code</span><span id="kArea">—</span></div>
       <div class="kv"><span>Act / Level</span><span id="kAlvl">—</span></div>
       <div class="kv"><span>Map open</span><span id="kMap">—</span></div>
-      <div class="kv"><span>Auto-flask</span><span id="kFlask">—</span></div>
       <div id="zoneNotes" class="znotes" hidden></div>
 
       <div class="sect">Census</div>
@@ -512,7 +511,7 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="showTerrain"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Show player blip<small>blue dot marking your own position</small></div>
               <label class="sw"><input type="checkbox" data-set="showPlayerBlip"><span class="track"></span><span class="knob"></span></label></div>
-            <div class="row"><div class="rl">Always show overlay<small>draw even when PoE2 isn&rsquo;t focused (e.g. while tweaking this dashboard); auto-flask stays focus-gated</small></div>
+            <div class="row"><div class="rl">Always show overlay<small>draw even when PoE2 isn&rsquo;t focused (e.g. while tweaking this dashboard)</small></div>
               <label class="sw"><input type="checkbox" data-set="alwaysShowOverlay"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Hide junk entities<small>suppress cosmetic / FX / daemon dots</small></div>
               <label class="sw"><input type="checkbox" data-set="hideJunk"><span class="track"></span><span class="knob"></span></label></div>
@@ -577,30 +576,6 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Offset X</div><input class="numin" type="number" step="1" data-set="offX"></div>
             <div class="row"><div class="rl">Offset Y</div><input class="numin" type="number" step="1" data-set="offY"></div>
             <div class="row"><div class="rl hint-row">Adjust here &mdash; changes apply live (no in-game hotkeys).</div></div>
-          </div>
-          <div class="card">
-            <h3>Auto-Flask</h3>
-            <div class="row"><div class="rl">Life flask triggers on<small>which pool the life flask key watches &mdash; ES is ignored if your build has none</small></div>
-              <select class="numin selin" data-set="lifeFlaskMode">
-                <option value="Health">Health %</option>
-                <option value="EnergyShield">Energy Shield %</option>
-                <option value="Either">Either (HP or ES)</option>
-              </select></div>
-            <div class="row"><div class="rl">Life threshold %<small>tap life flask below this Life %</small></div>
-              <input class="numin" type="number" step="1" min="0" max="100" data-set="lifeThresholdPct"></div>
-            <div class="row"><div class="rl">ES threshold %<small>tap life flask below this Energy Shield % (ES / Either modes)</small></div>
-              <input class="numin" type="number" step="1" min="0" max="100" data-set="esThresholdPct"></div>
-            <div class="row"><div class="rl">Mana threshold %<small>tap mana flask below this Mana %</small></div>
-              <input class="numin" type="number" step="1" min="0" max="100" data-set="manaThresholdPct"></div>
-            <div class="row"><div class="rl">Life flask key</div>
-              <input class="numin keyin" type="text" maxlength="1" data-set="lifeKey"></div>
-            <div class="row"><div class="rl">Mana flask key</div>
-              <input class="numin keyin" type="text" maxlength="1" data-set="manaKey"></div>
-            <div class="row"><div class="rl">Life cooldown<small>min ms between life taps</small></div>
-              <input class="numin" type="number" step="100" min="0" data-set="lifeCooldownMs"></div>
-            <div class="row"><div class="rl">Mana cooldown<small>min ms between mana taps</small></div>
-              <input class="numin" type="number" step="100" min="0" data-set="manaCooldownMs"></div>
-            <div class="row"><div class="rl hint-row">F8 toggles auto-flask in-game. Status: <span id="flaskState">&mdash;</span></div></div>
           </div>
           <div class="card">
             <h3>Ground Item Pricing <span class="tag">&middot; poe.ninja</span></h3>
@@ -677,14 +652,13 @@ async function tick(){
   }catch(e){ setConn(false); }
 }
 
-/* ── settings tab (writes radar/visual + flask via the loopback-gated /api/settings) ── */
+/* ── settings tab (writes radar/visual settings via the loopback-gated /api/settings) ── */
 async function loadSettings(){
   try{
     const s = await getJSON('/api/settings');
     $$('[data-set]').forEach(el=>{
       const k=el.dataset.set;
       if(el.type==='checkbox') el.checked=!!s[k];
-      else if(el.classList.contains('keyin')) el.value=vkToChar(s[k]);
       else if(s[k]!==undefined) el.value=s[k];
     });
     hpBars = s.hpBars || null;
@@ -731,15 +705,10 @@ function wireSettings(){
   $$('[data-set]').forEach(el=>{
     const k=el.dataset.set;
     if(el.type==='checkbox') el.onchange=()=>saveSetting(k,el.checked);
-    else if(el.classList.contains('keyin')) el.onchange=()=>{ const vk=charToVk(el.value); if(vk) saveSetting(k,vk); el.value=vkToChar(vk); };
-    else if(el.tagName==='SELECT') el.onchange=()=>saveSetting(k,el.value); // string value (e.g. flask mode)
+    else if(el.tagName==='SELECT') el.onchange=()=>saveSetting(k,el.value);
     else el.onchange=()=>{ const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v); };
   });
 }
-// Flask key inputs accept a single character ('1'-'9', letters) → Win32 VK (== ASCII of uppercase).
-const charToVk = s => { const c=(s||'').trim().toUpperCase().charCodeAt(0); return isNaN(c)?0:c; };
-const vkToChar = v => v ? String.fromCharCode(v) : '';
-
 /* ── icon / HP-bar / mechanics editors (nested objects: POST the whole {styles}/{hpBars}) ── */
 let styles=null, hpBars=null, terrain=null;
 const ICON_KEYS=[
@@ -1354,8 +1323,6 @@ function renderState(){
   const act=s.areaAct||0;
   $('#kAlvl').textContent=(act?'Act '+act+' · ':'')+(s.areaLevel?('lvl '+s.areaLevel):'—');
   $('#kMap').textContent=s.mapVisible?'yes':'no';
-  $('#kFlask').textContent=(s.autoFlask?'on':'off')+(s.flask?' · '+s.flask:'');
-  const fs=$('#flaskState'); if(fs) fs.textContent=(s.autoFlask?'ON':'OFF')+(s.flask?' · '+s.flask:'');
   $('#cEnt').textContent=s.entityCount||0;
   $('#cPoi').textContent=s.poiCount||0;
   $('#cMon').textContent=(s.counts&&s.counts.Monster)||0;

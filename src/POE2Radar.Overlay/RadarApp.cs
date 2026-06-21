@@ -4,7 +4,6 @@ using NumVec2 = System.Numerics.Vector2;
 using POE2Radar.Core;
 using POE2Radar.Core.Game;
 using POE2Radar.Overlay.Config;
-using POE2Radar.Overlay.Input;
 using POE2Radar.Overlay.Native;
 using POE2Radar.Overlay.Navigation;
 using POE2Radar.Overlay.Web;
@@ -187,15 +186,10 @@ public sealed class RadarApp : IDisposable
     private nint _gameHwnd;
     private volatile bool _shutdown;
 
-    // ── Auto-flask (opt-in input). Foreground + in-game gated; F8 master kill-switch.
-    //    Flask keys are configurable in RadarSettings (LifeKey/ManaKey). ──
-    private bool _autoFlask = true;                        // auto-on; toggle with F8
-    private DateTime _lifeFiredAt = DateTime.MinValue, _manaFiredAt = DateTime.MinValue;
-    private DateTime _nextToggleAt = DateTime.MinValue;
+    // ── Read-only player vitals readout (HP/Mana/ES) for the HUD + dashboard. ──
     private DateTime _nextPathKeyAt = DateTime.MinValue;
     private DateTime _nextBrowserAt = DateTime.MinValue;
     private float _hpPct = 100f, _manaPct = 100f, _esPct = 100f;
-    private string _flaskNote = "";
     private string _charName = "";   // render thread (RadarState.CharName); area code comes from the snapshot
     private nint _charNameFor;   // local-player ptr the cached _charName was read for (re-read only on change)
     private float[]? _cameraMatrix;
@@ -512,7 +506,7 @@ public sealed class RadarApp : IDisposable
         try { _api.Start(); Console.WriteLine($"API on http://localhost:{_settings.ApiPort} (dashboard at /)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         Console.WriteLine("Hotkeys: F6=add nearest path target  F7=clear path targets  "
-                          + "F8=auto-flask  F9=quit  F12=open dashboard");
+                          + "F9=quit  F12=open dashboard");
         Console.WriteLine("         F10 (Atlas open) = inspect hovered tile (dumps map name + code + content"
                           + " to console for web-UI filters) and set route START->END (3rd press resets)");
         // Best-effort version check against GitHub (non-blocking; never fails startup).
@@ -834,7 +828,7 @@ public sealed class RadarApp : IDisposable
     }
 
     /// <summary>One RENDER frame (render thread): fast per-frame reads on the render reader stack
-    /// (player/vitals/camera/map + auto-flask + HP-bar live pos), then draw from the lock-free world
+    /// (player/vitals/camera/map + HP-bar live pos), then draw from the lock-free world
     /// snapshot. The heavy walk is on <see cref="WorldLoop"/>.</summary>
     private void Tick()
     {
@@ -872,7 +866,7 @@ public sealed class RadarApp : IDisposable
             // pointer changes (i.e. once per session), not every render frame.
             if (localPlayer != _charNameFor) { _charNameFor = localPlayer; _charName = _liveRender.PlayerName(localPlayer); }
             _cameraMatrix = _liveRender.CameraMatrix(inGameState);
-            TickAutoFlask(localPlayer);
+            if (_live.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }
 
             // Refresh each HP-bar mob's live position + HP from the world tick's spec (which captured the
             // mob's Render/Life component addresses) using the RENDER reader — so bars track moving mobs
@@ -958,7 +952,7 @@ public sealed class RadarApp : IDisposable
             ? mr.Markers : (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>();
 
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
-            snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct, _autoFlask, _flaskNote,
+            snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
             snap.AreaCode, _charName, snap.CharLevel, _worldMs, _renderMs, mr.Markers, _fps);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
@@ -983,7 +977,6 @@ public sealed class RadarApp : IDisposable
             HpPct: _hpPct,
             ManaPct: _manaPct,
             EsPct: _esPct,
-            FlaskNote: _flaskNote,
             AreaCode: snap.AreaCode,
             CharLevel: snap.CharLevel,
             CameraMatrix: _cameraMatrix,
@@ -1389,62 +1382,10 @@ public sealed class RadarApp : IDisposable
         return 0xFFFFFFFFu;
     }
 
-    /// <summary>
-    /// Auto-flask: press the life/mana flask key when the corresponding pool drops below its
-    /// threshold. Hard-gated: enabled + PoE2 is the foreground window + per-flask cooldown.
-    /// The life flask's trigger pool is selectable (LifeFlaskMode): Health%, Energy Shield%, or
-    /// Either — ES is ignored on builds with no ES pool, so "Either" is safe for a pure-life build.
-    /// </summary>
-    private void TickAutoFlask(nint localPlayer)
-    {
-        // No plausible vitals read (Life component missing, or vital offsets drifted past the auto-
-        // relocation's reach): DON'T fire — firing on unknown HP would either spam or never trigger.
-        // Surface it so a post-patch break is visible instead of silently "armed but never fires".
-        if (_live.PlayerVitals(localPlayer) is not { } v)
-        {
-            _flaskNote = "paused (vitals unreadable — offsets may have drifted)";
-            return;
-        }
-        _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct;
-
-        if (!_autoFlask) { _flaskNote = "OFF (F8)"; return; }
-        if (GetForegroundWindow() != _gameHwnd) { _flaskNote = "paused (PoE2 not focused)"; return; }
-        _flaskNote = "armed";
-
-        // Which pool(s) the single life-flask key watches. ES only participates when a real ES pool is
-        // present (HasEs) — a build with no shield never trips the ES branch even in "Either" mode.
-        var hpLow = v.HpPct < _settings.LifeThresholdPct;
-        var esLow = v.HasEs && v.EsPct < _settings.EsThresholdPct;
-        var (lifeTrigger, lifeReason) = _settings.LifeFlaskMode switch
-        {
-            "EnergyShield" => (esLow, $"es@{v.EsPct:F0}%"),
-            "Either"       => (hpLow || esLow, hpLow ? $"life@{v.HpPct:F0}%" : $"es@{v.EsPct:F0}%"),
-            _              => (hpLow, $"life@{v.HpPct:F0}%"), // "Health" (default)
-        };
-
-        var now = DateTime.UtcNow;
-        if (lifeTrigger && now - _lifeFiredAt >= TimeSpan.FromMilliseconds(_settings.LifeCooldownMs))
-        {
-            SendInputNative.Tap((ushort)_settings.LifeKey); _lifeFiredAt = now; _flaskNote = lifeReason;
-        }
-        if (v.ManaPct < _settings.ManaThresholdPct &&
-            now - _manaFiredAt >= TimeSpan.FromMilliseconds(_settings.ManaCooldownMs))
-        {
-            SendInputNative.Tap((ushort)_settings.ManaKey); _manaFiredAt = now; _flaskNote = $"mana@{v.ManaPct:F0}%";
-        }
-    }
-
-    /// <summary>Poll overlay hotkeys: F8 auto-flask toggle, F9 quit, F12 dashboard, F6/F7 path targets.
+    /// <summary>Poll overlay hotkeys: F9 quit, F12 dashboard, F6/F7 path targets.
     /// Map calibration is web-config-only (no in-game keys, to avoid accidental presses).</summary>
     private void HandleHotkeys()
     {
-        // F8 master kill-switch for auto-flask (debounced).
-        if (Down(0x77) && DateTime.UtcNow >= _nextToggleAt)
-        {
-            _autoFlask = !_autoFlask;
-            _nextToggleAt = DateTime.UtcNow.AddMilliseconds(300);
-            Console.WriteLine($"\nAuto-flask: {(_autoFlask ? "ON" : "OFF")}");
-        }
         // F9 quits the overlay (besides the tray-icon Exit).
         if (Down(0x78)) { Console.WriteLine("\nF9 — exiting."); RequestShutdown(); }
 

@@ -130,21 +130,6 @@ public sealed class RadarSettings
     // need ~1.5× the size the old flat shapes used to be legible at radar scale.
     public bool IconSizesV1 { get; set; }
 
-    // ── Auto-flask thresholds + per-flask cooldowns (milliseconds). ──
-    // What the (single) life-flask key triggers on: "Health" watches HP% only (default — unchanged
-    // behavior), "EnergyShield" watches ES% only (for CI / ES-stacking builds), "Either" fires when
-    // EITHER pool drops below its own threshold. ES is ignored when the build has no ES pool.
-    public string LifeFlaskMode { get; set; } = "Health";
-    public float LifeThresholdPct { get; set; } = 65f;
-    public float EsThresholdPct { get; set; } = 50f;
-    public float ManaThresholdPct { get; set; } = 30f;
-    public int LifeCooldownMs { get; set; } = 2500;
-    public int ManaCooldownMs { get; set; } = 2000;
-
-    // ── Flask key codes (Win32 virtual-key). Defaults: '1' = life, '2' = mana. ──
-    public int LifeKey { get; set; } = 0x31;
-    public int ManaKey { get; set; } = 0x32;
-
     // ── HTTP API. ──
     public int ApiPort { get; set; } = 7777;
 

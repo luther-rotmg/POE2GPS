@@ -151,7 +151,7 @@ public sealed class ApiServer : IDisposable
                     areaName = ZoneGuide.Shared.FriendlyName(s.AreaCode),
                     areaAct = ZoneGuide.Shared.Area(s.AreaCode)?.Act ?? 0,
                     mapVisible = s.MapVisible, zoom = s.Zoom,
-                    hpPct = s.HpPct, manaPct = s.ManaPct, esPct = s.EsPct, autoFlask = s.AutoFlask, flask = s.FlaskNote,
+                    hpPct = s.HpPct, manaPct = s.ManaPct, esPct = s.EsPct,
                     player = new { x = s.Player.X, y = s.Player.Y },
                     entityCount = s.Entities.Count,
                     poiCount = s.Entities.Count(e => e.Poi),
@@ -455,10 +455,10 @@ public sealed class ApiServer : IDisposable
     }
 
     /// <summary>
-    /// The settings the dashboard may read AND write. Covers radar/visual options plus auto-flask
-    /// tuning (thresholds, cooldowns, keys). All writes are loopback-Host-gated (see Handle), so a
-    /// cross-origin site can't reach them. The API port is read-only here (changing it needs a
-    /// restart). This object also doubles as the GET payload.
+    /// The settings the dashboard may read AND write. Covers radar/visual options.
+    /// All writes are loopback-Host-gated (see Handle), so a cross-origin site can't reach them.
+    /// The API port is read-only here (changing it needs a restart).
+    /// This object also doubles as the GET payload.
     /// </summary>
     private object ReadSettings() => new
     {
@@ -478,14 +478,6 @@ public sealed class ApiServer : IDisposable
         scaleMul = _settings.ScaleMul,
         offX = _settings.OffX,
         offY = _settings.OffY,
-        lifeFlaskMode = _settings.LifeFlaskMode,
-        lifeThresholdPct = _settings.LifeThresholdPct,
-        esThresholdPct = _settings.EsThresholdPct,
-        manaThresholdPct = _settings.ManaThresholdPct,
-        lifeCooldownMs = _settings.LifeCooldownMs,
-        manaCooldownMs = _settings.ManaCooldownMs,
-        lifeKey = _settings.LifeKey,
-        manaKey = _settings.ManaKey,
         apiPort = _settings.ApiPort, // display only — changing it needs a restart
         styles = _settings.Styles,   // per-item icon shapes/colors/sizes + mechanic overrides
         hpBars = _settings.HpBars,   // monster HP-bar geometry (width/height/offset)
@@ -523,15 +515,6 @@ public sealed class ApiServer : IDisposable
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
                 case "hpBarRare" when TryBool(p.Value, out var b): _settings.HpBarRare = b; applied.Add(p.Name); break;
                 case "hpBarUnique" when TryBool(p.Value, out var b): _settings.HpBarUnique = b; applied.Add(p.Name); break;
-                case "lifeFlaskMode" when p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() is { } m
-                    && (m is "Health" or "EnergyShield" or "Either"): _settings.LifeFlaskMode = m; applied.Add(p.Name); break;
-                case "lifeThresholdPct" when TryFloat(p.Value, out var f): _settings.LifeThresholdPct = Math.Clamp(f, 0f, 100f); applied.Add(p.Name); break;
-                case "esThresholdPct" when TryFloat(p.Value, out var f): _settings.EsThresholdPct = Math.Clamp(f, 0f, 100f); applied.Add(p.Name); break;
-                case "manaThresholdPct" when TryFloat(p.Value, out var f): _settings.ManaThresholdPct = Math.Clamp(f, 0f, 100f); applied.Add(p.Name); break;
-                case "lifeCooldownMs" when TryInt(p.Value, out var n): _settings.LifeCooldownMs = Math.Clamp(n, 0, 60000); applied.Add(p.Name); break;
-                case "manaCooldownMs" when TryInt(p.Value, out var n): _settings.ManaCooldownMs = Math.Clamp(n, 0, 60000); applied.Add(p.Name); break;
-                case "lifeKey" when TryInt(p.Value, out var n): _settings.LifeKey = Math.Clamp(n, 1, 255); applied.Add(p.Name); break;
-                case "manaKey" when TryInt(p.Value, out var n): _settings.ManaKey = Math.Clamp(n, 1, 255); applied.Add(p.Name); break;
                 // Whole-object writes (the dashboard re-POSTs the full sub-object on edit). Parsed,
                 // sanitized/clamped, then swapped in. A malformed sub-object is skipped, not fatal.
                 case "styles" when p.Value.ValueKind == JsonValueKind.Object:
@@ -923,8 +906,6 @@ public sealed record RadarState(
     float HpPct,
     float ManaPct,
     float EsPct,
-    bool AutoFlask,
-    string FlaskNote,
     string AreaCode,
     string CharName,
     int CharLevel,
@@ -940,5 +921,5 @@ public sealed record RadarState(
 {
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,
-            Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), 100, 100, 100, false, "", "", "", 0);
+            Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), 100, 100, 100, "", "", 0);
 }

@@ -105,11 +105,10 @@ public sealed record RenderContext(
     float ScaleMul,
     float OffsetX,
     float OffsetY,
-    // Auto-flask status.
+    // Player vitals (read-only HUD).
     float HpPct,
     float ManaPct,
     float EsPct,
-    string FlaskNote,
     // Area / character HUD.
     string AreaCode,
     int CharLevel,
