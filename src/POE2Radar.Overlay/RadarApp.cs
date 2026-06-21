@@ -2,6 +2,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using NumVec2 = System.Numerics.Vector2;
 using POE2Radar.Core;
+using POE2Radar.Core.Cheats;
 using POE2Radar.Core.Game;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Input;
@@ -22,6 +23,14 @@ public sealed class RadarApp : IDisposable
     private const int WorldHz = 30;
 
     private readonly ProcessHandle _process;
+    private readonly CheatManager _cheats;
+    private DateTime _nextCheatKeyAt = DateTime.MinValue;
+    private static readonly (int Vk, string Name)[] CheatKeys =
+    [
+        (0x70, "NoAtlasFog"), (0x71, "RevealMap"), (0x72, "InfiniteZoom"),
+        (0x73, "EnemyHealthBars"), (0x74, "PlayerLightRadius"),
+    ];
+
     // Three INDEPENDENT reader stacks over the one shared ProcessHandle (ReadProcessMemory is itself
     // concurrency-safe; the per-instance buffers + caches in MemoryReader/Poe2Live are NOT). Each thread
     // owns its own so nothing mutable is shared: _live = world thread (entity/terrain/landmark walk),
@@ -255,6 +264,8 @@ public sealed class RadarApp : IDisposable
     {
         _process = process;
         _reader = reader;
+        _cheats = new CheatManager(process, reader);
+        _cheats.ScanAndResolve();
         _settings = RadarSettings.Load();
         Console.WriteLine($"Settings: {RadarSettings.FilePath}");
         Console.WriteLine($"Entity names: {EntityNameResolver.Shared.Count} mappings; zones: {ZoneGuide.Shared.Count}");
@@ -840,6 +851,7 @@ public sealed class RadarApp : IDisposable
     {
         var t0 = System.Diagnostics.Stopwatch.GetTimestamp();   // no per-frame Stopwatch allocation
         HandleHotkeys();
+        HandleCheatKeys();
 
         var inGame = _liveRender.TryResolve(out var inGameState, out var areaInstance, out var localPlayer);
         var player = NumVec2.Zero;
@@ -2311,6 +2323,18 @@ public sealed class RadarApp : IDisposable
         catch (Exception ex) { Console.Error.WriteLine($"Open dashboard failed: {ex.Message}"); }
     }
 
+    private void HandleCheatKeys()
+    {
+        if (DateTime.UtcNow < _nextCheatKeyAt) return;
+        foreach (var (vk, name) in CheatKeys)
+        {
+            if (!Down(vk)) continue;
+            _cheats.Toggle(name);
+            _nextCheatKeyAt = DateTime.UtcNow.AddMilliseconds(300);
+            break;
+        }
+    }
+
     private static bool Down(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
 
     [DllImport("user32.dll")]
@@ -2384,6 +2408,7 @@ public sealed class RadarApp : IDisposable
     {
         _shutdown = true;
         _worldThread?.Join(1000);   // let the background world loop observe _shutdown and exit
+        _cheats.RestoreAll();
         _modCatalog.Flush(); // persist any mods seen since the last debounced write
         _replanner.Dispose();
         _api.Dispose();
