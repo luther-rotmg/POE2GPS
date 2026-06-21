@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-test-gate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Compliance gate self-test
+        shell: pwsh
+        run: pwsh scripts/compliance-gate.ps1 -SelfTest
+
+      - name: Compliance gate
+        shell: pwsh
+        run: pwsh scripts/compliance-gate.ps1
+
+      - name: Scrub self-test
+        shell: pwsh
+        run: pwsh scripts/scrub-strings.ps1 -SelfTest
+
+      - name: Build
+        run: dotnet build POE2Radar.slnx -c Release
+
+      - name: Test
+        run: dotnet test POE2Radar.slnx -c Release
