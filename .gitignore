@@ -1,0 +1,10 @@
+# Reference clones — inspection only, not part of POE2GPS
+.reference/
+
+# Build output
+bin/
+obj/
+
+# IDE / OS
+.vs/
+*.user
