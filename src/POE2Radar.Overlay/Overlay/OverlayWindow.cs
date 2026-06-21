@@ -29,6 +29,7 @@ public sealed class OverlayWindow : IDisposable
     private nint _hwnd;
     private nint _hInstance;
     private OverlayNative.WndProc _wndProcDelegate = null!;
+    private string _className = null!;
 
     // Click-through state. The window is created WS_EX_TRANSPARENT (clicks pass through to PoE).
     // RadarApp flips this only while the cursor is over a clickable overlay region (the legend).
@@ -85,6 +86,7 @@ public sealed class OverlayWindow : IDisposable
     {
         _hInstance = OverlayNative.GetModuleHandleW(null);
         _wndProcDelegate = WndProc;
+        _className = "wc_" + Path.GetRandomFileName().Replace(".", "");
         RegisterWindowClass();
         CreateOverlayHwnd();
         AddTrayIcon();
@@ -136,7 +138,7 @@ public sealed class OverlayWindow : IDisposable
 
     private unsafe void RegisterWindowClass()
     {
-        var className = "POE2RadarOverlay\0";
+        var className = _className + "\0";
         fixed (char* pName = className)
         {
             var wc = new OverlayNative.WNDCLASSEXW
@@ -159,10 +161,11 @@ public sealed class OverlayWindow : IDisposable
                     | OverlayNative.WS_EX_NOACTIVATE
                     | OverlayNative.WS_EX_TOOLWINDOW;
 
+        var wndTitle = "wt_" + Path.GetRandomFileName().Replace(".", "");
         _hwnd = OverlayNative.CreateWindowExW(
             exStyle,
-            "POE2RadarOverlay",
-            "POE2RadarOverlay",
+            _className,
+            wndTitle,
             OverlayNative.WS_POPUP | OverlayNative.WS_VISIBLE,
             0, 0, 800, 600,
             0, 0, _hInstance, 0);
