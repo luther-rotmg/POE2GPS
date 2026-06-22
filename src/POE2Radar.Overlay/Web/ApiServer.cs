@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using POE2Radar.Core.Campaign;
 using POE2Radar.Core.Game;
 using POE2Radar.Overlay.Config;
 
@@ -52,6 +53,9 @@ public sealed class ApiServer : IDisposable
     // Persistent catalog of every monster affix-mod id ever seen — the vocabulary the rule editor
     // browses to author a Mods matcher. Read-only provider supplied by RadarApp.
     private readonly Func<IReadOnlyList<string>> _knownMods;
+    // Director catalog: user-managed objectives + the seen-POI log (candidates that lack an objective).
+    private readonly CampaignObjectives _objectives;
+    private readonly Func<IReadOnlyList<SeenPoi>> _seenPois;
     // Atlas map-data provider (catalog + current-region map set). Read-only, computed on demand (it
     // scans memory + caches), returns a JSON-ready object. Null when atlas reading is unavailable.
     private readonly Func<object>? _atlas;
@@ -76,6 +80,8 @@ public sealed class ApiServer : IDisposable
         LandmarkStore landmarkStore,
         Func<IReadOnlyList<string>> tilesProvider,
         Func<IReadOnlyList<string>> knownModsProvider,
+        CampaignObjectives objectives,
+        Func<IReadOnlyList<SeenPoi>> seenPoisProvider,
         Func<object>? atlasProvider = null,
         Action<IReadOnlyList<long>>? atlasSelect = null,
         Action<IReadOnlyList<(string tag, string color, bool track, bool nav, bool arrow)>>? atlasHighlight = null,
@@ -96,6 +102,8 @@ public sealed class ApiServer : IDisposable
         _landmarkStore = landmarkStore;
         _tiles = tilesProvider;
         _knownMods = knownModsProvider;
+        _objectives = objectives;
+        _seenPois = seenPoisProvider;
         _listener.Prefixes.Add($"http://localhost:{port}/");
     }
 
@@ -330,6 +338,21 @@ public sealed class ApiServer : IDisposable
                 Write(ctx, 200, JsonSerializer.Serialize(new { mods = _knownMods() }, Json));
                 break;
 
+            case "/api/seen-pois":
+                // Distinct notable entities/landmarks seen this session, each tagged whether the
+                // Director catalog already covers it (uncatalogued ones are the worklist). Read-only.
+                Write(ctx, 200, JsonSerializer.Serialize(new
+                {
+                    pois = _seenPois().Select(p => new
+                    {
+                        signature = p.Signature, name = p.FriendlyName, category = p.Category,
+                        zone = p.FirstZone, count = p.Count, poi = p.Poi,
+                        metadata = p.Metadata, landmarkPath = p.LandmarkPath,
+                        covered = _objectives.Covers(p),
+                    }),
+                }, Json));
+                break;
+
             case "/api/version":
                 // This build's version + latest known on GitHub + download URL (for the update banner).
                 Write(ctx, 200, JsonSerializer.Serialize(_version?.Invoke() ?? new { current = "?", latest = (string?)null, updateAvailable = false, url = "" }, Json));
@@ -439,6 +462,22 @@ public sealed class ApiServer : IDisposable
                 {
                     Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
                 }
+                break;
+            }
+
+            case "/api/objectives":
+            {
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { objectives = _objectives.All }, Json));
+                }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                    ApplyObjectives(ReadBody(ctx));
+                    Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, objectives = _objectives.All }, Json));
+                }
+                else { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); }
                 break;
             }
 
@@ -736,6 +775,52 @@ public sealed class ApiServer : IDisposable
         if (list.Count > 300) list = list.GetRange(0, 300); // sanity cap
         foreach (var r in list) SanitizeRule(r);
         _displayRules.Replace(list);
+    }
+
+    /// <summary>Apply a Director-tab command: {"add":{objective}} upserts; {"remove":{"id":...}} deletes.
+    /// Edits the local catalog only — never the game.</summary>
+    private void ApplyObjectives(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return;
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+
+        if (root.TryGetProperty("remove", out var rem) && rem.TryGetProperty("id", out var idEl)
+            && idEl.GetString() is { Length: > 0 } id)
+        {
+            _objectives.Remove(id);
+            return;
+        }
+        if (root.TryGetProperty("add", out var add) && add.ValueKind == JsonValueKind.Object)
+        {
+            var o = JsonSerializer.Deserialize<CampaignObjective>(add.GetRawText(), Json);
+            if (o != null) _objectives.Add(SanitizeObjective(o));
+        }
+    }
+
+    /// <summary>Clamp/validate a posted objective: non-blank Id/Label/Category, priority 0..1000,
+    /// trimmed match lists (max 32 terms), valid Rarity/Poi (else null = "any").</summary>
+    private static CampaignObjective SanitizeObjective(CampaignObjective o)
+    {
+        static List<string>? CleanTerms(List<string>? terms) =>
+            terms is { Count: > 0 }
+                ? terms.Select(t => (t ?? "").Trim()).Where(t => t.Length > 0).Take(32).ToList()
+                : null;
+
+        var id = (o.Id ?? "").Trim();
+        return o with
+        {
+            Id = id.Length > 80 ? id[..80] : id,
+            Label = (o.Label ?? "").Trim() is { Length: > 0 } lbl ? (lbl.Length > 60 ? lbl[..60] : lbl) : id,
+            Category = string.IsNullOrWhiteSpace(o.Category) ? "Other" : o.Category.Trim(),
+            Priority = Math.Clamp(o.Priority, 0, 1000),
+            Metadata = CleanTerms(o.Metadata),
+            Categories = CleanTerms(o.Categories),
+            LandmarkPath = CleanTerms(o.LandmarkPath),
+            Rarity = OneOf(o.Rarity, "Normal", "Magic", "Rare", "Unique"),
+            Poi = OneOf(o.Poi, "Yes", "No"),
+        };
     }
 
     // Valid rule categories: the entity categories plus the pseudo-category "Tile" (matches terrain
