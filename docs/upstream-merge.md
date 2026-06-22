@@ -62,3 +62,15 @@ These files were edited the most and are where upstream merges will most often c
   (`CampaignObjectives objectives`, `Func<…SeenPoi> seenPoisProvider`) + the `/api/seen-pois` and
   `/api/objectives` cases + `ApplyObjectives`/`SanitizeObjective`; the `new ApiServer(...)` call args
   `_campaign, () => _seenPoiLog.All`; the Dashboard "Director" tab (button + `data-view="director"` section + `loadDirector`).
+- **Entity Atlas** (`Core/Campaign/AtlasEntry.cs` + `AtlasCensus`, `Overlay/Web/EntityAtlasLog.cs`,
+  `Overlay/Web/EntityNameStore.cs`, the `EntityNameResolver` user-override layer). Hooks: the
+  `_entityAtlas` + `_entityNameStore` fields + ctor construction; `_entityAtlas.Observe(_entities,
+  areaCode)` in `WorldTick` **before** the user-hidden cull; `_entityAtlas.Flush()` +
+  `_entityNameStore.Flush()` in `Dispose`; the two `ApiServer` ctor params (`Func<…AtlasEntry>
+  entityAtlasProvider`, `EntityNameStore entityNames`) + the `/api/entity-atlas`, `/api/entity-atlas/name`,
+  `/api/entity-atlas/export`, `/api/entity-atlas/import` cases + `ApplyAtlasName`/`ApplyAtlasImport`; the
+  `CampaignObjectives.Covers(in EntityDot)` forwarder; the `new ApiServer(...)` args
+  `() => _entityAtlas.All, _entityNameStore`; the Dashboard "Entity Atlas" tab (`data-tab="entatlas"` /
+  `data-view="entatlas"` + `loadEntAtlas`). **Name-clash guard:** the Entity Atlas uses the
+  `/api/entity-atlas*` + `entatlas`/`_entityAtlas` namespace — distinct from the endgame Atlas-map's
+  `/api/atlas`+`/api/atlas-{select,highlight}` + `atlas`/`_atlas`; don't let a merge collapse them.

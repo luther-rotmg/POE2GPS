@@ -46,3 +46,9 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
       landmarks appear under "Needs cataloguing" with friendly names; "Add" (pick category + priority)
       makes it disappear from the list and show under "Catalog" + drive the Director; "Remove" deletes it.
       Confirm `/api/seen-pois` carries no character name.
+- [ ] **Entity Atlas:** in a zone, open the dashboard → Entity Atlas tab; confirm entities populate
+      "Needs a name" (raw paths) and "Notable, uncatalogued"; typing a name + Save removes it from
+      "Needs a name" AND shows that name on the radar/legend immediately; "Classify" adds a Director
+      objective (it leaves the list). "Export pack" downloads `atlas-pack.json`; "Import pack" merges one
+      back. Confirm `/api/entity-atlas` carries no character name, and that the endgame Atlas-map tab
+      (which uses `/api/atlas`) still loads — i.e. the two were not conflated.
