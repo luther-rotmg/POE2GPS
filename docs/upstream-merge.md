@@ -49,3 +49,10 @@ These files were edited the most and are where upstream merges will most often c
 - `scripts/compliance-gate.ps1` + `scripts/compliance-allowlist.txt`, `scripts/scrub-strings.ps1`,
   and the scrub wiring in `publish.ps1`.
 - `.github/workflows/ci.yml` (build + test + gate).
+- **Objective Director** (`Core/Campaign/CampaignObjective.cs`, `ObjectiveDirector.cs`,
+  `Overlay/Web/CampaignObjectives.cs` + `default_campaign_objectives.json`). Shared-file hooks to
+  re-apply on merge: `RadarSettings.EnableDirector`; the `RadarApp` ctor store construction; the
+  `!_settings.EnableDirector` gate on the `OnAreaChanged` AutoPath auto-add + the `_director.ResetZone()`
+  call; the `DirectorReconcile(player)` call in `WorldTick` (after `PruneCompletedTargets`, before
+  `MaintainRoutes`); the `RadarState.Director` field + its construction arg + the `/state` `director`
+  projection; the `enableDirector` settings round-trip; the dashboard toggle row + `dirCard` + render block.

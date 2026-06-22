@@ -37,3 +37,8 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
       and the game receives nothing from the overlay.
 - [ ] **No crash** without a game attached: launching with PoE2 closed prints "Game not running" and
       exits cleanly.
+- [ ] **Objective Director:** enable it in the dashboard; enter a zone containing a catalog objective
+      (seasonal event / side boss / transition) and confirm the overlay auto-routes to the
+      highest-priority one, advances when it's completed, and falls back to the zone exit once optional
+      content is cleared. Confirm a manual target pick (F6) overrides it until the next zone, and that
+      `/state` carries no character name.
