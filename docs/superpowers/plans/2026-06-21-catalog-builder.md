@@ -321,20 +321,18 @@ public sealed class SeenPoiLog
     {
         lock (_gate)
         {
-            for (var i = 0; i < entities.Count; i++)
+            foreach (var e in entities)
             {
-                ref readonly var e = ref System.Runtime.InteropServices.CollectionsMarshal
-                    .AsSpan((List<Poe2Live.EntityDot>)entities)[i];
                 if (!PoiCandidate.IsCandidate(in e)) continue;
-                Upsert(PoiCandidate.EntitySignature(in e), e.Metadata, null, e.Category.ToString(),
-                       e.Poi, e.Rarity.ToString(), () => EntityNameResolver.Shared.ResolveOrShorten(e.Metadata), areaCode);
+                // Copy metadata to a value local — a foreach var is capture-safe, but resolve the name
+                // lazily (thunk runs only on first sighting). Iterating by value is trivially cheap here.
+                var meta = e.Metadata;
+                Upsert(PoiCandidate.EntitySignature(in e), meta, null, e.Category.ToString(),
+                       e.Poi, e.Rarity.ToString(), () => EntityNameResolver.Shared.ResolveOrShorten(meta), areaCode);
             }
-            for (var i = 0; i < landmarks.Count; i++)
-            {
-                var lm = landmarks[i];
+            foreach (var lm in landmarks)
                 Upsert(PoiCandidate.LandmarkSignature(lm), null, lm.Path, "Tile",
                        false, "", () => lm.CuratedName ?? lm.Name, areaCode);
-            }
         }
         MaybeFlush();
     }
@@ -749,5 +747,5 @@ git commit -m "docs(catalog): upstream-merge hooks + release-checklist item"
 
 - **Line numbers are from plan-writing time** — anchor edits on the verbatim code shown / the named neighbors (`_modCatalog`, `/api/mods`, `/api/display-rules`, `SanitizeRule`, the `.tabs` row).
 - **Never add an input or memory-write API.** This whole feature reads entity data + writes local JSON.
-- **`CollectionsMarshal.AsSpan` in `SeenPoiLog.Observe`** assumes `_entities` is a `List<Poe2Live.EntityDot>` (it is, per `RadarApp`). If the parameter is passed as a non-`List` `IReadOnlyList`, fall back to indexing `entities[i]` (a struct copy — acceptable on the 30 Hz thread). Keep the `in`-ref matcher call regardless.
+- **`SeenPoiLog.Observe` iterates by `foreach`** (value copy) so the friendly-name lambda can capture a value local — a `ref readonly` local (e.g. via `CollectionsMarshal.AsSpan`) **cannot** be captured by a lambda (CS8175). The per-element struct copy on the 30 Hz world thread is negligible (this is how `ModCatalog.Observe` iterates too).
 - **Live behavior isn't CI-testable** — the pure filter + coverage classification are unit-tested; the accumulator/endpoints/tab are build- + gate- + manual-verified per `docs/release-checklist.md`.
