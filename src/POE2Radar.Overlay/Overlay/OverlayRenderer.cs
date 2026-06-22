@@ -343,8 +343,6 @@ public sealed class OverlayRenderer : IDisposable
         }
     }
 
-    /// <summary>
-    /// World-space HP bars over monsters, projected via the camera WorldToScreen matrix. Drawn whether
     /// <summary>The transient "active target" indicator drawn briefly after a Quick-Target cycle.</summary>
     private void DrawCycleIndicator(ID2D1RenderTarget rt, RenderContext ctx)
     {
@@ -355,6 +353,8 @@ public sealed class OverlayRenderer : IDisposable
         rt.DrawText(text, _tf!, new Rect(12f, 12f, ctx.WindowWidth - 12f, 34f), _bText!, DrawTextOptions.Clip);
     }
 
+    /// <summary>
+    /// World-space HP bars over monsters, projected via the camera WorldToScreen matrix. Drawn whether
     /// or not the big map is open (it's a heads-up combat overlay). HP bars are a MONSTER-ONLY concept,
     /// gated entirely by the per-rarity on/off toggles in Settings (HpBarNormal/Magic/Rare/Unique) — they
     /// are NOT a display-rule concern. The resolved rule is still consulted for two things: it must not be
