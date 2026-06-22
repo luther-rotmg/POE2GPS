@@ -55,6 +55,7 @@ public sealed class RadarApp : IDisposable
     private int _displayRulesGen;
     private int _landmarkStoreGen;
     private int _appliedClusterGap;
+    private bool _appliedExcludeFromCapture;
     private nint _areaInstanceForApi;   // current AreaInstance, for the /api/tiles tile-path lookup
     private nint _inGameStateForApi;    // current InGameState, for the /api/atlas node read
     private volatile RadarState _state = RadarState.Empty;
@@ -254,6 +255,8 @@ public sealed class RadarApp : IDisposable
         _atlas = new Poe2Atlas(reader);
         _runeforge = new Poe2Runeforge(reader);   // world-thread reader stack
         _window = OverlayWindow.Create();
+        _window.SetCaptureExclusion(_settings.ExcludeFromCapture);   // stealth: hide from screen capture by default
+        _appliedExcludeFromCapture = _settings.ExcludeFromCapture;
         _renderer = new OverlayRenderer(_window);
         // Clicking a legend row toggles that landmark in the path selection. Purely local UI — the
         // click lands on our own overlay window (never forwarded to the game). See UpdateClickThrough.
@@ -727,6 +730,13 @@ public sealed class RadarApp : IDisposable
     {
         var t0 = System.Diagnostics.Stopwatch.GetTimestamp();   // no per-frame Stopwatch allocation
         HandleHotkeys();
+
+        // Live-apply the capture-exclusion toggle (Settings tab / config). Only fires the Win32 call on change.
+        if (_settings.ExcludeFromCapture != _appliedExcludeFromCapture)
+        {
+            _appliedExcludeFromCapture = _settings.ExcludeFromCapture;
+            _window.SetCaptureExclusion(_appliedExcludeFromCapture);
+        }
 
         var inGame = _liveRender.TryResolve(out var inGameState, out var areaInstance, out var localPlayer);
         var player = NumVec2.Zero;

@@ -82,6 +82,17 @@ public sealed class OverlayWindow : IDisposable
         return ow;
     }
 
+    /// <summary>Hide (or re-show) the overlay from screen capture / screenshots / OBS via
+    /// <c>SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)</c> — a footprint + streamer-safety win. The
+    /// overlay still renders normally on your own monitor; it just won't appear in any capture.
+    /// Live-toggleable. (Win10 2004+; a no-op on older builds is harmless.) Our-own-window op — the game
+    /// is never touched.</summary>
+    public void SetCaptureExclusion(bool exclude)
+    {
+        if (_hwnd != 0)
+            OverlayNative.SetWindowDisplayAffinity(_hwnd, exclude ? OverlayNative.WDA_EXCLUDEFROMCAPTURE : OverlayNative.WDA_NONE);
+    }
+
     private void Initialize()
     {
         _hInstance = OverlayNative.GetModuleHandleW(null);

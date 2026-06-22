@@ -14,6 +14,14 @@
     <!-- App version — bump per release and tag the repo to match (vX.Y.Z). UpdateChecker compares this
          to the latest GitHub release/tag so the user is told when they're out of date. -->
     <Version>0.1.3</Version>
+    <!-- Neutral binary metadata (identity hygiene): keep the PE version-info generic, no author/company
+         strings baked in. The published exe is also string-scrubbed by scripts/scrub-strings.ps1. -->
+    <Company></Company>
+    <Authors></Authors>
+    <Product>Overlay</Product>
+    <AssemblyTitle>Overlay</AssemblyTitle>
+    <Description></Description>
+    <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
 
   <ItemGroup>

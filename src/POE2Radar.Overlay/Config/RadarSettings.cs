@@ -137,6 +137,12 @@ public sealed class RadarSettings
     // ── HTTP API. ──
     public int ApiPort { get; set; } = 7777;
 
+    // ── Stealth / footprint. ──
+    // Hide the overlay from screen capture / screenshots / OBS (SetWindowDisplayAffinity). On by default
+    // for the lowest footprint; turn OFF if you want to screenshot/stream the overlay itself. The overlay
+    // always renders on your own monitor regardless — this only affects what capture software sees.
+    public bool ExcludeFromCapture { get; set; } = true;
+
     // ── Per-item icon styling (shape / color / opacity / size) + metadata-matched "mechanic"
     //    overrides. Defaults reproduce the original hardcoded look exactly. ──
     public RadarStyles Styles { get; set; } = new();

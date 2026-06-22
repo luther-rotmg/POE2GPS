@@ -107,6 +107,16 @@ internal static partial class OverlayNative
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetLayeredWindowAttributes(nint hwnd, uint crKey, byte bAlpha, uint dwFlags);
 
+    // Display-affinity: hide a window from screen capture / screenshots / OBS. The window still renders
+    // on the user's own monitor; it just won't appear in any capture. Win10 2004+ (a false return on
+    // older builds is harmless). Read-only, our-own-window operation — never touches the game.
+    public const uint WDA_NONE = 0x00000000;
+    public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
+
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowDisplayAffinity")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetWindowDisplayAffinity(nint hwnd, uint dwAffinity);
+
     [LibraryImport("user32.dll", EntryPoint = "GetWindowRect")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool GetWindowRect(nint hwnd, out RECT lpRect);

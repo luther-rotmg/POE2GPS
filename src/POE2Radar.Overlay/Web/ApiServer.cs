@@ -566,6 +566,7 @@ public sealed class ApiServer : IDisposable
         showTerrain = _settings.ShowTerrain,
         showPlayerBlip = _settings.ShowPlayerBlip,
         enableDirector = _settings.EnableDirector,
+        excludeFromCapture = _settings.ExcludeFromCapture,
         fpsCap = _settings.FpsCap,
         hpBarNormal = _settings.HpBarNormal,
         hpBarMagic = _settings.HpBarMagic,
@@ -607,6 +608,7 @@ public sealed class ApiServer : IDisposable
                 case "showTerrain" when TryBool(p.Value, out var b): _settings.ShowTerrain = b; applied.Add(p.Name); break;
                 case "showPlayerBlip" when TryBool(p.Value, out var b): _settings.ShowPlayerBlip = b; applied.Add(p.Name); break;
                 case "enableDirector" when TryBool(p.Value, out var b): _settings.EnableDirector = b; applied.Add(p.Name); break;
+                case "excludeFromCapture" when TryBool(p.Value, out var b): _settings.ExcludeFromCapture = b; applied.Add(p.Name); break;
                 case "fpsCap" when TryInt(p.Value, out var n): _settings.FpsCap = Math.Clamp(n, 15, 360); applied.Add(p.Name); break;
                 case "hpBarNormal" when TryBool(p.Value, out var b): _settings.HpBarNormal = b; applied.Add(p.Name); break;
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
