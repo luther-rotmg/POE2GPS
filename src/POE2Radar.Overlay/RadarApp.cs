@@ -49,6 +49,7 @@ public sealed class RadarApp : IDisposable
     private readonly LandmarkStore _landmarkStore;
     private readonly ModCatalog _modCatalog;
     private readonly SeenPoiLog _seenPoiLog;
+    private readonly EntityAtlasLog _entityAtlas;
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -488,6 +489,7 @@ public sealed class RadarApp : IDisposable
         _landmarkStoreGen = _landmarkStore.Generation;
         _modCatalog = new ModCatalog(Path.Combine(ConfigDir, "known_mods.json"));
         _seenPoiLog = new SeenPoiLog(Path.Combine(ConfigDir, "seen_pois.json"));
+        _entityAtlas = new EntityAtlasLog(Path.Combine(ConfigDir, "entity_atlas.json"));
         Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
@@ -944,6 +946,10 @@ public sealed class RadarApp : IDisposable
         _charLevel = _live.PlayerLevel(localPlayer);   // changes ~never; 30 Hz is plenty
         _terrain ??= _live.Terrain(areaInstance);
         _entities = _live.Entities(areaInstance);
+        // Atlas census: catalog EVERY distinct entity for naming/coverage. Runs on the PRE-cull list
+        // (before the local-player + user-hidden RemoveAll below) so hiding a dot doesn't erase it from
+        // the name database. AtlasCensus skips Player + JunkFilter noise.
+        _entityAtlas.Observe(_entities, areaCode);
         // Drop the local player's own entity — it lives in the AwakeEntities map like any
         // other Player, but the dedicated center blip already represents "you" (gated by
         // ShowPlayerBlip). Without this, a Player-category dot renders at map-center even with
@@ -2158,6 +2164,7 @@ public sealed class RadarApp : IDisposable
         _worldThread?.Join(1000);   // let the background world loop observe _shutdown and exit
         _modCatalog.Flush(); // persist any mods seen since the last debounced write
         _seenPoiLog.Flush();
+        _entityAtlas.Flush();
         _replanner.Dispose();
         _api.Dispose();
         _renderer.Dispose();
