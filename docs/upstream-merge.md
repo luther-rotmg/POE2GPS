@@ -133,3 +133,10 @@ When in doubt: prefer a new file + a one-line hook over editing a shared file's 
   `data-view="entatlas"` + `loadEntAtlas`). **Name-clash guard:** the Entity Atlas uses the
   `/api/entity-atlas*` + `entatlas`/`_entityAtlas` namespace — distinct from the endgame Atlas-map's
   `/api/atlas`+`/api/atlas-{select,highlight}` + `atlas`/`_atlas`; don't let a merge collapse them.
+- **Quick-Target Cycler** (`Core/Navigation/TargetCycler.cs`, `Overlay/Input/XInputNative.cs` +
+  `ControllerCycler.cs`). Hooks: `_rankedTargets`/`_activeTargetId`/`_cycleIndicator`/`_nextCycleAt`/
+  `_controllerCycler` fields; `BuildRankedTargets` + `Cycle`/`CycleToIndex`/`ApplyActive`/`SetActiveTarget`;
+  the `_rankedTargets = …` publish after `_navTargets = BuildNavTargets`; the keyboard + controller blocks
+  in `HandleHotkeys`; `RadarSettings.EnableTargetHotkeys`/`EnableControllerCycle` + the `/api/settings`
+  round-trip + dashboard toggles; the `RankedTarget`/`CycleIndicator` records + `RenderContext.CycleIndicator`
+  + `OverlayRenderer.DrawCycleIndicator`. All read-only (reads keys/XInput; never `SendInput`).

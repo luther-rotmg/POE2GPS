@@ -52,3 +52,9 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
       objective (it leaves the list). "Export pack" downloads `atlas-pack.json`; "Import pack" merges one
       back. Confirm `/api/entity-atlas` carries no character name, and that the endgame Atlas-map tab
       (which uses `/api/atlas`) still loads — i.e. the two were not conflated.
+- [ ] **Quick-Target Cycler (keyboard):** in a zone, Ctrl+Alt+] / [ cycles the active radar target
+      next/prev (priority then distance); Ctrl+Alt+1-9 jumps to a slot; Ctrl+Alt+0 clears. The on-screen
+      "▸ N/M name" indicator shows + fades; the route follows the active target. Only fires while PoE2 is
+      focused.
+- [ ] **Quick-Target Cycler (controller — needs an XInput pad):** L3 = prev, R3 = next cycle the same way.
+      Confirm normal gameplay is unaffected (R3 still toggles PoE2's life/mana number display — expected).
