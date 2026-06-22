@@ -17,6 +17,7 @@ namespace POE2Radar.Core.Game;
 public sealed class EntityNameResolver
 {
     private readonly Dictionary<string, string> _names;
+    private volatile IReadOnlyDictionary<string, string>? _overrides;
 
     private EntityNameResolver(Dictionary<string, string> names) => _names = names;
 
@@ -49,31 +50,49 @@ public sealed class EntityNameResolver
     public int Count => _names.Count;
 
     /// <summary>
-    /// Resolve a metadata path to a friendly name, or null if unknown. Tries an exact match first,
-    /// then progressively drops trailing path segments and retries — so a spawn variant such as
-    /// <c>.../WraithSpookyLightning/Apparition</c> still resolves to its base entry. Bounded by the
-    /// path depth (a handful of lookups), unlike the fork's full-table scan.
+    /// Resolve a metadata path to a friendly name, or null if unknown. Consults the live user
+    /// override layer first (exact, then progressively dropping trailing segments), then the embedded
+    /// table the same way. Strips a trailing runtime area-level annotation ("...MonkeyJungle@34") since
+    /// table keys never carry it.
     /// </summary>
     public string? Resolve(string metadataPath)
     {
         if (string.IsNullOrEmpty(metadataPath)) return null;
-
-        // Strip a trailing runtime area-level annotation ("...MonkeyJungle@34"); table keys never
-        // carry it, so without this every level-scaled monster would miss. Validated live: "@34"
-        // suffixes defeated exact lookup until stripped.
         var at = metadataPath.IndexOf('@');
         var path = at >= 0 ? metadataPath[..at] : metadataPath;
 
-        if (_names.TryGetValue(path, out var name)) return name;
+        var ov = _overrides; // volatile read once
+        if (ov != null && LookupWithFallback(ov, path) is { } o) return o;
+        return LookupWithFallback(_names, path);
+    }
 
+    // Exact match, then drop trailing "/segment"s and retry. Bounded by path depth.
+    private static string? LookupWithFallback(IReadOnlyDictionary<string, string> table, string path)
+    {
+        if (table.TryGetValue(path, out var name)) return name;
         var probe = path;
         int slash;
         while ((slash = probe.LastIndexOf('/')) > 0)
         {
             probe = probe[..slash];
-            if (_names.TryGetValue(probe, out name)) return name;
+            if (table.TryGetValue(probe, out name)) return name;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Install a user override table (metadata→name), consulted BEFORE the embedded table by
+    /// <see cref="Resolve"/>. Atomic swap (volatile) — lock-free for the many reader threads
+    /// (world/render/API); call from the rare writer (startup load / a name edit). Null clears all
+    /// overrides. Blank names are dropped so an empty override never shadows a real embedded name.
+    /// </summary>
+    public void SetUserOverrides(IReadOnlyDictionary<string, string>? overrides)
+    {
+        if (overrides is null || overrides.Count == 0) { _overrides = null; return; }
+        var copy = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (k, v) in overrides)
+            if (!string.IsNullOrWhiteSpace(k) && !string.IsNullOrWhiteSpace(v)) copy[k] = v;
+        _overrides = copy.Count > 0 ? copy : null;
     }
 
     /// <summary>
