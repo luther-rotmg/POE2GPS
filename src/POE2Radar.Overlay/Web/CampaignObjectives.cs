@@ -35,6 +35,9 @@ public sealed class CampaignObjectives
         IReadOnlyList<Poe2Live.EntityDot> entities, IReadOnlyList<Poe2Live.Landmark> landmarks, Vector2 player)
         => _snapshot.Rank(entities, landmarks, player);
 
+    /// <summary>True if any enabled objective already covers this seen candidate (lock-free).</summary>
+    public bool Covers(SeenPoi p) => _snapshot.Covers(p);
+
     public IReadOnlyList<CampaignObjective> All { get { lock (_gate) return _entries.Values.ToArray(); } }
 
     public void Add(CampaignObjective o)

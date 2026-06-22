@@ -78,6 +78,36 @@ public sealed class ObjectiveCatalog
         return list;
     }
 
+    /// <summary>True if any enabled objective matches this entity (reuses the compiled matcher).</summary>
+    public bool Covers(in Poe2Live.EntityDot e)
+    {
+        foreach (var c in _compiled)
+            if (c.MatchesEntity(in e)) return true;
+        return false;
+    }
+
+    /// <summary>True if any enabled objective matches this terrain-tile landmark path.</summary>
+    public bool Covers(string landmarkPath)
+    {
+        foreach (var c in _compiled)
+            if (c.MatchesLandmark(landmarkPath)) return true;
+        return false;
+    }
+
+    /// <summary>True if any enabled objective would route to this logged candidate. Tile entries
+    /// match by path; entity entries match via a synthetic <see cref="Poe2Live.EntityDot"/> carrying
+    /// the catalog-relevant fields (category/metadata/poi/rarity).</summary>
+    public bool Covers(SeenPoi p)
+    {
+        if (p.LandmarkPath is { Length: > 0 } path) return Covers(path);
+        var cat = Enum.TryParse<Poe2Live.EntityCategory>(p.Category, ignoreCase: true, out var c)
+            ? c : Poe2Live.EntityCategory.Other;
+        var rar = Enum.TryParse<Poe2Live.Rarity>(p.Rarity, ignoreCase: true, out var r)
+            ? r : Poe2Live.Rarity.NonMonster;
+        var e = new Poe2Live.EntityDot(0, 0, default, default, cat, p.Metadata ?? "", 0, 0, p.Poi, 0, rar, false);
+        return Covers(in e);
+    }
+
     private static void Consider(Dictionary<string, RankedObjective> best, string id, CampaignObjective o, float distSq)
     {
         if (best.TryGetValue(id, out var cur) && cur.Priority >= o.Priority) return;
