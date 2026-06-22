@@ -86,6 +86,18 @@ public sealed class Poe2Live
 
     public readonly record struct MapUi(bool IsVisible, float ShiftX, float ShiftY, float Zoom);
 
+    /// <summary>One rolled affix on an inventory item: the internal GGG mod id and its raw integer values
+    /// (one per stat the mod grants, in stat order). Values are raw (not rendered) — the Overlay layer
+    /// renders them to English stat lines via <see cref="ItemModTranslator"/>.</summary>
+    public readonly record struct RawAffix(string ModId, IReadOnlyList<int> Values);
+
+    /// <summary>One item from the player's inventory (any bag/slot). Implicit + explicit affixes as raw
+    /// (modId + rolled int values). Rarity is the Mods-component rarity string (Normal/Magic/Rare/Unique).
+    /// Name is the rendered base-type display name (e.g. "Greater Orb of Augmentation"), empty if unavailable.
+    /// InventoryId is the Inventories.dat index (1=Main, 2=BodyArmour, 3=Weapon1, etc.).</summary>
+    public sealed record InventoryItem(string Name, string Rarity, bool Identified, int InventoryId,
+        IReadOnlyList<RawAffix> Affixes);
+
     /// <summary>A static tile-based landmark: a notable terrain feature and its grid centroid.
     /// <paramref name="CuratedName"/> is an optional curated friendly label (null when none matches);
     /// <paramref name="Name"/> is the derived-from-path fallback.</summary>
@@ -1399,5 +1411,248 @@ public sealed class Poe2Live
         if (!_reader.TryReadStruct<nint>(addr, out var p)) return 0;
         var u = (ulong)p;
         return (u < 0x10000 || u > 0x7FFFFFFFFFFF) ? 0 : p;
+    }
+
+    // ── Inventory read (experimental; default-OFF) ─────────────────────────────────────────────────
+    // Ported faithfully from Research.RunInventory / DumpInventoryItems / ReadItemModIds /
+    // ReadModValueArray / ReadModName (Research/Program.cs ~line 527-771).
+    // Same chain: AreaInstance+0x580 → ServerData → +0x48 StdVector [0] → ServerDataStructure
+    //             → +0x320 StdVector<InventoryArrayStruct> (stride 0x18).
+    // Self-validates the two drift-prone hops (PlayerServerData vec, PlayerInventories vec) with
+    // brute-scan fallbacks, exactly as the Research probe does.
+
+    /// <summary>
+    /// Read the player's inventory items and their raw rolled affixes (experimental; default-OFF).
+    /// Ported from the validated Research <c>RunInventory</c> + <c>--itemmods</c> walk.
+    /// Runs on the world thread; any failed hop returns an empty list — never throws.
+    /// </summary>
+    public IReadOnlyList<InventoryItem> ReadInventory(nint areaInstance)
+    {
+        var result = new List<InventoryItem>();
+        try
+        {
+            // Step 1 — ServerData @ AreaInstance+0x580.
+            var serverData = Ptr(areaInstance + Poe2.AreaInstance.ServerDataPtr);
+            if (serverData == 0) return result;
+
+            // Step 2 — PlayerServerData StdVector @ ServerData+0x48; [0] = ServerDataStructure.
+            var sdStruct = ResolveServerDataStructForInventory(serverData);
+            if (sdStruct == 0) return result;
+
+            // Step 3 — PlayerInventories StdVector @ ServerDataStructure+0x320 (stride 0x18).
+            var (invVecOff, invVec, invCount) = FindPlayerInventoriesVecForInventory(sdStruct, Poe2.ServerData.PlayerInventoriesVec);
+            if (invVecOff < 0 || invCount <= 0) return result;
+
+            var seen = new HashSet<nint>();
+
+            for (long i = 0; i < invCount; i++)
+            {
+                var rec = invVec.First + (nint)(i * Poe2.ServerData.InvArrayStride);
+                if (!_reader.TryReadStruct<int>(rec + Poe2.ServerData.InvArrayId, out var invId)) continue;
+                var invPtr = Ptr(rec + Poe2.ServerData.InvArrayPtr);
+                if (invPtr == 0) continue;
+
+                // Step 4 — ItemList StdVector @ InventoryStruct+0x170 (with brute fallback).
+                var (itemVec, itemCount) = ProbeItemListVecForInventory(invPtr);
+                if (itemCount <= 0) continue;
+
+                // Step 5 — walk each InventoryItemStruct slot (de-dup multi-cell items by address).
+                for (var j = 0; j < itemCount; j++)
+                {
+                    var iiPtr = Ptr(itemVec.First + (nint)(j * 8));
+                    if (iiPtr == 0) continue;
+                    var item = Ptr(iiPtr + Poe2.InventoryItem.Item);
+                    if (item == 0 || !seen.Add(item)) continue; // de-dup multi-slot items
+
+                    // Validate: must be a real item entity.
+                    if (!ReadMetadata(item).StartsWith("Metadata/Items", StringComparison.Ordinal)) continue;
+
+                    // Identity: name, rarity, identified — reuse ReadIdentityFromItem.
+                    var (rarityEnum, _, identified, name) = ReadIdentityFromItem(item);
+                    var rarStr = rarityEnum switch
+                    {
+                        Rarity.Normal => "Normal",
+                        Rarity.Magic  => "Magic",
+                        Rarity.Rare   => "Rare",
+                        Rarity.Unique => "Unique",
+                        _             => "Normal",
+                    };
+
+                    // Affixes: implicit + explicit mods from Mods component.
+                    var modsComp = ResolveComponent(item, "Mods");
+                    var affixes = new List<RawAffix>();
+                    if (modsComp != 0)
+                    {
+                        ReadRawAffixesInto(modsComp + Poe2.ModsComponent.ImplicitMods, affixes);
+                        ReadRawAffixesInto(modsComp + Poe2.ModsComponent.ExplicitMods, affixes);
+                    }
+
+                    result.Add(new InventoryItem(name ?? "", rarStr, identified, invId, affixes));
+                }
+            }
+        }
+        catch
+        {
+            // Never propagate — live memory reads can access freed/invalid memory during zone transitions.
+        }
+        return result;
+    }
+
+    // Ported from Research.ResolveServerDataStruct: try ServerData+0x48; brute-scan +0x10..+0x200 on miss.
+    private nint ResolveServerDataStructForInventory(nint serverData)
+    {
+        nint TryOff(int off)
+        {
+            if (!_reader.TryReadStruct<StdVector>(serverData + off, out var v)) return 0;
+            var span = (long)v.Last - (long)v.First;
+            if (v.First == 0 || span < 8 || span > 0x4000) return 0;
+            var first = Ptr(v.First);
+            if (first == 0) return 0;
+            // Validate by checking that the candidate carries a plausible PlayerInventories vec.
+            return FindPlayerInventoriesVecForInventory(first, Poe2.ServerData.PlayerInventoriesVec).off >= 0 ? first : 0;
+        }
+
+        var direct = TryOff(Poe2.ServerData.PlayerServerDataVec);
+        if (direct != 0) return direct;
+        for (var off = 0x10; off <= 0x200; off += 8)
+        {
+            var hit = TryOff(off);
+            if (hit != 0) return hit;
+        }
+        return 0;
+    }
+
+    // Ported from Research.FindPlayerInventoriesVec: prefer preferred offset; brute-scan +0x100..+0x800
+    // if it doesn't score. Fingerprint: stride-0x18 records, id 1..200, ptr1 == ptr0-0x10.
+    private (int off, StdVector vec, int count) FindPlayerInventoriesVecForInventory(nint sdStruct, int preferred)
+    {
+        (int score, StdVector vec, int count) Score(int off)
+        {
+            if (!_reader.TryReadStruct<StdVector>(sdStruct + off, out var v))
+                return (-1, default, 0);
+            var span = (long)v.Last - (long)v.First;
+            if (v.First == 0 || span <= 0 || span % Poe2.ServerData.InvArrayStride != 0) return (-1, default, 0);
+            var count = (int)(span / Poe2.ServerData.InvArrayStride);
+            if (count is <= 0 or > 400) return (-1, default, 0);
+            var good = 0;
+            var check = Math.Min(count, 32);
+            for (var i = 0; i < check; i++)
+            {
+                var r = v.First + (nint)(i * Poe2.ServerData.InvArrayStride);
+                if (!_reader.TryReadStruct<int>(r, out var id) || id < 1 || id > 200) continue;
+                var p0 = Ptr(r + 0x08);
+                var p1 = Ptr(r + 0x10);
+                if (p0 != 0 && p1 == p0 - 0x10) good++;
+            }
+            return (good, v, count);
+        }
+
+        var (pg, pv, pc) = Score(preferred);
+        if (pg >= 1) return (preferred, pv, pc);
+
+        var bestOff = -1; var best = (-1, default(StdVector), 0);
+        for (var off = 0x100; off <= 0x800; off += 8)
+        {
+            var (g, v, c) = Score(off);
+            if (g > best.Item1) { best = (g, v, c); bestOff = off; }
+        }
+        return best.Item1 >= 2 ? (bestOff, best.Item2, best.Item3) : (-1, default, 0);
+    }
+
+    // Ported from Research.ProbeInventoryStruct: try ItemList @ +0x170; brute-scan +0x100..+0x300 on miss.
+    // Returns (vec, count); count==0 means nothing usable found.
+    private (StdVector vec, int count) ProbeItemListVecForInventory(nint inv)
+    {
+        _reader.TryReadStruct<int>(inv + Poe2.Inventory.TotalBoxesX, out var boxX);
+        _reader.TryReadStruct<int>(inv + Poe2.Inventory.TotalBoxesY, out var boxY);
+        if (boxX is < 0 or > 200) boxX = 0;
+        if (boxY is < 0 or > 200) boxY = 0;
+
+        int CountItemsLike(StdVector v)
+        {
+            var span = (long)v.Last - (long)v.First;
+            if (v.First == 0 || span <= 0 || span % 8 != 0 || span > 0x8000) return -1;
+            var n = (int)(span / 8);
+            var hits = 0; var seen = 0;
+            for (var i = 0; i < Math.Min(n, 64) && seen < 12; i++)
+            {
+                var ii = Ptr(v.First + (nint)(i * 8));
+                if (ii == 0) continue;
+                seen++;
+                var item = Ptr(ii + Poe2.InventoryItem.Item);
+                if (item != 0 && ReadMetadata(item).StartsWith("Metadata/Items", StringComparison.Ordinal)) hits++;
+            }
+            return hits;
+        }
+
+        // Direct path: +0x170.
+        if (_reader.TryReadStruct<StdVector>(inv + Poe2.Inventory.ItemListVec, out var direct))
+        {
+            var span = (long)direct.Last - (long)direct.First;
+            if (direct.First != 0 && span > 0 && span % 8 == 0 && span <= 0x8000)
+            {
+                var n = (int)(span / 8);
+                if ((boxX > 0 && boxY > 0 && n == boxX * boxY) || CountItemsLike(direct) >= 1)
+                    return (direct, n);
+            }
+        }
+
+        // Brute fallback: scan +0x100..+0x300 for the best matching StdVector.
+        StdVector bestVec = default; var bestHits = 0; var bestN = 0;
+        for (var off = 0x100; off <= 0x300; off += 8)
+        {
+            if (!_reader.TryReadStruct<StdVector>(inv + off, out var v)) continue;
+            var h = CountItemsLike(v);
+            if (h > bestHits)
+            {
+                bestHits = h;
+                bestVec = v;
+                bestN = (int)(((long)v.Last - (long)v.First) / 8);
+            }
+        }
+        return bestHits >= 1 ? (bestVec, bestN) : (default, 0);
+    }
+
+    // Ported from Research.ReadItemModIds: walk one AllModsType sub-vector (Implicit or Explicit).
+    // ModArrayStruct stride 0x40: +0x00 Values StdVector<int>, +0x18 Value0 fallback int,
+    // +0x28 ModsPtr → Mods.dat row, row's first qword → UTF-16 internal mod id.
+    private void ReadRawAffixesInto(nint vecAddr, List<RawAffix> affixes)
+    {
+        if (!_reader.TryReadStruct<StdVector>(vecAddr, out var v)) return;
+        var span = (long)v.Last - (long)v.First;
+        if (v.First == 0 || span <= 0 || span % Poe2.ModsComponent.ModArrayStride != 0 || span > 0x800) return;
+        var n = (int)(span / Poe2.ModsComponent.ModArrayStride);
+        for (var i = 0; i < n; i++)
+        {
+            var rec = v.First + (nint)(i * Poe2.ModsComponent.ModArrayStride);
+
+            // ModsPtr (+0x28) → Mods.dat row; row's first qword (+0x00) → UTF-16 internal mod id.
+            var modsPtr = Ptr(rec + Poe2.ModsComponent.ModRecordPtr);
+            if (modsPtr == 0) continue;
+            var idStrPtr = Ptr(modsPtr + Poe2.ModsComponent.ModRecordIdPtr);
+            if (idStrPtr == 0) continue;
+            var modId = _reader.ReadStringUtf16(idStrPtr, 80);
+            if (!LooksLikeModId(modId)) continue;
+
+            // Rolled values: Values StdVector<int> at +0x00; fallback to Value0 at +0x18 when empty.
+            var values = ReadModRolledValues(rec);
+            affixes.Add(new RawAffix(modId, values));
+        }
+    }
+
+    // Ported from Research.ReadModValueArray: Values StdVector<int> at rec+0x00 (up to 8 values);
+    // falls back to the inline Value0 int at rec+0x18 when the vector is empty.
+    private IReadOnlyList<int> ReadModRolledValues(nint modArray)
+    {
+        var outv = new List<int>(4);
+        if (_reader.TryReadStruct<StdVector>(modArray + 0x00, out var vv))
+        {
+            var span = (long)vv.Last - (long)vv.First;
+            var count = vv.First == 0 || span <= 0 ? 0L : span / 4;
+            for (long k = 0; k < Math.Min(count, 8); k++)
+                if (_reader.TryReadStruct<int>(vv.First + (nint)(k * 4), out var x)) outv.Add(x);
+        }
+        if (outv.Count == 0 && _reader.TryReadStruct<int>(modArray + 0x18, out var v0)) outv.Add(v0);
+        return outv;
     }
 }
