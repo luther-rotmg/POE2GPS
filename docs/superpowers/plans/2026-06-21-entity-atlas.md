@@ -626,7 +626,7 @@ git commit -m "feat(atlas): EntityNameStore drives the live name-override layer"
 
 **Interfaces:**
 - Consumes: `EntityAtlasLog.All` (Task 3); `EntityNameStore` (Task 4); `EntityNameResolver.Shared.Resolve`/`ResolveOrShorten` (Task 2); `PoiCandidate.IsCandidate(in EntityDot)`; `ObjectiveCatalog.Covers(in EntityDot)`; existing `CampaignObjectives` (`All`, `Add`, the existing `Covers(SeenPoi)`); existing `IsLoopbackHost`, `ReadBody`, `Write`, `SanitizeObjective`, `Json`.
-- Produces: `GET /api/atlas`, `POST /api/atlas/name`, `GET /api/atlas/export`, `POST /api/atlas/import`; `CampaignObjectives.Covers(in Poe2Live.EntityDot)`.
+- Produces: `GET /api/entity-atlas`, `POST /api/entity-atlas/name`, `GET /api/entity-atlas/export`, `POST /api/entity-atlas/import`; `CampaignObjectives.Covers(in Poe2Live.EntityDot)`.
 
 - [ ] **Step 1: Add the `Covers(in EntityDot)` forwarder to `CampaignObjectives.cs`**
 
@@ -671,10 +671,10 @@ Assign them in the ctor body next to `_seenPois = seenPoisProvider;`:
 
 - [ ] **Step 3: Add the four endpoint cases in `ApiServer.cs`**
 
-Find the `case "/api/seen-pois":` block (the one ending in `break;` before `case "/api/version":`). Add these four cases directly after that block's `break;` (keeping `/api/atlas*` grouped):
+Find the `case "/api/seen-pois":` block (the one ending in `break;` before `case "/api/version":`). Add these four cases directly after that block's `break;` (keeping `/api/entity-atlas*` grouped):
 
 ```csharp
-            case "/api/atlas":
+            case "/api/entity-atlas":
                 // The full entity census, each entry tagged whether it already has a friendly NAME
                 // (resolver hit) and whether a Director objective already COVERS it. Unnamed entries and
                 // notable-uncatalogued entries are the worklists. Read-only; no identifying data.
@@ -702,7 +702,7 @@ Find the `case "/api/seen-pois":` block (the one ending in `break;` before `case
                 }, Json));
                 break;
 
-            case "/api/atlas/name":
+            case "/api/entity-atlas/name":
             {
                 if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
                 if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
@@ -711,7 +711,7 @@ Find the `case "/api/seen-pois":` block (the one ending in `break;` before `case
                 break;
             }
 
-            case "/api/atlas/export":
+            case "/api/entity-atlas/export":
                 // A shareable pack: your captured names + the Director objectives. No identifying data.
                 Write(ctx, 200, JsonSerializer.Serialize(new
                 {
@@ -720,7 +720,7 @@ Find the `case "/api/seen-pois":` block (the one ending in `break;` before `case
                 }, Json));
                 break;
 
-            case "/api/atlas/import":
+            case "/api/entity-atlas/import":
             {
                 if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
                 if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
@@ -809,7 +809,7 @@ Expected: PASS (no test change; verifies nothing regressed).
 
 ```bash
 git add src/POE2Radar.Overlay/Web/CampaignObjectives.cs src/POE2Radar.Overlay/Web/ApiServer.cs src/POE2Radar.Overlay/RadarApp.cs
-git commit -m "feat(atlas): /api/atlas + name/export/import endpoints"
+git commit -m "feat(atlas): /api/entity-atlas + name/export/import endpoints"
 ```
 
 ---
@@ -820,7 +820,7 @@ git commit -m "feat(atlas): /api/atlas + name/export/import endpoints"
 - Modify: `src/POE2Radar.Overlay/Web/DashboardHtml.cs`
 
 **Interfaces:**
-- Consumes: `GET /api/atlas`, `POST /api/atlas/name`, `GET /api/atlas/export`, `POST /api/atlas/import`, `POST /api/objectives` (Task 5). Existing JS helpers `$`, `$$`, `getJSON`, `esc`, `cssEsc` (all already in the file). `DashboardHtml.Page` is a C# **raw string literal** (`public const string Page = """ … """`), so the HTML/JS below inserts **verbatim — no escaping**.
+- Consumes: `GET /api/entity-atlas`, `POST /api/entity-atlas/name`, `GET /api/entity-atlas/export`, `POST /api/entity-atlas/import`, `POST /api/objectives` (Task 5). Existing JS helpers `$`, `$$`, `getJSON`, `esc`, `cssEsc` (all already in the file). `DashboardHtml.Page` is a C# **raw string literal** (`public const string Page = """ … """`), so the HTML/JS below inserts **verbatim — no escaping**.
 
 - [ ] **Step 1: Add the tab button**
 
@@ -871,11 +871,11 @@ Place this near the Director JS (`loadDirector`/`renderDirector`), e.g. directly
 /* ── entity atlas tab: name everything + classify the notable ── */
 let eaEntries=[], eaQ='';
 async function loadEntAtlas(){
-  try{ const s=await getJSON('/api/atlas'); eaEntries=s.entries||[]; }catch(e){ eaEntries=[]; }
+  try{ const s=await getJSON('/api/entity-atlas'); eaEntries=s.entries||[]; }catch(e){ eaEntries=[]; }
   renderEntAtlas();
 }
 async function postAtlasName(metadata, name){
-  try{ await fetch('/api/atlas/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({metadata,name})}); }catch(e){}
+  try{ await fetch('/api/entity-atlas/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({metadata,name})}); }catch(e){}
   loadEntAtlas();
 }
 function eaMatch(a){ return !eaQ || ((a.name+' '+a.metadata+' '+a.category).toLowerCase().includes(eaQ)); }
@@ -924,7 +924,7 @@ function eaClassRow(a){
 }
 $('#eaSearch')?.addEventListener('input',e=>{ eaQ=e.target.value.toLowerCase(); renderEntAtlas(); });
 $('#eaExport')?.addEventListener('click',async()=>{
-  try{ const p=await getJSON('/api/atlas/export');
+  try{ const p=await getJSON('/api/entity-atlas/export');
     const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'});
     const u=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=u; a.download='atlas-pack.json'; a.click(); URL.revokeObjectURL(u);
@@ -934,7 +934,7 @@ $('#eaImport')?.addEventListener('change',e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
   const rd=new FileReader();
   rd.onload=async()=>{ try{ const pack=JSON.parse(rd.result);
-      await fetch('/api/atlas/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pack)});
+      await fetch('/api/entity-atlas/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pack)});
       loadEntAtlas();
     }catch(err){} e.target.value=''; };
   rd.readAsText(f);
@@ -980,8 +980,8 @@ git commit -m "feat(atlas): dashboard Entity Atlas tab (name + classify + share)
   `_entityAtlas` + `_entityNameStore` fields + ctor construction; `_entityAtlas.Observe(_entities,
   areaCode)` in `WorldTick` **before** the user-hidden cull; `_entityAtlas.Flush()` +
   `_entityNameStore.Flush()` in `Dispose`; the two `ApiServer` ctor params (`Func<…AtlasEntry>
-  entityAtlasProvider`, `EntityNameStore entityNames`) + the `/api/atlas`, `/api/atlas/name`,
-  `/api/atlas/export`, `/api/atlas/import` cases + `ApplyAtlasName`/`ApplyAtlasImport`; the
+  entityAtlasProvider`, `EntityNameStore entityNames`) + the `/api/entity-atlas`, `/api/entity-atlas/name`,
+  `/api/entity-atlas/export`, `/api/entity-atlas/import` cases + `ApplyAtlasName`/`ApplyAtlasImport`; the
   `CampaignObjectives.Covers(in EntityDot)` forwarder; the `new ApiServer(...)` args
   `() => _entityAtlas.All, _entityNameStore`; the Dashboard "Entity Atlas" tab (`data-tab="entatlas"` /
   `data-view="entatlas"` + `loadEntAtlas`). Note the name-clash guard vs. the endgame Atlas-map feature.
@@ -994,7 +994,7 @@ git commit -m "feat(atlas): dashboard Entity Atlas tab (name + classify + share)
       "Needs a name" (raw paths) and "Notable, uncatalogued"; typing a name + Save removes it from
       "Needs a name" AND shows that name on the radar/legend immediately; "Classify" adds a Director
       objective (it leaves the list). "Export pack" downloads `atlas-pack.json`; "Import pack" merges one
-      back. Confirm `/api/atlas` carries no character name.
+      back. Confirm `/api/entity-atlas` carries no character name.
 ```
 
 - [ ] **Step 3: Commit**
@@ -1009,7 +1009,7 @@ git commit -m "docs(atlas): upstream-merge hooks + release-checklist item"
 ## Self-Review
 
 **Spec coverage** (§ = spec section):
-- §4 data flow (Observe → census → /api/atlas tagged → name/classify → export/import) → Tasks 3/5/6. ✓
+- §4 data flow (Observe → census → /api/entity-atlas tagged → name/classify → export/import) → Tasks 3/5/6. ✓
 - §5 components (AtlasEntry, EntityAtlasLog, EntityNameStore, resolver override, endpoints, tab, RadarApp hooks) → Tasks 1–6. ✓
 - §6 census filter (skip Player + JunkFilter; dedup; **pre-cull** observe) → Task 1 `AtlasCensus` + Task 3 Step 4. ✓
 - §7 classification (named? via `Resolve`; covered? via synthetic `EntityDot` + `Covers`; notable via `PoiCandidate.IsCandidate`) → Task 5 Step 3 (+ Task 5 Step 1 forwarder). ✓
@@ -1021,4 +1021,4 @@ git commit -m "docs(atlas): upstream-merge hooks + release-checklist item"
 
 **Placeholder scan:** none — every step has full code or exact edits with verbatim anchors; no "TBD"/"similar to".
 
-**Type consistency:** `AtlasEntry` (Task 1) is used identically in `EntityAtlasLog` (Task 3) and the `/api/atlas` projection (Task 5). `AtlasCensus.IsCensusEntity`/`Signature` (Task 1) match the `EntityAtlasLog.Observe` calls (Task 3). `EntityNameResolver.SetUserOverrides` (Task 2) matches `EntityNameStore.Publish` (Task 4). `EntityNameStore.All`/`Add`/`Merge` (Task 4) match the endpoints (Task 5). The two new `ApiServer` ctor params (Task 5 Step 2) match the call-site args (Task 5 Step 5). `CampaignObjectives.Covers(in EntityDot)` (Task 5 Step 1) matches its use in `/api/atlas` (Task 5 Step 3). The dashboard fetches `{entries}` / `{names,objectives}` matching the endpoint shapes (Task 6 vs Task 5).
+**Type consistency:** `AtlasEntry` (Task 1) is used identically in `EntityAtlasLog` (Task 3) and the `/api/entity-atlas` projection (Task 5). `AtlasCensus.IsCensusEntity`/`Signature` (Task 1) match the `EntityAtlasLog.Observe` calls (Task 3). `EntityNameResolver.SetUserOverrides` (Task 2) matches `EntityNameStore.Publish` (Task 4). `EntityNameStore.All`/`Add`/`Merge` (Task 4) match the endpoints (Task 5). The two new `ApiServer` ctor params (Task 5 Step 2) match the call-site args (Task 5 Step 5). `CampaignObjectives.Covers(in EntityDot)` (Task 5 Step 1) matches its use in `/api/entity-atlas` (Task 5 Step 3). The dashboard fetches `{entries}` / `{names,objectives}` matching the endpoint shapes (Task 6 vs Task 5).
