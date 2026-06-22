@@ -905,6 +905,7 @@ public sealed class RadarApp : IDisposable
             AreaCode: snap.AreaCode,
             CharLevel: snap.CharLevel,
             CameraMatrix: _cameraMatrix,
+            CycleIndicator: (_cycleIndicator is { } ci && DateTime.UtcNow < ci.Expiry) ? ci : null,
             HideJunk: _settings.HideJunk,
             ShowPath: _settings.ShowPath,
             UseCuratedLandmarks: _settings.UseCuratedLandmarks,

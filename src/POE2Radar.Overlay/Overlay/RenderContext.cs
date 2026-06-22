@@ -112,6 +112,8 @@ public sealed record RenderContext(
     int CharLevel,
     // WorldToScreen matrix (16 floats, row-major) for world-space nameplates; null if unavailable.
     float[]? CameraMatrix,
+    // Transient on-screen indicator shown briefly after a Quick-Target cycle; null when not active/expired.
+    CycleIndicator? CycleIndicator,
     // ── Phase 1 features (all gated by their settings flag below). ──
     // Feature flags mirrored from RadarSettings.
     bool HideJunk,
