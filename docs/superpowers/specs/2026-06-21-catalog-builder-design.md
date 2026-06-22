@@ -1,7 +1,7 @@
 # Catalog Builder — Design Spec
 
 - **Date:** 2026-06-21
-- **Status:** Draft for review
+- **Status:** Approved 2026-06-21
 - **Topic:** The Objective Director's detection & cataloging system — a persistent "seen POI" log + a dashboard that surfaces uncatalogued content and turns it into Director objectives with one click.
 
 ---
