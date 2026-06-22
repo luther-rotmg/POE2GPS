@@ -88,15 +88,9 @@ public sealed class SeenPoiLog
 
     private void Load()
     {
-        try
-        {
-            if (!File.Exists(_filePath)) return;
-            var list = JsonSerializer.Deserialize<List<SeenPoi>>(File.ReadAllText(_filePath), Json);
-            if (list == null) return;
+        if (JsonStore.TryLoad<List<SeenPoi>>(_filePath, Json, "Seen-POI log", out var list) && list != null)
             foreach (var p in list)
                 if (!string.IsNullOrEmpty(p.Signature)) _seen[p.Signature] = p;
-        }
-        catch (Exception ex) { Console.Error.WriteLine($"Seen-POI log load failed: {ex.Message}"); }
     }
 
     private void Save() // under _gate

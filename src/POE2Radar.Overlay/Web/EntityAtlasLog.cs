@@ -71,15 +71,9 @@ public sealed class EntityAtlasLog
 
     private void Load()
     {
-        try
-        {
-            if (!File.Exists(_filePath)) return;
-            var list = JsonSerializer.Deserialize<List<AtlasEntry>>(File.ReadAllText(_filePath), Json);
-            if (list == null) return;
+        if (JsonStore.TryLoad<List<AtlasEntry>>(_filePath, Json, "Entity atlas", out var list) && list != null)
             foreach (var a in list)
                 if (!string.IsNullOrEmpty(a.Metadata)) _seen[a.Metadata] = a;
-        }
-        catch (Exception ex) { Console.Error.WriteLine($"Entity atlas load failed: {ex.Message}"); }
     }
 
     private void Save() // under _gate

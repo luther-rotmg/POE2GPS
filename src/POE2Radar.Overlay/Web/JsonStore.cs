@@ -22,4 +22,21 @@ internal static class JsonStore
         File.WriteAllText(tmp, JsonSerializer.Serialize(value, options));
         File.Move(tmp, path, overwrite: true);
     }
+
+    /// <summary>
+    /// Load + deserialize a config file. Returns false (with a logged warning) on a missing or corrupt
+    /// file so the caller simply keeps its in-memory defaults — the single-sourced "load or keep
+    /// defaults" policy. The caller does its own post-load population from <paramref name="value"/>.
+    /// </summary>
+    public static bool TryLoad<T>(string path, JsonSerializerOptions options, string label, out T? value)
+    {
+        value = default;
+        try
+        {
+            if (!File.Exists(path)) return false;
+            value = JsonSerializer.Deserialize<T>(File.ReadAllText(path), options);
+            return value is not null;
+        }
+        catch (Exception ex) { Console.Error.WriteLine($"{label} load failed: {ex.Message}"); return false; }
+    }
 }

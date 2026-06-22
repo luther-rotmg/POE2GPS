@@ -59,16 +59,12 @@ public sealed class GearWeightStore
 
     private void Load()
     {
-        try
+        if (JsonStore.TryLoad<Model>(_filePath, Json, "Gear weights", out var m) && m != null)
         {
-            if (!File.Exists(_filePath)) return;
-            var m = JsonSerializer.Deserialize<Model>(File.ReadAllText(_filePath), Json);
-            if (m == null) return;
             _byStatId = new Dictionary<string, double>(m.ByStatId, StringComparer.OrdinalIgnoreCase);
             _target = m.Target > 0 ? m.Target : 1;
             _threshold = Math.Clamp(m.GodRollThreshold, 0, 100);
         }
-        catch (Exception ex) { Console.Error.WriteLine($"Gear weights load failed: {ex.Message}"); }
     }
 
     private void Save() // under _gate

@@ -65,15 +65,9 @@ public sealed class EntityNameStore
 
     private void Load()
     {
-        try
-        {
-            if (!File.Exists(_filePath)) return;
-            var map = JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(_filePath), Json);
-            if (map == null) return;
+        if (JsonStore.TryLoad<Dictionary<string, string>>(_filePath, Json, "Entity name store", out var map) && map != null)
             foreach (var (k, v) in map)
                 if (!string.IsNullOrWhiteSpace(k) && !string.IsNullOrWhiteSpace(v)) _names[k] = v;
-        }
-        catch (Exception ex) { Console.Error.WriteLine($"Entity name store load failed: {ex.Message}"); }
     }
 
     private void Save() // under _gate
