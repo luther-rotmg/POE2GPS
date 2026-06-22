@@ -407,6 +407,7 @@ internal static class DashboardHtml
         <button class="tab" data-tab="atlas">Atlas</button>
         <button class="tab" data-tab="settings">Settings</button>
         <button class="tab" data-tab="director">Director</button>
+            <button class="tab" data-tab="entatlas">Entity Atlas</button>
       </div>
 
       <section class="view" data-view="filters">
@@ -623,6 +624,25 @@ internal static class DashboardHtml
           </div>
         </section>
 
+        <section class="view" data-view="entatlas" hidden>
+          <div class="card">
+            <h3>Entity Atlas <small>name every entity you've seen; classify the notable ones</small></h3>
+            <div class="row">
+              <input id="eaSearch" class="numin" type="text" placeholder="filter…" style="width:200px">
+              <button class="numin" id="eaExport">Export pack</button>
+              <label class="numin" style="cursor:pointer">Import pack<input id="eaImport" type="file" accept="application/json" style="display:none"></label>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Needs a name <small>entities with no friendly name yet (shows the raw path)</small></h3>
+            <div id="eaUnnamed" class="znotes" style="display:block"></div>
+          </div>
+          <div class="card">
+            <h3>Notable, uncatalogued <small>named/notable entities no objective covers yet</small></h3>
+            <div id="eaNotable" class="znotes" style="display:block"></div>
+          </div>
+        </section>
+
     </main>
   </div>
 </div>
@@ -644,6 +664,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   if(activeTab==='landmarks') loadLandmarks();
   if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); }
   if(activeTab==='director') loadDirector();
+  if(activeTab==='entatlas') loadEntAtlas();
 });
 
 /* ── polling (left rail vitals/zone/census) ── */
@@ -1193,6 +1214,78 @@ function candRow(p){
 }
 function cssEsc(s){ return (s||'').replace(/["\\\]]/g,'\\$&'); }
 $('#dirSearch')?.addEventListener('input',e=>{ dirQ=e.target.value.toLowerCase(); renderDirector(); });
+
+/* ── entity atlas tab: name everything + classify the notable ── */
+let eaEntries=[], eaQ='';
+async function loadEntAtlas(){
+  try{ const s=await getJSON('/api/entity-atlas'); eaEntries=s.entries||[]; }catch(e){ eaEntries=[]; }
+  renderEntAtlas();
+}
+async function postAtlasName(metadata, name){
+  try{ await fetch('/api/entity-atlas/name',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({metadata,name})}); }catch(e){}
+  loadEntAtlas();
+}
+function eaMatch(a){ return !eaQ || ((a.name+' '+a.metadata+' '+a.category).toLowerCase().includes(eaQ)); }
+function renderEntAtlas(){
+  const un=$('#eaUnnamed');
+  if(un){
+    const rows=eaEntries.filter(a=>!a.named).filter(eaMatch).sort((x,y)=>y.count-x.count);
+    un.innerHTML = rows.length ? rows.map(eaNameRow).join('')
+      : '<div class="row"><div class="rl hint-row">Everything in view has a name — explore more, or clear the filter.</div></div>';
+    rows.forEach(a=>{
+      const el=un.querySelector('[data-m="'+cssEsc(a.metadata)+'"]'); if(!el) return;
+      el.querySelector('.ea-save').onclick=()=>{ const v=el.querySelector('.ea-name').value.trim(); if(v) postAtlasName(a.metadata, v); };
+    });
+  }
+  const nt=$('#eaNotable');
+  if(nt){
+    const rows=eaEntries.filter(a=>a.notable && !a.covered).filter(eaMatch).sort((x,y)=>y.count-x.count);
+    nt.innerHTML = rows.length ? rows.map(eaClassRow).join('')
+      : '<div class="row"><div class="rl hint-row">No uncatalogued notable entities in view.</div></div>';
+    rows.forEach(a=>{
+      const el=nt.querySelector('[data-m="'+cssEsc(a.metadata)+'"]'); if(!el) return;
+      el.querySelector('.ea-add').onclick=async()=>{
+        const cat=el.querySelector('.ea-cat').value;
+        const prio=parseInt(el.querySelector('.ea-prio').value,10)||50;
+        try{ await fetch('/api/objectives',{method:'POST',headers:{'Content-Type':'application/json'},
+             body:JSON.stringify({add:{id:'e:'+a.metadata,label:a.name,category:cat,priority:prio,enabled:true,metadata:[a.metadata]}})}); }catch(e){}
+        loadEntAtlas();
+      };
+    });
+  }
+}
+function eaNameRow(a){
+  return '<div class="row" data-m="'+esc(a.metadata)+'">'
+    + '<div class="rl">'+esc(a.name)+'<small>'+esc(a.category)+' · '+esc(a.zone||'?')+' · ×'+a.count+'</small></div>'
+    + '<input class="numin ea-name" type="text" placeholder="friendly name" style="width:160px">'
+    + '<button class="delbtn ea-save">Save</button></div>';
+}
+function eaClassRow(a){
+  const opts=['League','PermanentUpgrade','GemSource','Boss','SideZone','SideBoss','Other']
+    .map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+  return '<div class="row" data-m="'+esc(a.metadata)+'">'
+    + '<div class="rl">'+esc(a.name)+'<small>'+esc(a.category)+' · '+esc(a.zone||'?')+' · ×'+a.count+'</small></div>'
+    + '<select class="numin selin ea-cat">'+opts+'</select>'
+    + '<input class="numin ea-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
+    + '<button class="delbtn ea-add">Classify</button></div>';
+}
+$('#eaSearch')?.addEventListener('input',e=>{ eaQ=e.target.value.toLowerCase(); renderEntAtlas(); });
+$('#eaExport')?.addEventListener('click',async()=>{
+  try{ const p=await getJSON('/api/entity-atlas/export');
+    const blob=new Blob([JSON.stringify(p,null,2)],{type:'application/json'});
+    const u=URL.createObjectURL(blob); const a=document.createElement('a');
+    a.href=u; a.download='atlas-pack.json'; a.click(); URL.revokeObjectURL(u);
+  }catch(e){}
+});
+$('#eaImport')?.addEventListener('change',e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=async()=>{ try{ const pack=JSON.parse(rd.result);
+      await fetch('/api/entity-atlas/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pack)});
+      loadEntAtlas();
+    }catch(err){} e.target.value=''; };
+  rd.readAsText(f);
+});
 
 /* ── atlas tab (read-only inspection of the map-data we can read) ── */
 async function loadAtlas(){
