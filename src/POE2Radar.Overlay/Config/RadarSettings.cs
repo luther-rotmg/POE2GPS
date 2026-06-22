@@ -36,7 +36,9 @@ public sealed class RadarSettings
 
     // ── Quick-Target Cycler (Task 2/3/4). When either input driver is enabled, a ranked target list
     //    is computed each world tick and the cycler can step through it (single-active selection). ──
-    public bool EnableTargetHotkeys { get; set; } = false;
+    // Quick-Target Cycler keyboard hotkeys (Ctrl+Alt+ [ ] / 1-9 / 0) to switch the active radar target.
+    // Reads keys to change the overlay's selection — never sends input to the game.
+    public bool EnableTargetHotkeys { get; set; } = true;
     public bool EnableControllerCycle { get; set; } = false;
 
     // ── Overlay render/present rate (Hz). The overlay redraws + UpdateLayeredWindow-blits at this

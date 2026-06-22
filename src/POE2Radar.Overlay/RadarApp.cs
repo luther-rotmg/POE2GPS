@@ -218,6 +218,7 @@ public sealed class RadarApp : IDisposable
     private volatile IReadOnlyList<RankedTarget> _rankedTargets = System.Array.Empty<RankedTarget>();
     private string? _activeTargetId;          // the cycler's current single active target (render thread)
     private CycleIndicator? _cycleIndicator;  // transient overlay indicator (render thread)
+    private DateTime _nextCycleAt = DateTime.MinValue;
     private enum CycleAction { Next, Prev, Clear }
     // The ONLY state shared with the HTTP/API thread. Every read/iterate/mutate of _selectedIds is
     // done under _navLock (snapshot to a local, then work outside the lock). Trackers are reconciled
@@ -1312,6 +1313,26 @@ public sealed class RadarApp : IDisposable
         {
             _nextInspectAt = DateTime.UtcNow.AddMilliseconds(250);
             AtlasRoutePick();
+        }
+
+        // Quick-Target Cycler (keyboard): Ctrl+Alt+ ] next, [ prev, 1-9 jump-to-slot, 0 clear.
+        // Foreground-gated + debounced. Reads keys to change the overlay's active target — sends nothing
+        // to the game. Cycle keys are [ ] (0xDB/0xDD), NOT arrows (Ctrl+Alt+Arrow rotates Intel displays).
+        if (_settings.EnableTargetHotkeys && DateTime.UtcNow >= _nextCycleAt
+            && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd
+            && Down(0x11) && Down(0x12))   // Ctrl + Alt held
+        {
+            var fired = true;
+            if (Down(0xDD)) Cycle(CycleAction.Next);          // ]
+            else if (Down(0xDB)) Cycle(CycleAction.Prev);     // [
+            else if (Down(0x30)) Cycle(CycleAction.Clear);    // 0
+            else
+            {
+                fired = false;
+                for (var n = 1; n <= 9; n++)
+                    if (Down(0x30 + n)) { CycleToIndex(n); fired = true; break; }   // 1..9
+            }
+            if (fired) _nextCycleAt = DateTime.UtcNow.AddMilliseconds(250);
         }
     }
 
