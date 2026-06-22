@@ -34,6 +34,11 @@ public sealed class RadarSettings
     // (catalog-ranked), advancing as objectives complete. Read-only — only changes the nav selection.
     public bool EnableDirector { get; set; } = false;
 
+    // ── Quick-Target Cycler (Task 2/3/4). When either input driver is enabled, a ranked target list
+    //    is computed each world tick and the cycler can step through it (single-active selection). ──
+    public bool EnableTargetHotkeys { get; set; } = false;
+    public bool EnableControllerCycle { get; set; } = false;
+
     // ── Overlay render/present rate (Hz). The overlay redraws + UpdateLayeredWindow-blits at this
     //    rate; lower = less CPU/GPU tax on the game (the blit cost is proportional to resolution).
     //    0 = AUTO: match the refresh rate of the monitor the game is on (re-detected ~1/s) — recommended,

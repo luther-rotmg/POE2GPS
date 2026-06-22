@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using NumVec2 = System.Numerics.Vector2;
 using POE2Radar.Core;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Navigation;
 using POE2Radar.Core.Gear;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Native;
@@ -214,6 +215,10 @@ public sealed class RadarApp : IDisposable
     // Built wholesale by the world tick; read by reference from the render thread (F6 add-nearest) and the
     // API thread (TargetLabel). volatile so those readers always see a fully-built list, never a torn one.
     private volatile List<NavTarget> _navTargets = new();                // unified targets, rebuilt each world tick
+    private volatile IReadOnlyList<RankedTarget> _rankedTargets = System.Array.Empty<RankedTarget>();
+    private string? _activeTargetId;          // the cycler's current single active target (render thread)
+    private CycleIndicator? _cycleIndicator;  // transient overlay indicator (render thread)
+    private enum CycleAction { Next, Prev, Clear }
     // The ONLY state shared with the HTTP/API thread. Every read/iterate/mutate of _selectedIds is
     // done under _navLock (snapshot to a local, then work outside the lock). Trackers are reconciled
     // from this list on the tick thread only — mutators (in-game + API) just edit _selectedIds.
@@ -1093,6 +1098,10 @@ public sealed class RadarApp : IDisposable
 
         // Rebuild the unified navigation-target list (tiles + entity POIs) for this tick.
         _navTargets = BuildNavTargets(player);
+        // Publish the priority-then-distance ranked target list for the Quick-Target Cycler (read-only;
+        // computed world-side where the catalog + entities live). Only when a cycler input is enabled.
+        _rankedTargets = (_settings.EnableTargetHotkeys || _settings.EnableControllerCycle)
+            ? BuildRankedTargets(player) : System.Array.Empty<RankedTarget>();
 
         // On a zone change: drop the (now-stale) selection, then apply the persistent
         // auto-nav patterns against the new zone's targets. Keyed off the AreaInstance
@@ -1416,6 +1425,68 @@ public sealed class RadarApp : IDisposable
         }
 
         return targets;
+    }
+
+    /// <summary>Rank the current nav targets by catalog priority (desc) then distance (asc): reuse the
+    /// Director's Rank for covered content, then append uncatalogued targets by distance. World-thread.</summary>
+    private IReadOnlyList<RankedTarget> BuildRankedTargets(NumVec2 player)
+    {
+        var nav = _navTargets;
+        if (nav.Count == 0) return System.Array.Empty<RankedTarget>();
+        var result = new List<RankedTarget>(nav.Count);
+        var covered = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var r in _campaign.Rank(_entities, _landmarks, player))   // priority desc, distance asc; covered only
+            if (covered.Add(r.Id)) result.Add(new RankedTarget(r.Id, r.Label, r.Category));
+        foreach (var t in nav.Where(t => !covered.Contains(t.Id))
+                             .OrderBy(t => NumVec2.DistanceSquared(t.Grid, player)))
+            result.Add(new RankedTarget(t.Id, t.Name, ""));
+        return result;
+    }
+
+    /// <summary>Apply a cycle action (render thread): pick the new active id and route to it (single-active).</summary>
+    private void Cycle(CycleAction action)
+    {
+        var ranked = _rankedTargets;
+        var ids = new List<string>(ranked.Count);
+        foreach (var r in ranked) ids.Add(r.Id);
+        var next = action switch
+        {
+            CycleAction.Next => TargetCycler.Next(ids, _activeTargetId),
+            CycleAction.Prev => TargetCycler.Prev(ids, _activeTargetId),
+            _                => null,   // Clear
+        };
+        ApplyActive(next, ranked);
+    }
+
+    /// <summary>Jump to 1-based slot N (render thread).</summary>
+    private void CycleToIndex(int oneBased)
+    {
+        var ranked = _rankedTargets;
+        var ids = new List<string>(ranked.Count);
+        foreach (var r in ranked) ids.Add(r.Id);
+        ApplyActive(TargetCycler.AtIndex(ids, oneBased), ranked);
+    }
+
+    private void ApplyActive(string? id, IReadOnlyList<RankedTarget> ranked)
+    {
+        _activeTargetId = id;
+        SetActiveTarget(id);   // single-active: replace _selectedIds with just this one (or none)
+        if (id is null) { _cycleIndicator = null; return; }
+        var pos = 0;
+        for (var i = 0; i < ranked.Count; i++) if (ranked[i].Id == id) { pos = i; break; }
+        var rt = ranked[pos];
+        _cycleIndicator = new CycleIndicator(pos + 1, ranked.Count, rt.Name, rt.Category, DateTime.UtcNow.AddSeconds(2));
+    }
+
+    /// <summary>Single-active selection: clear the nav selection and add this one id (or none). Only edits
+    /// _selectedIds under _navLock — trackers/routes reconcile on the tick thread (like ToggleSelectionCore).</summary>
+    private void SetActiveTarget(string? id)
+    {
+        lock (_navLock)
+        {
+            _selectedIds.Clear();
+            if (id is not null) _selectedIds.Add(id);
+        }
     }
 
     /// <summary>Zone change: remember the leaving zone's selection (by its instance hash), then either

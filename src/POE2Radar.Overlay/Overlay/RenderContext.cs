@@ -13,6 +13,12 @@ namespace POE2Radar.Overlay;
 /// </summary>
 public readonly record struct NavTarget(string Id, string Name, NumVec2 Grid, string MatchKey, bool IsEntity, bool AutoPath = false);
 
+/// <summary>One entry in the priority-then-distance ranked target list the cycler walks.</summary>
+public readonly record struct RankedTarget(string Id, string Name, string Category);
+
+/// <summary>Transient on-screen "active target" indicator state (drawn briefly after a cycle).</summary>
+public sealed record CycleIndicator(int Pos, int Total, string Name, string Category, System.DateTime Expiry);
+
 /// <summary>One legend row: a navigation target, the selection-order color slot it draws in (0..7, or
 /// -1 when unselected), and whether it is currently selected (its own A* route is drawn).</summary>
 public readonly record struct LegendEntry(NavTarget Target, int ColorSlot, bool IsSelected);
