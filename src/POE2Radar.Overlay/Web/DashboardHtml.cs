@@ -633,6 +633,7 @@ internal static class DashboardHtml
               <input id="eaSearch" class="numin" type="text" placeholder="filter…" style="width:200px">
               <button class="numin" id="eaExport">Export pack</button>
               <label class="numin" style="cursor:pointer">Import pack<input id="eaImport" type="file" accept="application/json" style="display:none"></label>
+              <button class="numin" id="eaContribute" title="Export your pack, then attach it on the submission form — your names ship to everyone next release.">Contribute names →</button>
             </div>
           </div>
           <div class="card">
@@ -1278,6 +1279,9 @@ $('#eaExport')?.addEventListener('click',async()=>{
     const u=URL.createObjectURL(blob); const a=document.createElement('a');
     a.href=u; a.download='atlas-pack.json'; a.click(); URL.revokeObjectURL(u);
   }catch(e){}
+});
+$('#eaContribute')?.addEventListener('click',()=>{
+  window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener');
 });
 $('#eaImport')?.addEventListener('change',e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;

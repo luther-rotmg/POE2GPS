@@ -1,0 +1,43 @@
+name: "🗺️ Entity name submission (Atlas pack)"
+description: "Share the entity names you tagged in the Entity Atlas so they ship to everyone next release."
+title: "[atlas] entity-name submission"
+labels: ["atlas-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping map Path of Exile 2! 🧭
+
+        In the overlay's **Entity Atlas** tab you can name the entities the radar didn't recognize. When
+        you've named a batch, click **Export pack** to download `atlas-pack.json`, then submit it here.
+        A maintainer folds accumulated submissions into the built-in name table each release
+        (`resources/poe2-data/merge_atlas_packs.py`), so your names reach everyone — and over time we map
+        the whole game.
+
+        **Only the `names` are used.** No character name, position, or account data is in the pack.
+  - type: textarea
+    id: pack
+    attributes:
+      label: "Your atlas-pack.json"
+      description: "Drag-and-drop the exported file into this box to attach it, OR paste its contents."
+      placeholder: '{"names": {"metadata/monsters/...": "Friendly Name", ...}, "objectives": [...]}'
+      render: json
+    validations:
+      required: true
+  - type: input
+    id: patch
+    attributes:
+      label: "Game patch / league (optional)"
+      description: "Helps us track when content was current, e.g. '0.3.0 — Keepers of the Flame'."
+      placeholder: "0.3.0"
+    validations:
+      required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: "Confirm"
+      options:
+        - label: "These names are my own contribution and contain no personal/account data."
+          required: true
+        - label: "I understand contributed names ship under the project's MIT license."
+          required: true
