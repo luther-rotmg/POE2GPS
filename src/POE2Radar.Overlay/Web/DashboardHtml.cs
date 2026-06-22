@@ -406,6 +406,7 @@ internal static class DashboardHtml
         <button class="tab" data-tab="landmarks">Landmarks</button>
         <button class="tab" data-tab="atlas">Atlas</button>
         <button class="tab" data-tab="settings">Settings</button>
+        <button class="tab" data-tab="director">Director</button>
       </div>
 
       <section class="view" data-view="filters">
@@ -610,6 +611,18 @@ internal static class DashboardHtml
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
 
+        <section class="view" data-view="director" hidden>
+          <div class="card">
+            <h3>Needs cataloguing <small>notable POIs/landmarks you've seen that no objective covers yet</small></h3>
+            <div class="row"><input id="dirSearch" class="numin" type="text" placeholder="filter…" style="width:200px"></div>
+            <div id="dirCandidates" class="znotes" style="display:block"></div>
+          </div>
+          <div class="card">
+            <h3>Catalog <small>active Director objectives (priority order)</small></h3>
+            <div id="dirCatalog" class="znotes" style="display:block"></div>
+          </div>
+        </section>
+
     </main>
   </div>
 </div>
@@ -630,6 +643,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
   if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); }
+  if(activeTab==='director') loadDirector();
 });
 
 /* ── polling (left rail vitals/zone/census) ── */
@@ -1127,6 +1141,58 @@ $('#lmImport')?.addEventListener('click',()=>{
     rd.readAsText(f); };
   inp.click();
 });
+
+/* ── director tab: catalog builder (seen-POIs → objectives) ── */
+let dirSeen=[], dirObjs=[], dirQ='';
+async function loadDirector(){
+  try{ const s=await getJSON('/api/seen-pois'); dirSeen=s.pois||[]; }catch(e){ dirSeen=[]; }
+  try{ const o=await getJSON('/api/objectives'); dirObjs=o.objectives||[]; }catch(e){ dirObjs=[]; }
+  renderDirector();
+}
+async function postObjectives(body){
+  try{ const r=await fetch('/api/objectives',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+       const j=await r.json(); if(j&&j.objectives) dirObjs=j.objectives; }catch(e){}
+  loadDirector();
+}
+function renderDirector(){
+  const cand=$('#dirCandidates');
+  if(cand){
+    const rows=dirSeen.filter(p=>!p.covered)
+      .filter(p=>!dirQ || ((p.name+' '+(p.metadata||p.landmarkPath||'')+' '+p.category).toLowerCase().includes(dirQ)))
+      .sort((a,b)=>b.count-a.count);
+    cand.innerHTML = rows.length ? rows.map(candRow).join('')
+      : '<div class="row"><div class="rl hint-row">Nothing uncatalogued in view — explore more, or clear the filter.</div></div>';
+    rows.forEach(p=>{
+      const el=cand.querySelector('[data-sig="'+cssEsc(p.signature)+'"]'); if(!el) return;
+      el.querySelector('.dir-add').onclick=()=>{
+        const cat=el.querySelector('.dir-cat').value;
+        const prio=parseInt(el.querySelector('.dir-prio').value,10)||50;
+        const match = p.landmarkPath ? {landmarkPath:[p.landmarkPath]} : {metadata:[p.metadata]};
+        postObjectives({add:Object.assign({id:p.signature,label:p.name,category:cat,priority:prio,enabled:true},match)});
+      };
+    });
+  }
+  const cat=$('#dirCatalog');
+  if(cat){
+    const objs=dirObjs.slice().sort((a,b)=>(b.priority||0)-(a.priority||0));
+    cat.innerHTML = objs.length ? objs.map(o=>
+      '<div class="row" data-id="'+esc(o.id)+'"><div class="rl">'+esc(o.label)+'<small>'+esc(o.category)+' · prio '+(o.priority||0)+(o.enabled?'':' · off')+'</small></div>'
+      + '<button class="delbtn dir-del">Remove</button></div>').join('')
+      : '<div class="row"><div class="rl hint-row">No objectives yet.</div></div>';
+    objs.forEach(o=>{ const el=cat.querySelector('[data-id="'+cssEsc(o.id)+'"]'); if(el) el.querySelector('.dir-del').onclick=()=>postObjectives({remove:{id:o.id}}); });
+  }
+}
+function candRow(p){
+  const opts=['League','SideBoss','SideZone','MainProgression','Bosses','Other']
+    .map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+  return '<div class="row" data-sig="'+esc(p.signature)+'">'
+    + '<div class="rl">'+esc(p.name)+'<small>'+esc(p.category)+' · '+esc(p.zone||'?')+' · ×'+p.count+'</small></div>'
+    + '<select class="numin selin dir-cat">'+opts+'</select>'
+    + '<input class="numin dir-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
+    + '<button class="delbtn dir-add">Add</button></div>';
+}
+function cssEsc(s){ return (s||'').replace(/["\\\]]/g,'\\$&'); }
+$('#dirSearch')?.addEventListener('input',e=>{ dirQ=e.target.value.toLowerCase(); renderDirector(); });
 
 /* ── atlas tab (read-only inspection of the map-data we can read) ── */
 async function loadAtlas(){
