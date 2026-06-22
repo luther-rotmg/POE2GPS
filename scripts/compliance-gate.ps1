@@ -4,6 +4,12 @@
   symbol appears in shipped source (src/, excluding the dev-only Research project + bin/obj).
   Reads (OpenProcess read-only, ReadProcessMemory, NtReadVirtualMemory, VirtualQueryEx,
   module enumeration) are allowed by design.
+
+  Also fails if a GUTTED feature is re-introduced — specifically the removed economy/PRICING layer
+  (poe.ninja/poe2scout egress: the Pricing/ directory, the PriceBook class, or the /api/prices route).
+  That layer is NOT an input/write API, so the symbol scan above can't catch it; this guard keeps a
+  `git merge upstream/main` from silently dragging pricing back in when pulling Sikaka's read-only fixes.
+  See docs/upstream-merge.md.
 .NOTES
   Compatible with Windows PowerShell 5.1 and PowerShell 7+. Run locally with
   `powershell -ExecutionPolicy Bypass -File scripts/compliance-gate.ps1`; CI uses pwsh.
@@ -98,11 +104,25 @@ if ($srcFiles) {
   }
 }
 
-if ($violations.Count -gt 0 -or $openBad.Count -gt 0) {
+# Gutted-feature guard: the removed PRICING layer isn't an input/write API, so the scan above won't
+# catch it. Fail if an upstream merge restores its CODE — the Pricing/ directory, the PriceBook class,
+# a `new PriceBook`, or the /api/prices route. Matches code (not stale doc-comments that mention pricing).
+$guttedHits = New-Object System.Collections.ArrayList
+$pricingDir = Join-Path $srcDir 'POE2Radar.Overlay/Pricing'
+if (Test-Path -LiteralPath $pricingDir) { [void]$guttedHits.Add('restored pricing directory: src/POE2Radar.Overlay/Pricing/') }
+$guttedPattern = '(\bclass\s+PriceBook\b|\bnew\s+PriceBook\b|"/api/prices")'
+if ($srcFiles) {
+  foreach ($hit in (Select-String -Path $srcFiles.FullName -Pattern $guttedPattern)) {
+    [void]$guttedHits.Add(('{0}:{1}  {2}' -f (Get-Rel $hit.Path), $hit.LineNumber, $hit.Line.Trim()))
+  }
+}
+
+if ($violations.Count -gt 0 -or $openBad.Count -gt 0 -or $guttedHits.Count -gt 0) {
   Write-Host 'COMPLIANCE GATE: FAIL' -ForegroundColor Red
   foreach ($v in $violations) { Write-Host ('  {0}:{1}  {2}   {3}' -f $v.File, $v.Line, $v.Symbol, $v.Text) }
   foreach ($o in $openBad)   { Write-Host ('  OpenProcess requests write access: {0}' -f $o.Line.Trim()) }
+  foreach ($g in $guttedHits) { Write-Host ('  gutted feature re-introduced (pricing): {0}' -f $g) }
   exit 1
 }
-Write-Host 'COMPLIANCE GATE: PASS - no input-emission or process-write symbols in shipped source.' -ForegroundColor Green
+Write-Host 'COMPLIANCE GATE: PASS - no input/process-write symbols and no re-introduced pricing in shipped source.' -ForegroundColor Green
 exit 0
