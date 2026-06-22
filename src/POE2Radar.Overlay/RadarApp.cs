@@ -48,6 +48,7 @@ public sealed class RadarApp : IDisposable
     private Func<string, DisplayRule?>? _resolveTileDraw;
     private readonly LandmarkStore _landmarkStore;
     private readonly ModCatalog _modCatalog;
+    private readonly SeenPoiLog _seenPoiLog;
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -486,6 +487,7 @@ public sealed class RadarApp : IDisposable
         _live.CuratedLookup = _landmarkStore.Lookup;
         _landmarkStoreGen = _landmarkStore.Generation;
         _modCatalog = new ModCatalog(Path.Combine(ConfigDir, "known_mods.json"));
+        _seenPoiLog = new SeenPoiLog(Path.Combine(ConfigDir, "seen_pois.json"));
         Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All, AtlasJson, SetAtlasSelection,
@@ -955,6 +957,8 @@ public sealed class RadarApp : IDisposable
         // Accumulate any newly-seen monster mod ids into the persistent catalog (debounced write)
         // so the dashboard rule editor can offer them and they survive restarts / new content.
         _modCatalog.Observe(_entities);
+        // Accumulate notable POIs/landmarks seen this zone into the catalog-candidate log (debounced).
+        _seenPoiLog.Observe(_entities, _landmarks, areaCode);
         // If the user edited the custom landmark patterns, drop the cached per-area scan so it
         // rebuilds with the new patterns this tick (otherwise it only refreshes on zone change).
         if (_landmarkPatterns.Generation != _landmarkGen)
@@ -2147,6 +2151,7 @@ public sealed class RadarApp : IDisposable
         _shutdown = true;
         _worldThread?.Join(1000);   // let the background world loop observe _shutdown and exit
         _modCatalog.Flush(); // persist any mods seen since the last debounced write
+        _seenPoiLog.Flush();
         _replanner.Dispose();
         _api.Dispose();
         _renderer.Dispose();
