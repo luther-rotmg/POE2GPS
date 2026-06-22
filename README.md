@@ -1,123 +1,109 @@
-# POE2GPS
+<div align="center">
 
-A strictly **read-only GPS / navigation overlay for Path of Exile 2**.
+# 🧭 POE2GPS
 
-It attaches to the PoE2 client, reads game state directly out of process memory (no injection, no
-hooks), and draws a terrain + entity radar and atlas route overlay on top of the game's map. It is a
-focused, community-safe fork of [Sikaka/POE2Radar](https://github.com/Sikaka/POE2Radar): the
-auto-flask keystroke feature and all economy/pricing network calls have been removed, and a
-process-randomization layer (from [NattKh/POE2Radar](https://github.com/NattKh/POE2Radar)) has been
-added.
+### Your turn-by-turn GPS for the wilds of Wraeclast.
 
-## What it does — and never does
+*A strictly **read-only** navigation overlay for Path of Exile 2 — it shows you where to go, and never touches your game.*
 
-POE2GPS does three things **never**, and this is enforced by an automated compliance gate that fails
-the build if any of them reappear (see [Compliance](#compliance--how-this-stays-safe)):
+[![CI](https://github.com/luther-rotmg/POE2GPS/actions/workflows/ci.yml/badge.svg)](https://github.com/luther-rotmg/POE2GPS/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/luther-rotmg/POE2GPS?sort=semver&label=release)](https://github.com/luther-rotmg/POE2GPS/releases)
+![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
+![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6)
+![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+<br>
+![Input: read-only](https://img.shields.io/badge/input-read--only-2ea043)
+![No process writes](https://img.shields.io/badge/process-never%20written-2ea043)
+![No automation](https://img.shields.io/badge/automation-none-2ea043)
 
-- **Never sends input to the game.** No `SendInput`, no simulated keystrokes or clicks — there is no
-  auto-flask and no automation of any kind.
-- **Never writes to or injects into the game process.** No `WriteProcessMemory`, no byte-patching,
-  no DLL injection. The game is opened **read-only** (`PROCESS_VM_READ`).
-- **Never makes economy/automation network calls.** No poe.ninja pricing, no MCP server.
+<img src="docs/img/poe2gps.png" alt="POE2GPS drawing a green GPS route across a PoE2 zone, with a named-landmark legend and radar dots" width="800">
 
-What it *does*: read game memory and draw a navigation overlay + a localhost dashboard.
+<sub>The green line is your route to the next objective. The legend names what matters — bosses, transitions, even a *Support Gem* memorial. You still drive.</sub>
 
-> **Honest note on risk.** Reading another process's memory is a gray area: GGG has historically
-> been agnostic toward passive read-only overlays, but it is *tolerated, not officially blessed*.
-> This tool removes the categories GGG explicitly prohibits (input automation, process modification)
-> to stay in the lowest-risk category. It is a personal/educational tool; you are responsible for how
-> you use it. SmartScreen/antivirus may warn on an unsigned memory-reading exe — that is expected.
+</div>
 
-## Features
+---
 
-- **Map overlay** — when the in-game map is open, draws the walkable-terrain mask + entity dots,
-  projected player-centered onto the game's map.
-- **Entity radar** — alive enemies (red), NPCs, chests, area transitions, other players, and **POIs**
-  shown with a ring; optional world-space **HP bars** over monsters; dangerous rare/magic monster
-  mods flagged.
-- **Tile landmarks** — static features pulled from terrain tile data (boss arenas, transitions, …),
-  shown the moment you enter an area, with community-curated friendly names.
-- **Atlas overlay + route planning** — on the open Atlas, highlights/labels nodes by content, draws
-  off-screen arrows to tracked maps, and auto-routes shortest-hop guidance lines to every tracked
-  tile. Route planning is **draw-only** — it never drives input.
-- **Ground / reward labels** — names of named ground drops, and the **names** of Ritual / Runeforge /
-  Runeshape-monolith rewards drawn on the map. (No economy values — pricing was removed.)
-- **Navigation** — pick any landmark, POI, or entity as a destination; the overlay draws a smoothed
-  A* route to it (on the in-game map, or as world waypoints when it's closed). Multi-select, each
-  route its own color.
-- **Customizable icons & display rules** — per-rule icon shape/color/size/opacity, editable live in
-  the dashboard; drop your own `*.svg` into the `icons/` folder to add or override any icon.
-- **Process randomization** — the overlay relaunches under a random-named hardlink, uses a random
-  window class/title, ships under a neutral assembly name, never exposes your character name on the
-  dashboard, and the release build is string-scrubbed of identifying credit/URL tokens.
-- **Web dashboard** (`http://localhost:7777`, or **F12** in-game) — a local control panel: a
-  searchable list of every entity/landmark you can click to navigate to, plus radar/icon/atlas
-  settings tabs. Served same-origin only; setting/navigation writes are loopback-gated. Read
-  endpoints: `GET /state`, `/entities`, `/landmarks`, `/api/icons`.
+## ✨ Why POE2GPS
 
-## Download (no build required)
+You attach it, it reads the game's map out of memory, and it **draws a radar + a route line** to wherever you're headed. No more squinting at the minimap or alt-tabbing to a wiki — the path is on your screen. And because it's a focused, community-safe fork of [Sikaka/POE2Radar](https://github.com/Sikaka/POE2Radar), it deliberately strips everything that could get you flagged.
 
-Grab the latest **`POE2GPS-vX.Y.Z-win-x64.zip`** from this repository's Releases page, unzip, and run
-`Overlay.exe` **as Administrator** (reading another process's memory requires it) with PoE2 already
-running. The build is self-contained — no .NET install needed. (The exe relaunches itself once under
-a random name; that is the process-randomization feature, not malware.)
+## 🛡️ What it does — and never does
 
-## Build from source
+POE2GPS does three things **never** — and an automated compliance gate *fails the build* if any of them sneak back in:
+
+| 🚫 Never | ✅ Instead |
+|---|---|
+| Sends input to the game (no `SendInput`, no auto-flask, no automation) | Just **draws** — you press every key yourself |
+| Writes to / injects into the game (no `WriteProcessMemory`, no byte-patching) | Opens the game **read-only** (`PROCESS_VM_READ`) |
+| Phones home (no poe.ninja pricing, no telemetry) | Everything is **local** |
+
+> **Honest note on risk.** Reading another process's memory is a gray area — GGG has long been agnostic toward passive read-only overlays, but it's *tolerated, not blessed*. POE2GPS removes the categories GGG explicitly prohibits (input automation, process modification) to sit in the lowest-risk bucket. It's a personal/educational tool; you're responsible for how you use it. SmartScreen/AV may warn on an unsigned memory-reading exe — expected.
+
+## 🗺️ Features
+
+- 🛰️ **Entity radar** — enemies, NPCs, chests, transitions, players, and POIs; optional world-space HP bars; dangerous rare/magic mods flagged.
+- 🧱 **Terrain + map overlay** — the walkable-terrain mask and entity dots, projected onto the in-game map.
+- 📍 **Tile landmarks** — boss arenas, transitions, reward rooms, surfaced the moment you enter a zone, with community-curated names.
+- 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Draw-only — never drives input.**
+- 🌌 **Atlas overlay + route planning** — labels nodes by content, off-screen arrows to tracked maps, shortest-hop auto-routes.
+- 🏷️ **Reward/name labels** — names of ground drops and Ritual / Runeforge / monolith rewards (no economy values).
+- 🧪 **Objective Director** *(experimental, off by default)* — auto-routes you through a zone's objectives in priority order: **seasonal event → side bosses → side zones → exit**. Still maturing — [roadmap below](#-roadmap).
+- 🎨 **Customizable icons & display rules** — per-rule shape/color/size, editable live; drop your own `*.svg` into `icons/`.
+- 🕵️ **Process randomization** — relaunches under a random-named hardlink, randomized window class/title, neutral assembly name, character name never exposed, release binary string-scrubbed.
+- 🖥️ **Web dashboard** (`http://localhost:7777`, or **F12**) — click any entity/landmark to navigate to it; tune radar/icons/atlas. Local-only, loopback-gated.
+
+## 🚀 Download (no build required)
+
+Grab the latest **`POE2GPS-vX.Y.Z-win-x64.zip`** from the [**Releases**](https://github.com/luther-rotmg/POE2GPS/releases) page, unzip, and run **`Overlay.exe` as Administrator** (memory reads require it) with PoE2 already running. Self-contained — no .NET install needed. *(It relaunches itself once under a random name — that's the process-randomization feature, not malware.)*
+
+## ⌨️ Hotkeys
+
+| Key | Action |
+|---|---|
+| **F12** | open the web dashboard |
+| **F6 / F7** | route to nearest landmark/POI / clear routes |
+| **F10** | (Atlas open) inspect hovered tile, set route start/end |
+| **F9** | quit (or right-click tray → Exit) |
+
+*(No F8 — auto-flask was removed on purpose.)*
+
+## 🔧 Build from source
 
 Requires the **.NET 10 SDK**, Windows x64.
 
-```
+```bash
 dotnet build POE2Radar.slnx
-# launch with PoE2 already running and you in a zone (run as Administrator):
+# then, with PoE2 running and you in a zone (as Administrator):
 src\POE2Radar.Overlay\bin\Debug\net10.0-windows\Overlay.exe
 ```
 
-To **exit**: right-click the system-tray icon → **Exit**, or press **F9** (or close the console).
+## ✅ Compliance — how this stays safe
 
-Hotkeys: **F9** quits; **F12** opens the web dashboard; **F6** routes to the nearest landmark/POI and
-**F7** clears routes; **F10** (with the Atlas open) inspects the hovered tile and sets a route
-start/end. All other settings live in the dashboard. (There is no F8 — auto-flask was removed.)
+The three invariants above aren't just a promise — `scripts/compliance-gate.ps1` scans the shipped source and **fails the build** if any input-emission or process-write API (`SendInput`, `WriteProcessMemory`, `VirtualProtectEx`, `CreateRemoteThread`, …) appears, or if `OpenProcess` ever asks for write access. It runs in CI on every push/PR, and locally:
 
-## Compliance — how this stays safe
-
-The three invariants above are not just a promise; `scripts/compliance-gate.ps1` scans the shipped
-source and **fails the build** if any input-emission or process-write API (e.g. `SendInput`,
-`WriteProcessMemory`, `VirtualProtectEx`, `CreateRemoteThread`) appears, or if `OpenProcess` ever
-requests write access. It runs in CI on every push/PR and can be run locally:
-
-```
+```bash
 powershell -ExecutionPolicy Bypass -File scripts/compliance-gate.ps1
 ```
 
-This also protects against accidentally re-introducing removed code when merging upstream updates
-from Sikaka — see [docs/upstream-merge.md](docs/upstream-merge.md).
+It also catches accidentally re-introducing removed code when merging upstream from Sikaka — see [docs/upstream-merge.md](docs/upstream-merge.md).
 
-## Architecture
+## 🏗️ Architecture
 
-Three projects:
+- **`src/POE2Radar.Core`** — read-only memory plumbing (`OpenProcess` read-only + `NtReadVirtualMemory`), the PoE2 offset table, the live read layer, the `Stealth/RandomName` generator, and the `Campaign/` objective catalog + director.
+- **`src/POE2Radar.Overlay`** — the overlay `.exe` (`Overlay.exe`): attaches, AOB-resolves the game roots, runs the tick loop, renders the Direct2D overlay, serves the dashboard. Reads only.
+- **`src/POE2Radar.Research`** — dev-time offset discovery tools. Never shipped; excluded from the gate.
 
-- `src/POE2Radar.Core` — memory plumbing (`OpenProcess` read-only + `NtReadVirtualMemory`), the PoE2
-  offset table (`Game/Poe2Offsets.cs`), the live read layer (`Game/Poe2Live.cs`), and the
-  identity-neutral `Stealth/RandomName` generator.
-- `src/POE2Radar.Overlay` — the overlay `.exe` (published as `Overlay.exe`): attaches, AOB-resolves
-  the game roots, runs the tick loop, renders the Direct2D overlay, and serves the dashboard. Reads
-  only — it emits no input and writes nothing to the game.
-- `src/POE2Radar.Research` — dev-time offset discovery/validation tools. Never linked into the
-  overlay binary; excluded from the compliance gate.
+PoE2 offsets drift with patches — validated values live in `Game/Poe2Offsets.cs`; re-discover via the Research probes or pull updates from Sikaka.
 
-## Offsets & patches
+## 🧪 Roadmap
 
-PoE2 memory offsets drift with game patches. Validated offsets live in `Game/Poe2Offsets.cs`. After a
-patch that breaks reads, use the `POE2Radar.Research` probes to re-discover them, or pull updates from
-Sikaka upstream (see [docs/upstream-merge.md](docs/upstream-merge.md)).
+The **Objective Director** is the headline work-in-progress. Next up: deep detection/cataloging of every relevant POI (seasonal events, passive-point upgrades, free skill/support gems), richer priority tiers, and — the dream — quest-aware cross-zone guidance that reads your quest log and points you to the right zone.
 
-## Credits
+## 🙏 Credits
 
-Forked from **[Sikaka/POE2Radar](https://github.com/Sikaka/POE2Radar)** (MIT); the
-process-randomization layer is adapted from **[NattKh/POE2Radar](https://github.com/NattKh/POE2Radar)**
-(MIT). Memory-layout research draws on the open-source **GameHelper2** project (not redistributed
-here; only independently re-validated offsets are recorded). See [NOTICE](NOTICE).
+Forked from **[Sikaka/POE2Radar](https://github.com/Sikaka/POE2Radar)** (MIT); process-randomization adapted from **[NattKh/POE2Radar](https://github.com/NattKh/POE2Radar)** (MIT). Memory-layout research draws on **GameHelper2** (not redistributed; only re-validated offsets recorded). See [NOTICE](NOTICE).
 
-## License
+## 📜 License
 
 MIT — see [LICENSE](LICENSE).
