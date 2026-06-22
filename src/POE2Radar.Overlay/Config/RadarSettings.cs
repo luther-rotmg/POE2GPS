@@ -39,7 +39,9 @@ public sealed class RadarSettings
     // Quick-Target Cycler keyboard hotkeys (Ctrl+Alt+ [ ] / 1-9 / 0) to switch the active radar target.
     // Reads keys to change the overlay's selection — never sends input to the game.
     public bool EnableTargetHotkeys { get; set; } = true;
-    public bool EnableControllerCycle { get; set; } = false;
+    // Quick-Target Cycler controller support: L3 = prev target, R3 = next (both combat-dead in PoE2).
+    // Read-only XInput poll. On by default; harmless when no controller is connected.
+    public bool EnableControllerCycle { get; set; } = true;
 
     // ── Overlay render/present rate (Hz). The overlay redraws + UpdateLayeredWindow-blits at this
     //    rate; lower = less CPU/GPU tax on the game (the blit cost is proportional to resolution).

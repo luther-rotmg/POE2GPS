@@ -219,6 +219,7 @@ public sealed class RadarApp : IDisposable
     private string? _activeTargetId;          // the cycler's current single active target (render thread)
     private CycleIndicator? _cycleIndicator;  // transient overlay indicator (render thread)
     private DateTime _nextCycleAt = DateTime.MinValue;
+    private readonly POE2Radar.Overlay.Input.ControllerCycler _controllerCycler = new();
     private enum CycleAction { Next, Prev, Clear }
     // The ONLY state shared with the HTTP/API thread. Every read/iterate/mutate of _selectedIds is
     // done under _navLock (snapshot to a local, then work outside the lock). Trackers are reconciled
@@ -1333,6 +1334,14 @@ public sealed class RadarApp : IDisposable
                     if (Down(0x30 + n)) { CycleToIndex(n); fired = true; break; }   // 1..9
             }
             if (fired) _nextCycleAt = DateTime.UtcNow.AddMilliseconds(250);
+        }
+        // Quick-Target Cycler (controller): L3 = prev, R3 = next. Poll every frame to keep edge state
+        // fresh; only ACT while PoE2 is foreground. Read-only XInput — sends nothing to the game.
+        if (_settings.EnableControllerCycle)
+        {
+            var dir = _controllerCycler.Poll();
+            if (dir != 0 && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd)
+                Cycle(dir < 0 ? CycleAction.Prev : CycleAction.Next);
         }
     }
 

@@ -537,6 +537,8 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="enableGearScorer"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Target hotkeys<small>Ctrl+Alt+ ] next / [ prev / 1-9 slot / 0 clear &mdash; switch the active radar target</small></div>
               <label class="sw"><input type="checkbox" data-set="enableTargetHotkeys"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Controller target cycle<small>L3 = previous target, R3 = next (combat-dead buttons in PoE2)</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableControllerCycle"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Overlay FPS cap<small>lower = less load on the game; 60 is smooth for a radar (15&ndash;360)</small></div>
               <input class="numin" type="number" step="1" min="15" max="360" data-set="fpsCap"></div>
           </div>
