@@ -507,16 +507,20 @@ public sealed class RadarApp : IDisposable
                           + "F9=quit  F12=open dashboard");
         Console.WriteLine("         F10 (Atlas open) = inspect hovered tile (dumps map name + code + content"
                           + " to console for web-UI filters) and set route START->END (3rd press resets)");
-        // Best-effort version check against GitHub (non-blocking; never fails startup).
-        _ = Task.Run(async () =>
+        // Best-effort version check against GitHub (non-blocking; never fails startup). The only outbound
+        // request the overlay makes beyond loopback — opt out via CheckForUpdates for zero network egress.
+        if (_settings.CheckForUpdates)
         {
-            var u = await UpdateChecker.CheckAsync();
-            _update = u;
-            if (u.UpdateAvailable)
-                Console.WriteLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}. Download: {u.Url} ***\n");
-            else
-                Console.WriteLine($"POE2Radar v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
-        });
+            _ = Task.Run(async () =>
+            {
+                var u = await UpdateChecker.CheckAsync();
+                _update = u;
+                if (u.UpdateAvailable)
+                    Console.WriteLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}. Download: {u.Url} ***\n");
+                else
+                    Console.WriteLine($"POE2Radar v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
+            });
+        }
     }
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.

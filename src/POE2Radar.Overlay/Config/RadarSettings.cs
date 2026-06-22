@@ -143,6 +143,10 @@ public sealed class RadarSettings
     // always renders on your own monitor regardless — this only affects what capture software sees.
     public bool ExcludeFromCapture { get; set; } = true;
 
+    // Check GitHub for a newer release once at startup (the only outbound request the overlay makes
+    // beyond loopback). On by default so you hear about updates; turn OFF for zero network egress.
+    public bool CheckForUpdates { get; set; } = true;
+
     // ── Per-item icon styling (shape / color / opacity / size) + metadata-matched "mechanic"
     //    overrides. Defaults reproduce the original hardcoded look exactly. ──
     public RadarStyles Styles { get; set; } = new();

@@ -130,7 +130,13 @@ public sealed class ApiServer : IDisposable
             try { ctx = _listener.GetContext(); }
             catch { return; } // listener stopped
             try { Handle(ctx); }
-            catch (Exception ex) { TryWrite(ctx, 500, JsonSerializer.Serialize(new { error = ex.Message }, Json)); }
+            catch (Exception ex)
+            {
+                // Log the detail locally, but return a GENERIC body — raw exception messages can carry
+                // memory-read internals (addresses / struct names) we don't want on the wire.
+                Console.Error.WriteLine($"API handler error: {ex.Message}");
+                TryWrite(ctx, 500, JsonSerializer.Serialize(new { error = "internal error" }, Json));
+            }
         }
     }
 
@@ -224,7 +230,7 @@ public sealed class ApiServer : IDisposable
                     .Take(limit)
                     .Select(e => new
                     {
-                        id = e.Id, addr = $"0x{e.Address:X}", category = e.Category.ToString(), metadata = e.Metadata,
+                        id = e.Id, category = e.Category.ToString(), metadata = e.Metadata,
                         name = EntityNameResolver.Shared.ResolveOrShorten(e.Metadata),
                         poi = e.Poi, iconComplete = e.IconComplete, opened = e.Opened, reaction = e.Reaction, friendly = e.IsFriendly, rarity = e.Rarity.ToString(),
                         mods = e.ModList, itemArt = e.ItemArt, itemName = e.ItemName,
@@ -567,6 +573,7 @@ public sealed class ApiServer : IDisposable
         showPlayerBlip = _settings.ShowPlayerBlip,
         enableDirector = _settings.EnableDirector,
         excludeFromCapture = _settings.ExcludeFromCapture,
+        checkForUpdates = _settings.CheckForUpdates,
         fpsCap = _settings.FpsCap,
         hpBarNormal = _settings.HpBarNormal,
         hpBarMagic = _settings.HpBarMagic,
@@ -609,6 +616,7 @@ public sealed class ApiServer : IDisposable
                 case "showPlayerBlip" when TryBool(p.Value, out var b): _settings.ShowPlayerBlip = b; applied.Add(p.Name); break;
                 case "enableDirector" when TryBool(p.Value, out var b): _settings.EnableDirector = b; applied.Add(p.Name); break;
                 case "excludeFromCapture" when TryBool(p.Value, out var b): _settings.ExcludeFromCapture = b; applied.Add(p.Name); break;
+                case "checkForUpdates" when TryBool(p.Value, out var b): _settings.CheckForUpdates = b; applied.Add(p.Name); break;
                 case "fpsCap" when TryInt(p.Value, out var n): _settings.FpsCap = Math.Clamp(n, 15, 360); applied.Add(p.Name); break;
                 case "hpBarNormal" when TryBool(p.Value, out var b): _settings.HpBarNormal = b; applied.Add(p.Name); break;
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
