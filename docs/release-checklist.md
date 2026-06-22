@@ -42,3 +42,7 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
       highest-priority one, advances when it's completed, and falls back to the zone exit once optional
       content is cleared. Confirm a manual target pick (F6) overrides it until the next zone, and that
       `/state` carries no character name.
+- [ ] **Catalog Builder:** in a zone, open the dashboard → Director tab; confirm uncatalogued POIs/
+      landmarks appear under "Needs cataloguing" with friendly names; "Add" (pick category + priority)
+      makes it disappear from the list and show under "Catalog" + drive the Director; "Remove" deletes it.
+      Confirm `/api/seen-pois` carries no character name.

@@ -56,3 +56,9 @@ These files were edited the most and are where upstream merges will most often c
   call; the `DirectorReconcile(player)` call in `WorldTick` (after `PruneCompletedTargets`, before
   `MaintainRoutes`); the `RadarState.Director` field + its construction arg + the `/state` `director`
   projection; the `enableDirector` settings round-trip; the dashboard toggle row + `dirCard` + render block.
+- **Catalog Builder** (`Core/Campaign/PoiCandidate.cs`, `ObjectiveCatalog.Covers`, `Overlay/Web/SeenPoiLog.cs`).
+  Hooks: the `_seenPoiLog` field + ctor construction; `_seenPoiLog.Observe(...)` in `WorldTick` (next to
+  `_modCatalog.Observe`); `_seenPoiLog.Flush()` in `Dispose`; the two new `ApiServer` ctor params
+  (`CampaignObjectives objectives`, `Func<…SeenPoi> seenPoisProvider`) + the `/api/seen-pois` and
+  `/api/objectives` cases + `ApplyObjectives`/`SanitizeObjective`; the `new ApiServer(...)` call args
+  `_campaign, () => _seenPoiLog.All`; the Dashboard "Director" tab (button + `data-view="director"` section + `loadDirector`).
