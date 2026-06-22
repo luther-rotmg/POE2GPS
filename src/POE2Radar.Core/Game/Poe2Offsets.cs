@@ -282,6 +282,7 @@ public static class Poe2
     /// +0x08 ptr InventoryStruct, +0x10 ptr (= +0x08 − 0x10, the fingerprint invariant).</summary>
     public static class ServerData
     {
+        public const int League = 0x21E0;  // ✓ live 2026-06-22 (Sikaka v0.15.0, read-only) — std::wstring current league name as the game stores it (e.g. "HC Runes of Aldur", "Standard", "Hardcore"); the "HC " prefix identifies hardcore vs softcore.
         public const int PlayerServerDataVec = 0x48;  // ✓ StdVector<IntPtr>; [0] → ServerDataStructure
         public const int PlayerInventoriesVec = 0x320; // ✓ (on ServerDataStructure) StdVector<InventoryArrayStruct>
         public const int InvArrayStride = 0x18;        // ✓ sizeof(InventoryArrayStruct)

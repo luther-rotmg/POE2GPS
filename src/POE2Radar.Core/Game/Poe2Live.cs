@@ -154,6 +154,20 @@ public sealed class Poe2Live
         return l;
     }
 
+    private string _league = ""; private nint _leagueFor = -1;
+
+    /// <summary>Current league name as the game stores it (ServerData @ AreaInstance+0x580 → std::wstring
+    /// +0x21E0), e.g. "HC Runes of Aldur" / "Standard". The "HC " prefix distinguishes hardcore from
+    /// softcore. Cached per area. (Pulled from Sikaka v0.15.0; read-only.)</summary>
+    public string LeagueName(nint areaInstance)
+    {
+        if (areaInstance == _leagueFor) return _league;
+        _leagueFor = areaInstance;
+        var serverData = Ptr(areaInstance + Poe2.AreaInstance.ServerDataPtr);
+        _league = serverData == 0 ? "" : ReadStdWString(serverData + Poe2.ServerData.League);
+        return _league;
+    }
+
     private string _areaCode = ""; private nint _areaCodeFor = -1;
 
     /// <summary>Area code identifier (e.g. "G1_town"). Cached per area.</summary>
