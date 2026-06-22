@@ -38,6 +38,9 @@ public sealed class CampaignObjectives
     /// <summary>True if any enabled objective already covers this seen candidate (lock-free).</summary>
     public bool Covers(SeenPoi p) => _snapshot.Covers(p);
 
+    /// <summary>True if any enabled objective matches this live entity (lock-free; mirrors Rank).</summary>
+    public bool Covers(in Poe2Live.EntityDot e) => _snapshot.Covers(in e);
+
     public IReadOnlyList<CampaignObjective> All { get { lock (_gate) return _entries.Values.ToArray(); } }
 
     public void Add(CampaignObjective o)

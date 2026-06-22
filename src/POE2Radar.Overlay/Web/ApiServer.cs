@@ -56,6 +56,9 @@ public sealed class ApiServer : IDisposable
     // Director catalog: user-managed objectives + the seen-POI log (candidates that lack an objective).
     private readonly CampaignObjectives _objectives;
     private readonly Func<IReadOnlyList<SeenPoi>> _seenPois;
+    // Entity Atlas census: every distinct entity metadata key seen across sessions + user-friendly name overrides.
+    private readonly Func<IReadOnlyList<AtlasEntry>> _entityAtlasEntries;
+    private readonly EntityNameStore _entityNames;
     // Atlas map-data provider (catalog + current-region map set). Read-only, computed on demand (it
     // scans memory + caches), returns a JSON-ready object. Null when atlas reading is unavailable.
     private readonly Func<object>? _atlas;
@@ -82,6 +85,8 @@ public sealed class ApiServer : IDisposable
         Func<IReadOnlyList<string>> knownModsProvider,
         CampaignObjectives objectives,
         Func<IReadOnlyList<SeenPoi>> seenPoisProvider,
+        Func<IReadOnlyList<AtlasEntry>> entityAtlasProvider,
+        EntityNameStore entityNames,
         Func<object>? atlasProvider = null,
         Action<IReadOnlyList<long>>? atlasSelect = null,
         Action<IReadOnlyList<(string tag, string color, bool track, bool nav, bool arrow)>>? atlasHighlight = null,
@@ -104,6 +109,8 @@ public sealed class ApiServer : IDisposable
         _knownMods = knownModsProvider;
         _objectives = objectives;
         _seenPois = seenPoisProvider;
+        _entityAtlasEntries = entityAtlasProvider;
+        _entityNames = entityNames;
         _listener.Prefixes.Add($"http://localhost:{port}/");
     }
 
@@ -353,12 +360,67 @@ public sealed class ApiServer : IDisposable
                 }, Json));
                 break;
 
+            case "/api/atlas":
+                // The full entity census, each entry tagged whether it already has a friendly NAME
+                // (resolver hit) and whether a Director objective already COVERS it. Unnamed entries and
+                // notable-uncatalogued entries are the worklists. Read-only; no identifying data.
+                Write(ctx, 200, JsonSerializer.Serialize(new
+                {
+                    entries = _entityAtlasEntries().Select(a =>
+                    {
+                        var cat = Enum.TryParse<Poe2Live.EntityCategory>(a.Category, ignoreCase: true, out var c)
+                            ? c : Poe2Live.EntityCategory.Other;
+                        var rar = Enum.TryParse<Poe2Live.Rarity>(a.Rarity, ignoreCase: true, out var r)
+                            ? r : Poe2Live.Rarity.NonMonster;
+                        var e = new Poe2Live.EntityDot(0, 0, default, default, cat, a.Metadata, 0, 0, a.Poi, 0, rar, false);
+                        var named = EntityNameResolver.Shared.Resolve(a.Metadata);
+                        return new
+                        {
+                            metadata = a.Metadata,
+                            name = named ?? EntityNameResolver.Shared.ResolveOrShorten(a.Metadata),
+                            named = named != null,
+                            category = a.Category, rarity = a.Rarity, poi = a.Poi,
+                            zone = a.FirstZone, count = a.Count,
+                            notable = PoiCandidate.IsCandidate(in e),
+                            covered = _objectives.Covers(in e),
+                        };
+                    }),
+                }, Json));
+                break;
+
+            case "/api/atlas/name":
+            {
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                ApplyAtlasName(ReadBody(ctx));
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
+                break;
+            }
+
+            case "/api/atlas/export":
+                // A shareable pack: your captured names + the Director objectives. No identifying data.
+                Write(ctx, 200, JsonSerializer.Serialize(new
+                {
+                    names = _entityNames.All,
+                    objectives = _objectives.All,
+                }, Json));
+                break;
+
+            case "/api/atlas/import":
+            {
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                ApplyAtlasImport(ReadBody(ctx));
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, names = _entityNames.All.Count, objectives = _objectives.All.Count }, Json));
+                break;
+            }
+
             case "/api/version":
                 // This build's version + latest known on GitHub + download URL (for the update banner).
                 Write(ctx, 200, JsonSerializer.Serialize(_version?.Invoke() ?? new { current = "?", latest = (string?)null, updateAvailable = false, url = "" }, Json));
                 break;
 
-            case "/api/atlas":
+            case "/api/atlas-map":
                 // Inspection view of the atlas map-data we can read (catalog + current-region map set).
                 // Read-only; the provider scans + caches, so the first call after entering the atlas
                 // may take a moment. Returns {located:false,...} when the catalog can't be found.
@@ -796,6 +858,48 @@ public sealed class ApiServer : IDisposable
         {
             var o = JsonSerializer.Deserialize<CampaignObjective>(add.GetRawText(), Json);
             if (o != null) _objectives.Add(SanitizeObjective(o));
+        }
+    }
+
+    /// <summary>Set one friendly name from the Atlas tab: {"metadata":"…","name":"…"}. Blank name
+    /// reverts to the embedded table. Edits the local override file only — never the game.</summary>
+    private void ApplyAtlasName(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return;
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+        var metadata = root.TryGetProperty("metadata", out var m) ? m.GetString() : null;
+        var name = root.TryGetProperty("name", out var n) ? n.GetString() : null;
+        if (!string.IsNullOrWhiteSpace(metadata))
+            _entityNames.Add(metadata.Trim(), (name ?? "").Trim());
+    }
+
+    /// <summary>Merge a shared Atlas pack: {"names":{meta:name,…},"objectives":[CampaignObjective,…]}.
+    /// Names layer into the override store; objectives upsert into the catalog. Additive (never deletes).</summary>
+    private void ApplyAtlasImport(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return;
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+
+        if (root.TryGetProperty("names", out var names) && names.ValueKind == JsonValueKind.Object)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in names.EnumerateObject())
+                if (p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() is { Length: > 0 } v)
+                    map[p.Name] = v;
+            _entityNames.Merge(map);
+        }
+        if (root.TryGetProperty("objectives", out var objs) && objs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var el in objs.EnumerateArray())
+            {
+                if (el.ValueKind != JsonValueKind.Object) continue;
+                var o = JsonSerializer.Deserialize<CampaignObjective>(el.GetRawText(), Json);
+                if (o != null) _objectives.Add(SanitizeObjective(o));
+            }
         }
     }
 

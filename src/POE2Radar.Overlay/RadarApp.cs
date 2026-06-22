@@ -495,7 +495,8 @@ public sealed class RadarApp : IDisposable
         Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
-                             _campaign, () => _seenPoiLog.All, AtlasJson, SetAtlasSelection,
+                             _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
+                             AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, _settings.ApiPort);
         try { _api.Start(); Console.WriteLine($"API on http://localhost:{_settings.ApiPort} (dashboard at /)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
