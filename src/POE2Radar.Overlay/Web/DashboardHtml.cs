@@ -522,7 +522,7 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="hideJunk"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Navigation paths<small>draw A&#42; routes to selected landmarks</small></div>
               <label class="sw"><input type="checkbox" data-set="showPath"><span class="track"></span><span class="knob"></span></label></div>
-            <div class="row"><div class="rl">Objective Director<small>auto-route campaign objectives: event &rarr; bosses &rarr; side zones &rarr; exit</small></div>
+            <div class="row"><div class="rl">Objective Director (experimental)<small>WIP &mdash; only routes content the radar already detects. Order: event &rarr; bosses &rarr; side zones &rarr; exit</small></div>
               <label class="sw"><input type="checkbox" data-set="enableDirector"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Curated landmark names<small>community labels (boss / reward / exits)</small></div>
               <label class="sw"><input type="checkbox" data-set="useCuratedLandmarks"><span class="track"></span><span class="knob"></span></label></div>
