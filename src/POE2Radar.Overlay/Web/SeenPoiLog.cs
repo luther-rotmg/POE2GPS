@@ -103,9 +103,7 @@ public sealed class SeenPoiLog
     {
         try
         {
-            var dir = Path.GetDirectoryName(_filePath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(_seen.Values.ToList(), Json));
+            JsonStore.AtomicWrite(_filePath, _seen.Values.ToList(), Json);
         }
         catch (Exception ex) { Console.Error.WriteLine($"Seen-POI log save failed: {ex.Message}"); }
     }

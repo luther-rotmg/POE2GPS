@@ -86,9 +86,7 @@ public sealed class EntityAtlasLog
     {
         try
         {
-            var dir = Path.GetDirectoryName(_filePath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(_seen.Values.ToList(), Json));
+            JsonStore.AtomicWrite(_filePath, _seen.Values.ToList(), Json);
         }
         catch (Exception ex) { Console.Error.WriteLine($"Entity atlas save failed: {ex.Message}"); }
     }

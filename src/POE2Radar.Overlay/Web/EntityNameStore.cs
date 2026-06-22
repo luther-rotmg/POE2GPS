@@ -80,9 +80,7 @@ public sealed class EntityNameStore
     {
         try
         {
-            var dir = Path.GetDirectoryName(_filePath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(_filePath, JsonSerializer.Serialize(_names, Json));
+            JsonStore.AtomicWrite(_filePath, _names, Json);
         }
         catch (Exception ex) { Console.Error.WriteLine($"Entity name store save failed: {ex.Message}"); }
     }
