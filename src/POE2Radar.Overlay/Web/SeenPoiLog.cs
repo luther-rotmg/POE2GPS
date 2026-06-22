@@ -16,7 +16,8 @@ public sealed class SeenPoiLog
     private readonly object _gate = new();
     private readonly Dictionary<string, SeenPoi> _seen = new(StringComparer.Ordinal); // under _gate
     private readonly Stopwatch _sinceDirty = Stopwatch.StartNew();
-    private bool _dirty;
+    private bool _dirty;        // a NEW candidate signature arrived → arm the periodic debounced flush
+    private bool _countsDirty;  // only repeat-sighting count/timestamp drift → persisted at shutdown, never on the 4s loop
     private const long FlushAfterMs = 4000;
     private static readonly JsonSerializerOptions Json =
         new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -54,26 +55,36 @@ public sealed class SeenPoiLog
     {
         if (_seen.TryGetValue(sig, out var cur))
         {
+            // Repeat sighting: bump the soft count in memory but do NOT arm the periodic flush. A
+            // candidate is almost always on radar, so dirtying here would keep the log perpetually dirty
+            // and rewrite the whole file every FlushAfterMs for the entire session. New *content* is what
+            // warrants a prompt write; count drift is captured by the shutdown Flush(). (Mirrors
+            // ModCatalog's "only dirty on a genuinely new id".)
             _seen[sig] = cur with { Count = cur.Count + 1, LastSeenUtc = DateTime.UtcNow };
+            _countsDirty = true;
         }
         else
         {
             _seen[sig] = new SeenPoi(sig, metadata, landmarkPath, category, poi, rarity,
                 friendlyName(), ZoneGuide.Shared.FriendlyName(areaCode), 1, DateTime.UtcNow);
+            if (!_dirty) { _dirty = true; _sinceDirty.Restart(); }
         }
-        if (!_dirty) { _dirty = true; _sinceDirty.Restart(); }
     }
 
+    // Periodic: write only when NEW content has arrived (not on count drift), so a steady zone with no
+    // new candidates does ~0 disk writes — matching ModCatalog. The write captures current counts too.
     private void MaybeFlush()
     {
         lock (_gate)
         {
             if (!_dirty || _sinceDirty.ElapsedMilliseconds < FlushAfterMs) return;
-            _dirty = false; Save();
+            _dirty = false; _countsDirty = false; Save();
         }
     }
 
-    public void Flush() { lock (_gate) { if (_dirty) { _dirty = false; Save(); } } }
+    // Shutdown: persist whatever's pending, including count/timestamp drift accumulated since the last
+    // new-content flush (so the final counts aren't lost).
+    public void Flush() { lock (_gate) { if (_dirty || _countsDirty) { _dirty = false; _countsDirty = false; Save(); } } }
 
     private void Load()
     {

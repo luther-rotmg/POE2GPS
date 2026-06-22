@@ -958,8 +958,8 @@ public sealed class RadarApp : IDisposable
         // Accumulate any newly-seen monster mod ids into the persistent catalog (debounced write)
         // so the dashboard rule editor can offer them and they survive restarts / new content.
         _modCatalog.Observe(_entities);
-        // Accumulate notable POIs/landmarks seen this zone into the catalog-candidate log (debounced).
-        _seenPoiLog.Observe(_entities, _landmarks, areaCode);
+        // (SeenPoiLog.Observe is called below, AFTER _landmarks is refreshed this tick — see ~the
+        //  _live.Landmarks(...) assignment — so it logs THIS tick's landmarks, not last tick's.)
         // If the user edited the custom landmark patterns, drop the cached per-area scan so it
         // rebuilds with the new patterns this tick (otherwise it only refreshes on zone change).
         if (_landmarkPatterns.Generation != _landmarkGen)
@@ -987,6 +987,11 @@ public sealed class RadarApp : IDisposable
             _live.InvalidateLandmarks();
         }
         _landmarks = _live.Landmarks(areaInstance); // cached per area in Poe2Live
+
+        // Accumulate notable POIs/landmarks seen this zone into the catalog-candidate log (debounced).
+        // Must run AFTER _landmarks is refreshed above so it sees THIS tick's landmarks (on zone entry
+        // the pre-refresh list still held the prior zone's tiles).
+        _seenPoiLog.Observe(_entities, _landmarks, areaCode);
 
         // Decide which mobs get an HP bar + their style ONCE here (rule resolve + colour parse) —
         // the per-render-frame path then only re-reads position/HP for this small set. Returns a fresh
