@@ -373,7 +373,9 @@ public sealed class MonolithSettings
 
 public sealed class GroundItemSettings
 {
-    public bool Enabled { get; set; } = true;
+    // Off by default: the per-drop name labels overlay every non-grey ground item, which clutters the
+    // screen and obscures the game's own loot filter. Opt in from the dashboard ("Ground Item Labels").
+    public bool Enabled { get; set; } = false;
     // Which item categories get a ground name label. Empty list ⇒ nothing shows.
     public List<string> Categories { get; set; } = new()
     {
