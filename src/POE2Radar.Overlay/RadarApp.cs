@@ -50,6 +50,7 @@ public sealed class RadarApp : IDisposable
     private readonly ModCatalog _modCatalog;
     private readonly SeenPoiLog _seenPoiLog;
     private readonly EntityAtlasLog _entityAtlas;
+    private readonly EntityNameStore _entityNameStore;
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -490,6 +491,7 @@ public sealed class RadarApp : IDisposable
         _modCatalog = new ModCatalog(Path.Combine(ConfigDir, "known_mods.json"));
         _seenPoiLog = new SeenPoiLog(Path.Combine(ConfigDir, "seen_pois.json"));
         _entityAtlas = new EntityAtlasLog(Path.Combine(ConfigDir, "entity_atlas.json"));
+        _entityNameStore = new EntityNameStore(Path.Combine(ConfigDir, "entity_names_user.json"));
         Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
@@ -2165,6 +2167,7 @@ public sealed class RadarApp : IDisposable
         _modCatalog.Flush(); // persist any mods seen since the last debounced write
         _seenPoiLog.Flush();
         _entityAtlas.Flush();
+        _entityNameStore.Flush();
         _replanner.Dispose();
         _api.Dispose();
         _renderer.Dispose();
