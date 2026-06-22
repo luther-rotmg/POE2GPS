@@ -360,7 +360,7 @@ public sealed class ApiServer : IDisposable
                 }, Json));
                 break;
 
-            case "/api/atlas":
+            case "/api/entity-atlas":
                 // The full entity census, each entry tagged whether it already has a friendly NAME
                 // (resolver hit) and whether a Director objective already COVERS it. Unnamed entries and
                 // notable-uncatalogued entries are the worklists. Read-only; no identifying data.
@@ -388,7 +388,7 @@ public sealed class ApiServer : IDisposable
                 }, Json));
                 break;
 
-            case "/api/atlas/name":
+            case "/api/entity-atlas/name":
             {
                 if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
                 if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
@@ -397,7 +397,7 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
-            case "/api/atlas/export":
+            case "/api/entity-atlas/export":
                 // A shareable pack: your captured names + the Director objectives. No identifying data.
                 Write(ctx, 200, JsonSerializer.Serialize(new
                 {
@@ -406,7 +406,7 @@ public sealed class ApiServer : IDisposable
                 }, Json));
                 break;
 
-            case "/api/atlas/import":
+            case "/api/entity-atlas/import":
             {
                 if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
                 if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
@@ -420,7 +420,7 @@ public sealed class ApiServer : IDisposable
                 Write(ctx, 200, JsonSerializer.Serialize(_version?.Invoke() ?? new { current = "?", latest = (string?)null, updateAvailable = false, url = "" }, Json));
                 break;
 
-            case "/api/atlas-map":
+            case "/api/atlas":
                 // Inspection view of the atlas map-data we can read (catalog + current-region map set).
                 // Read-only; the provider scans + caches, so the first call after entering the atlas
                 // may take a moment. Returns {located:false,...} when the catalog can't be found.

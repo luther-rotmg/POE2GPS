@@ -1197,7 +1197,7 @@ $('#dirSearch')?.addEventListener('input',e=>{ dirQ=e.target.value.toLowerCase()
 /* ── atlas tab (read-only inspection of the map-data we can read) ── */
 async function loadAtlas(){
   $('#atlasStatus').textContent='reading…';
-  try{ atlasData=await getJSON('/api/atlas-map'); }catch(e){ atlasData={located:false,note:'request failed'}; }
+  try{ atlasData=await getJSON('/api/atlas'); }catch(e){ atlasData={located:false,note:'request failed'}; }
   renderAtlas();
 }
 function renderAtlas(){
