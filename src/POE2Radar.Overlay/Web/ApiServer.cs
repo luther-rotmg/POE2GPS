@@ -59,6 +59,8 @@ public sealed class ApiServer : IDisposable
     // Entity Atlas census: every distinct entity metadata key seen across sessions + user-friendly name overrides.
     private readonly Func<IReadOnlyList<AtlasEntry>> _entityAtlasEntries;
     private readonly EntityNameStore _entityNames;
+    private readonly Func<object> _gear;
+    private readonly GearWeightStore _gearWeights;
     // Atlas map-data provider (catalog + current-region map set). Read-only, computed on demand (it
     // scans memory + caches), returns a JSON-ready object. Null when atlas reading is unavailable.
     private readonly Func<object>? _atlas;
@@ -87,6 +89,8 @@ public sealed class ApiServer : IDisposable
         Func<IReadOnlyList<SeenPoi>> seenPoisProvider,
         Func<IReadOnlyList<AtlasEntry>> entityAtlasProvider,
         EntityNameStore entityNames,
+        Func<object> gearProvider,
+        GearWeightStore gearWeights,
         Func<object>? atlasProvider = null,
         Action<IReadOnlyList<long>>? atlasSelect = null,
         Action<IReadOnlyList<(string tag, string color, bool track, bool nav, bool arrow)>>? atlasHighlight = null,
@@ -111,6 +115,8 @@ public sealed class ApiServer : IDisposable
         _seenPois = seenPoisProvider;
         _entityAtlasEntries = entityAtlasProvider;
         _entityNames = entityNames;
+        _gear = gearProvider;
+        _gearWeights = gearWeights;
         _listener.Prefixes.Add($"http://localhost:{port}/");
     }
 
@@ -421,6 +427,25 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/gear":
+                // God-Roll Detector (experimental, default off): the scored inventory snapshot. Item stats
+                // + scores only — no character/account data. {enabled:false,items:[]} when off.
+                Write(ctx, 200, JsonSerializer.Serialize(_gear(), Json));
+                break;
+
+            case "/api/gear-weights":
+            {
+                if (ctx.Request.HttpMethod == "GET") { Write(ctx, 200, JsonSerializer.Serialize(_gearWeights.View(), Json)); }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                    ApplyGearWeights(ReadBody(ctx));
+                    Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, weights = _gearWeights.View() }, Json));
+                }
+                else { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); }
+                break;
+            }
+
             case "/api/version":
                 // This build's version + latest known on GitHub + download URL (for the update banner).
                 Write(ctx, 200, JsonSerializer.Serialize(_version?.Invoke() ?? new { current = "?", latest = (string?)null, updateAvailable = false, url = "" }, Json));
@@ -574,6 +599,7 @@ public sealed class ApiServer : IDisposable
         enableDirector = _settings.EnableDirector,
         excludeFromCapture = _settings.ExcludeFromCapture,
         checkForUpdates = _settings.CheckForUpdates,
+        enableGearScorer = _settings.EnableGearScorer,
         fpsCap = _settings.FpsCap,
         hpBarNormal = _settings.HpBarNormal,
         hpBarMagic = _settings.HpBarMagic,
@@ -617,6 +643,7 @@ public sealed class ApiServer : IDisposable
                 case "enableDirector" when TryBool(p.Value, out var b): _settings.EnableDirector = b; applied.Add(p.Name); break;
                 case "excludeFromCapture" when TryBool(p.Value, out var b): _settings.ExcludeFromCapture = b; applied.Add(p.Name); break;
                 case "checkForUpdates" when TryBool(p.Value, out var b): _settings.CheckForUpdates = b; applied.Add(p.Name); break;
+                case "enableGearScorer" when TryBool(p.Value, out var b): _settings.EnableGearScorer = b; applied.Add(p.Name); break;
                 case "fpsCap" when TryInt(p.Value, out var n): _settings.FpsCap = Math.Clamp(n, 15, 360); applied.Add(p.Name); break;
                 case "hpBarNormal" when TryBool(p.Value, out var b): _settings.HpBarNormal = b; applied.Add(p.Name); break;
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
@@ -847,6 +874,25 @@ public sealed class ApiServer : IDisposable
         if (list.Count > 300) list = list.GetRange(0, 300); // sanity cap
         foreach (var r in list) SanitizeRule(r);
         _displayRules.Replace(list);
+    }
+
+    /// <summary>Apply a Gear-tab weight edit: {"setWeight":{"statId":..,"weight":n}} / {"target":n} /
+    /// {"threshold":n}. Edits the local stat-weight config only — never the game.</summary>
+    private void ApplyGearWeights(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return;
+        using var doc = JsonDocument.Parse(body);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return;
+
+        if (root.TryGetProperty("setWeight", out var sw) && sw.ValueKind == JsonValueKind.Object
+            && sw.TryGetProperty("statId", out var sid) && sid.GetString() is { Length: > 0 } statId
+            && sw.TryGetProperty("weight", out var wv) && wv.TryGetDouble(out var weight))
+            _gearWeights.SetWeight(statId, weight);
+        if (root.TryGetProperty("target", out var tv) && tv.TryGetDouble(out var target))
+            _gearWeights.SetTarget(target);
+        if (root.TryGetProperty("threshold", out var thv) && thv.TryGetDouble(out var threshold))
+            _gearWeights.SetThreshold(threshold);
     }
 
     /// <summary>Apply a Director-tab command: {"add":{objective}} upserts; {"remove":{"id":...}} deletes.

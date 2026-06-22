@@ -147,6 +147,11 @@ public sealed class RadarSettings
     // beyond loopback). On by default so you hear about updates; turn OFF for zero network egress.
     public bool CheckForUpdates { get; set; } = true;
 
+    // ── God-Roll Detector (experimental). ──
+    // Read inventory on a slow cadence and score each item 0–100 against your stat weights. OFF by
+    // default; when off, no inventory is read at all. See the dashboard "Gear ⭐" tab.
+    public bool EnableGearScorer { get; set; } = false;
+
     // ── Per-item icon styling (shape / color / opacity / size) + metadata-matched "mechanic"
     //    overrides. Defaults reproduce the original hardcoded look exactly. ──
     public RadarStyles Styles { get; set; } = new();

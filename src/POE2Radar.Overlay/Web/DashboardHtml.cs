@@ -408,6 +408,7 @@ internal static class DashboardHtml
         <button class="tab" data-tab="settings">Settings</button>
         <button class="tab" data-tab="director">Director</button>
             <button class="tab" data-tab="entatlas">Entity Atlas</button>
+            <button class="tab" data-tab="gear">Gear &#9733;</button>
       </div>
 
       <section class="view" data-view="filters">
@@ -532,6 +533,8 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="excludeFromCapture"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Check for updates<small>one GitHub request at startup (the only outbound traffic) — turn off for zero network egress</small></div>
               <label class="sw"><input type="checkbox" data-set="checkForUpdates"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Gear scorer (experimental)<small>0&ndash;100 god-roll scoring of your inventory by stat weights — see the Gear &#9733; tab. Reads inventory only while on</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableGearScorer"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Overlay FPS cap<small>lower = less load on the game; 60 is smooth for a radar (15&ndash;360)</small></div>
               <input class="numin" type="number" step="1" min="15" max="360" data-set="fpsCap"></div>
           </div>
@@ -648,6 +651,28 @@ internal static class DashboardHtml
           </div>
         </section>
 
+        <section class="view" data-view="gear" hidden>
+          <div class="card">
+            <h3>Gear scorer &#9733; <small>experimental — turn on "Gear scorer" in Settings; scores your inventory 0&ndash;100 by your stat weights</small></h3>
+            <div id="gStatus" class="row"><div class="rl hint-row">Loading&hellip;</div></div>
+          </div>
+          <div class="card">
+            <h3>Items <small>highest score first; &#9733; = god roll. Each item lists its affixes + stat ids</small></h3>
+            <div id="gItems" class="znotes" style="display:block"></div>
+          </div>
+          <div class="card">
+            <h3>Weights <small>weight each stat id you care about; an item's score = your weighted roll sum vs the target</small></h3>
+            <div class="row">
+              <input id="gStatId" class="numin" type="text" placeholder="stat id (copy from an affix above)" style="width:220px">
+              <input id="gWeight" class="numin" type="number" step="0.1" placeholder="weight" style="width:80px">
+              <button class="numin" id="gSetWeight">Set</button>
+            </div>
+            <div class="row"><div class="rl">Target<small>raw weighted total that = a score of 100</small></div><input id="gTarget" class="numin" type="number" style="width:90px"></div>
+            <div class="row"><div class="rl">God-roll threshold<small>score (0&ndash;100) at/above which an item gets a &#9733;</small></div><input id="gThreshold" class="numin" type="number" style="width:90px"></div>
+            <div id="gWeightList" class="znotes" style="display:block"></div>
+          </div>
+        </section>
+
     </main>
   </div>
 </div>
@@ -670,6 +695,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); }
   if(activeTab==='director') loadDirector();
   if(activeTab==='entatlas') loadEntAtlas();
+  if(activeTab==='gear') loadGear();
 });
 
 /* ── polling (left rail vitals/zone/census) ── */
@@ -1285,6 +1311,46 @@ $('#eaExport')?.addEventListener('click',async()=>{
 $('#eaContribute')?.addEventListener('click',()=>{
   window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener');
 });
+
+/* ── gear tab: god-roll detector (experimental, default off) ── */
+let gWeights={byStatId:{},target:100,godRollThreshold:85};
+async function loadGear(){
+  let g={enabled:false,items:[]};
+  try{ g=await getJSON('/api/gear'); }catch(e){}
+  try{ gWeights=await getJSON('/api/gear-weights'); }catch(e){}
+  const st=$('#gStatus');
+  if(st) st.innerHTML='<div class="rl hint-row">'+(g.enabled?('Scoring '+((g.items||[]).length)+' inventory item(s).'):'Off — enable "Gear scorer (experimental)" in Settings, then open your inventory in-game.')+'</div>';
+  renderGearItems(g.items||[]);
+  if($('#gTarget')) $('#gTarget').value=gWeights.target;
+  if($('#gThreshold')) $('#gThreshold').value=gWeights.godRollThreshold;
+  renderGearWeights();
+}
+function renderGearItems(items){
+  const el=$('#gItems'); if(!el) return;
+  el.innerHTML = items.length ? items.map(it=>{
+    const aff=(it.affixes||[]).map(a=>'<div class="rl hint-row" style="padding-left:12px">'+esc(a.line||'')+' &middot; roll '+a.value+(a.weight?(' &middot; w'+a.weight+' &rarr; '+a.points+'pts'):'')+'</div>').join('');
+    return '<div class="row" style="flex-wrap:wrap"><div class="rl">'+(it.godRoll?'&#9733; ':'')+esc(it.name||'(item)')+'<small>'+esc(it.rarity||'')+' &middot; inv '+it.inventoryId+'</small></div>'
+      +'<div class="numin" style="min-width:54px;text-align:right;font-weight:600">'+it.score+'</div>'
+      +'<div style="flex-basis:100%">'+aff+'</div></div>';
+  }).join('') : '<div class="row"><div class="rl hint-row">No scored items yet. (Turn the scorer on in Settings and open your inventory in-game.)</div></div>';
+}
+function renderGearWeights(){
+  const el=$('#gWeightList'); if(!el) return;
+  const ks=Object.keys(gWeights.byStatId||{});
+  el.innerHTML = ks.length ? ks.map(k=>'<div class="row"><div class="rl">'+esc(k)+'</div><div class="numin">'+gWeights.byStatId[k]+'</div><button class="delbtn g-del" data-k="'+esc(k)+'">Remove</button></div>').join('')
+    : '<div class="row"><div class="rl hint-row">No weights yet — copy a stat id from an affix above and add a weight.</div></div>';
+  ks.forEach(k=>{ const b=el.querySelector('.g-del[data-k="'+cssEsc(k)+'"]'); if(b) b.onclick=()=>postGear({setWeight:{statId:k,weight:0}}); });
+}
+async function postGear(body){
+  try{ const r=await fetch('/api/gear-weights',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json(); if(j&&j.weights) gWeights=j.weights; }catch(e){}
+  if($('#gTarget')) $('#gTarget').value=gWeights.target;
+  if($('#gThreshold')) $('#gThreshold').value=gWeights.godRollThreshold;
+  renderGearWeights();
+}
+$('#gSetWeight')?.addEventListener('click',()=>{ const id=($('#gStatId').value||'').trim(); const w=parseFloat($('#gWeight').value); if(id&&!isNaN(w)) postGear({setWeight:{statId:id,weight:w}}); });
+$('#gTarget')?.addEventListener('change',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) postGear({target:v}); });
+$('#gThreshold')?.addEventListener('change',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) postGear({threshold:v}); });
 $('#eaImport')?.addEventListener('change',e=>{
   const f=e.target.files&&e.target.files[0]; if(!f) return;
   const rd=new FileReader();

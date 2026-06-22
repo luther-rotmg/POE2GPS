@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using NumVec2 = System.Numerics.Vector2;
 using POE2Radar.Core;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Gear;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Native;
 using POE2Radar.Overlay.Navigation;
@@ -51,6 +52,9 @@ public sealed class RadarApp : IDisposable
     private readonly SeenPoiLog _seenPoiLog;
     private readonly EntityAtlasLog _entityAtlas;
     private readonly EntityNameStore _entityNameStore;
+    private readonly GearWeightStore _gearWeights;
+    private volatile GearSnapshot? _gearSnapshot;   // God-Roll Detector (experimental); null when off
+    private int _gearTickCounter;
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -495,10 +499,12 @@ public sealed class RadarApp : IDisposable
         _seenPoiLog = new SeenPoiLog(Path.Combine(ConfigDir, "seen_pois.json"));
         _entityAtlas = new EntityAtlasLog(Path.Combine(ConfigDir, "entity_atlas.json"));
         _entityNameStore = new EntityNameStore(Path.Combine(ConfigDir, "entity_names_user.json"));
+        _gearWeights = new GearWeightStore(Path.Combine(ConfigDir, "stat_weights.json"));
         Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
                              _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
+                             GearJson, _gearWeights,
                              AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, _settings.ApiPort);
         try { _api.Start(); Console.WriteLine($"API on http://localhost:{_settings.ApiPort} (dashboard at /)"); }
@@ -525,6 +531,25 @@ public sealed class RadarApp : IDisposable
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.
     /// Lets the dashboard show an "update available" banner. Null-ish until the async check completes.</summary>
+    /// <summary>API (/api/gear): the scored inventory snapshot (item stats + scores only; no identifying
+    /// data). {enabled:false, items:[]} when the experimental scorer is off.</summary>
+    private object GearJson()
+    {
+        var snap = _gearSnapshot;
+        if (!_settings.EnableGearScorer || snap == null)
+            return new { enabled = _settings.EnableGearScorer, items = System.Array.Empty<object>() };
+        return new
+        {
+            enabled = true,
+            items = snap.Items.OrderByDescending(i => i.Score).Select(i => new
+            {
+                name = i.Name, rarity = i.Rarity, identified = i.Identified, inventoryId = i.InventoryId,
+                score = Math.Round(i.Score, 1), godRoll = i.IsGodRoll,
+                affixes = i.Affixes.Select(a => new { line = a.Line, value = a.Value, weight = a.Weight, points = Math.Round(a.Points, 2) }),
+            }),
+        };
+    }
+
     private object VersionJson()
     {
         var u = _update;
@@ -967,6 +992,33 @@ public sealed class RadarApp : IDisposable
         // (before the local-player + user-hidden RemoveAll below) so hiding a dot doesn't erase it from
         // the name database. AtlasCensus skips Player + JunkFilter noise.
         _entityAtlas.Observe(_entities, areaCode);
+
+        // God-Roll Detector (experimental, default OFF): when enabled, score the inventory on a SLOW
+        // cadence (~every 30 world ticks ≈ 1 Hz — inventory changes slowly). When off, read nothing.
+        if (_settings.EnableGearScorer)
+        {
+            if (_gearTickCounter++ % 30 == 0)
+            {
+                var weights = _gearWeights.Snapshot();
+                var inv = _live.ReadInventory(areaInstance);
+                var scored = new List<ScoredItem>(inv.Count);
+                foreach (var it in inv)
+                {
+                    var affixes = new List<Affix>(it.Affixes.Count);
+                    foreach (var ra in it.Affixes)
+                    {
+                        var line = string.Join("; ", ItemModTranslator.Shared.RenderMod(ra.ModId, ra.Values));
+                        var ids = ItemModTranslator.Shared.StatIdsFor(ra.ModId) ?? System.Array.Empty<string>();
+                        var val = ra.Values.Count > 0 ? ra.Values.Max() : 0;
+                        affixes.Add(new Affix(line, ids, val));
+                    }
+                    var gs = GearScorer.Score(affixes, weights);
+                    scored.Add(new ScoredItem(it.Name, it.Rarity, it.Identified, it.InventoryId, gs.Score, gs.IsGodRoll, gs.Affixes));
+                }
+                _gearSnapshot = new GearSnapshot(scored);
+            }
+        }
+        else if (_gearSnapshot != null) { _gearSnapshot = null; }
         // Drop the local player's own entity — it lives in the AwakeEntities map like any
         // other Player, but the dedicated center blip already represents "you" (gated by
         // ShowPlayerBlip). Without this, a Player-category dot renders at map-center even with
