@@ -89,7 +89,14 @@ function filterPack(pack) {
     const category = cleanLabel(o.category, 40);
     if (!label && !category) continue;
     if ((label && (isProfane(label) || isGibberish(label))) || (category && isProfane(category))) continue;
-    objectives.push({ ...o, label, category });
+    // Whitelist only the known non-identifying matcher fields — never spread arbitrary client keys
+    // (a hand-crafted POST could otherwise smuggle a field the identifying-reject list misses).
+    objectives.push({
+      label, category,
+      priority: o.priority, enabled: o.enabled,
+      metadata: o.metadata, categories: o.categories,
+      poi: o.poi, rarity: o.rarity, landmarkPath: o.landmarkPath,
+    });
   }
   return { names, objectives };
 }
