@@ -1018,7 +1018,7 @@ public sealed class RadarApp : IDisposable
                         var line = string.Join("; ", ItemModTranslator.Shared.RenderMod(ra.ModId, ra.Values));
                         var ids = ItemModTranslator.Shared.StatIdsFor(ra.ModId) ?? System.Array.Empty<string>();
                         var val = ra.Values.Count > 0 ? ra.Values.Max() : 0;
-                        affixes.Add(new Affix(line, ids, val));
+                        affixes.Add(new Affix(line, ids, val, ra.ModId));
                     }
                     var gs = GearScorer.Score(affixes, weights);
                     scored.Add(new ScoredItem(it.Name, it.Rarity, it.Identified, it.InventoryId, gs.Score, gs.IsGodRoll, gs.Affixes));

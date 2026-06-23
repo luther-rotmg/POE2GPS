@@ -2,7 +2,7 @@ namespace POE2Radar.Core.Gear;
 
 /// <summary>One rolled affix on an item: the rendered stat line, the GGG stat ids it maps to (for weight
 /// lookup), and the rolled numeric value.</summary>
-public sealed record Affix(string StatLine, IReadOnlyList<string> StatIds, double Value);
+public sealed record Affix(string StatLine, IReadOnlyList<string> StatIds, double Value, string ModId = "");
 
 /// <summary>The user's scoring config: a weight per GGG stat id, the raw total that maps to 100, and the
 /// 0–100 score at/above which an item is a "god roll". <paramref name="NormById"/> is the per-stat
@@ -15,7 +15,7 @@ public sealed record StatWeights(
     IReadOnlyDictionary<string, double>? NormById = null);
 
 /// <summary>One affix's contribution to the score (for the dashboard breakdown).</summary>
-public sealed record AffixContribution(string Line, IReadOnlyList<string> StatIds, double Value, double Weight, double Points);
+public sealed record AffixContribution(string Line, IReadOnlyList<string> StatIds, double Value, double Weight, double Points, string ModId = "");
 
 /// <summary>The result of scoring one item.</summary>
 public sealed record GearScore(double Score, bool IsGodRoll, IReadOnlyList<AffixContribution> Affixes);
@@ -40,7 +40,7 @@ public static class GearScorer
             var norm = NormFor(a.StatIds, weights.NormById);
             var points = a.Value / norm * weight;
             raw += points;
-            contributions.Add(new AffixContribution(a.StatLine, a.StatIds, a.Value, weight, points));
+            contributions.Add(new AffixContribution(a.StatLine, a.StatIds, a.Value, weight, points, a.ModId));
         }
 
         var score = Math.Clamp(raw / target * 100.0, 0.0, 100.0);
