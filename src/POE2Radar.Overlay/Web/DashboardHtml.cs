@@ -515,6 +515,10 @@ internal static class DashboardHtml
               <span class="hint-row" style="padding:8px;display:block">Open the Atlas in-game + Refresh to list filters.</span>
             </div>
           </div>
+          <div class="card">
+            <h3>Dynasty-support maps <small>Anomaly-boss maps that drop Lineage/Dynasty support gems &mdash; enable the highlight in Settings</small></h3>
+            <div id="dynastyList" class="znotes" style="display:block"><div class="rl hint-row">Loading&hellip;</div></div>
+          </div>
         </div>
       </section>
 
@@ -548,6 +552,8 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="enableTargetHotkeys"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Controller target cycle<small>L3 = previous target, R3 = next (combat-dead buttons in PoE2)</small></div>
               <label class="sw"><input type="checkbox" data-set="enableControllerCycle"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Dynasty-support maps<small>highlight maps whose Anomaly bosses drop Lineage/Dynasty support gems (off by default)</small></div>
+              <label class="sw"><input type="checkbox" data-set="highlightDynastyMaps"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Overlay FPS cap<small>lower = less load on the game; 60 is smooth for a radar (15&ndash;360)</small></div>
               <input class="numin" type="number" step="1" min="15" max="360" data-set="fpsCap"></div>
             <div class="row"><div class="rl">Contribute URL<small>your Cloudflare Worker endpoint; set this to enable one-click &ldquo;Contribute&rdquo;</small></div>
@@ -714,7 +720,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   if(activeTab==='settings') loadSettings();
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
-  if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); }
+  if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); }
   if(activeTab==='director') loadDirector();
   if(activeTab==='entatlas') loadEntAtlas();
   if(activeTab==='gear') loadGear();
@@ -1418,6 +1424,17 @@ $('#eaImport')?.addEventListener('change',e=>{
     }catch(err){} e.target.value=''; };
   rd.readAsText(f);
 });
+
+/* ── dynasty-support maps reference card ── */
+async function loadDynasty(){
+  const el=$('#dynastyList'); if(!el) return;
+  let rows=[];
+  try{ rows=await getJSON('/api/dynasty-maps'); }catch(e){}
+  el.innerHTML = (rows&&rows.length) ? rows.map(r=>
+    '<div class="row" style="flex-wrap:wrap"><div class="rl">'+esc(r.name||'')+'<small>'+esc(r.boss||'')+'</small></div>'
+    +'<div style="flex-basis:100%;font-size:11px;color:var(--ink-faint)">'+(r.gems||[]).map(g=>esc(g)).join(' &middot; ')+'</div></div>'
+  ).join('') : '<div class="rl hint-row">No dynasty maps loaded.</div>';
+}
 
 /* ── atlas tab (read-only inspection of the map-data we can read) ── */
 async function loadAtlas(){
