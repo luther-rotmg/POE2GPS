@@ -2160,15 +2160,24 @@ public sealed class RadarApp : IDisposable
             var mTrack = Match(hlTrack, n);
             var mNav = Match(hlNav, n);
             var mArrow = Match(hlArrow, n);
-            var isTracked = selected || mTrack != null;   // Highlight (ring)
-            var isNav = mNav != null;                     // Nav-to (route line)
-            var isArrow = mArrow != null;                 // Arrow (off-screen pointer)
+            // Dynasty-support maps (curated by MapCode) get the full Citadel-style treatment when the
+            // toggle is on — ring + route + off-screen arrow — plus a gem-count label in dynasty purple.
+            POE2Radar.Core.Game.DynastyMaps.DynastyInfo? dyn =
+                _settings.HighlightDynastyMaps && POE2Radar.Core.Game.DynastyMaps.Shared.TryGet(n.MapCode, out var di) ? di : null;
+            var isTracked = selected || mTrack != null || dyn != null;   // Highlight (ring)
+            var isNav = mNav != null || dyn != null;                     // Nav-to (route line)
+            var isArrow = mArrow != null || dyn != null;                 // Arrow (off-screen pointer)
             // ONLY highlighted/nav/arrow maps are drawn (the point: surface content the game hides).
             // AtlasDrawAll debug overrides this to draw every node.
             if (!_settings.AtlasDrawAll && !isTracked && !isNav && !isArrow) continue;
             var matched = mTrack ?? mNav ?? mArrow;
             var label = matched ?? (n.Tags is { Count: > 0 } ? n.Tags[0] : (string.IsNullOrEmpty(n.MapName) ? null : n.MapName));
             string? color = matched != null && _settings.AtlasHighlightColors.TryGetValue(matched, out var c) ? c : null;
+            if (dyn != null)
+            {
+                label = $"{dyn.Name} · {dyn.Gems.Count} dynasty gem{(dyn.Gems.Count == 1 ? "" : "s")}";
+                if (n.Kind != "Citadel") color = "#A55CFF";   // dynasty purple — but keep gold if it's also a Citadel
+            }
             // Route to NAV tiles that aren't already done — independent of the ring/arrow toggles.
             if (isNav && !n.Completed) { trackedGrids.Add(n.Grid); gridColor[n.Grid] = color; }
             marks.Add(new AtlasMark(n.X, n.Y, isTracked, n.HasContent, n.Visited, n.Unlocked, n.Biome, n.IconType, label, color, isArrow, isNav, n.Element));
