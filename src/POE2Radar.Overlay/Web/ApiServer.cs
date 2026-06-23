@@ -73,6 +73,7 @@ public sealed class ApiServer : IDisposable
     private volatile bool _running;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+    private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     public ApiServer(
         Func<RadarState> state,
@@ -424,6 +425,19 @@ public sealed class ApiServer : IDisposable
                 if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
                 ApplyAtlasImport(ReadBody(ctx));
                 Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, names = _entityNames.All.Count, objectives = _objectives.All.Count }, Json));
+                break;
+            }
+
+            case "/api/contribute":
+            {
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                var url = _settings.ContributeUrl?.Trim() ?? "";
+                if (url.Length == 0) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "no contribute url configured" }, Json)); break; }
+                // The same non-identifying pack as /api/entity-atlas/export — names + objectives only.
+                var pack = JsonSerializer.Serialize(new { names = _entityNames.All, objectives = _objectives.All }, Json);
+                var (ok, status) = ContributeForward(url, pack).GetAwaiter().GetResult();
+                Write(ctx, ok ? 200 : 502, JsonSerializer.Serialize(new { ok, status }, Json));
                 break;
             }
 
@@ -983,6 +997,18 @@ public sealed class ApiServer : IDisposable
                 if (o != null) _objectives.Add(SanitizeObjective(o));
             }
         }
+    }
+
+    /// <summary>Forward the non-identifying export pack to the configured Worker URL. Returns (ok, HTTP status).</summary>
+    private static async Task<(bool ok, int status)> ContributeForward(string url, string jsonPack)
+    {
+        try
+        {
+            using var content = new System.Net.Http.StringContent(jsonPack, System.Text.Encoding.UTF8, "application/json");
+            using var resp = await Http.PostAsync(url, content);
+            return ((int)resp.StatusCode is >= 200 and < 300, (int)resp.StatusCode);
+        }
+        catch { return (false, 0); }
     }
 
     /// <summary>Clamp/validate a posted objective: non-blank Id/Label/Category, priority 0..1000,
