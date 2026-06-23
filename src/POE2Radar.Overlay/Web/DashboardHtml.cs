@@ -342,6 +342,10 @@ internal static class DashboardHtml
   .navrow.sel .navname{color:var(--gold-bright)}
   .navtag{font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); border:1px solid var(--line-soft); border-radius:10px; padding:2px 8px; flex:none}
   .navdist{font-family:"Cinzel","Georgia",serif; color:var(--ink-dim); font-size:13px; min-width:48px; text-align:right; flex:none}
+  .gear-grid{display:flex; flex-wrap:wrap; gap:6px; padding:8px 0}
+  .gcell{width:52px; height:52px; border-radius:3px; border:1px solid var(--line); display:flex; align-items:center; justify-content:center;
+         font-size:13px; font-weight:700; color:#0c0a07; cursor:default; overflow:hidden}
+  .gcell small{display:block}
 </style>
 </head>
 <body>
@@ -666,6 +670,11 @@ internal static class DashboardHtml
           </div>
           <div class="card">
             <h3>Items <small>highest score first; &#9733; = god roll. Each item lists its affixes + stat ids</small></h3>
+            <div class="row"><div class="rl">View</div>
+              <label class="sw" style="gap:8px"><span style="font-size:11px;color:var(--ink-faint)">List</span>
+              <input type="checkbox" id="gGridToggle"><span class="track"></span><span class="knob"></span>
+              <span style="font-size:11px;color:var(--ink-faint)">Grid</span></label></div>
+            <div id="gGrid" class="gear-grid" style="display:none"></div>
             <div id="gItems" class="znotes" style="display:block"></div>
           </div>
           <div class="card">
@@ -1330,6 +1339,7 @@ async function loadGear(){
   const st=$('#gStatus');
   if(st) st.innerHTML='<div class="rl hint-row">'+(g.enabled?('Scoring '+((g.items||[]).length)+' inventory item(s).'):'Off — enable "Gear scorer (experimental)" in Settings, then open your inventory in-game.')+'</div>';
   renderGearItems(g.items||[]);
+  renderGearGrid(g.items||[]);
   if($('#gTarget')) $('#gTarget').value=gWeights.target;
   if($('#gThreshold')) $('#gThreshold').value=gWeights.godRollThreshold;
   renderGearWeights();
@@ -1354,6 +1364,21 @@ function renderGearItems(items){
     postGear(body);
   });
 }
+function scoreColor(s){ // 0=red -> 100=green
+  const t=Math.max(0,Math.min(100,s))/100; const h=Math.round(t*120); // 0=red,120=green
+  return 'hsl('+h+',60%,55%)';
+}
+function renderGearGrid(items){
+  const el=$('#gGrid'); if(!el) return;
+  const sorted=(items||[]).slice().sort((a,b)=>b.score-a.score);
+  el.innerHTML = sorted.length ? sorted.map(it=>{
+    const t=esc((it.godRoll?'★ ':'')+(it.name||'(item)')+' — '+it.score+' ('+(it.rarity||'')+')');
+    return '<div class="gcell" style="background:'+scoreColor(it.score)+'" title="'+t+'">'+it.score+'</div>';
+  }).join('') : '<div class="rl hint-row">No scored items yet.</div>';
+}
+$('#gGridToggle')?.addEventListener('change',e=>{
+  const grid=e.target.checked; $('#gGrid').style.display=grid?'flex':'none'; $('#gItems').style.display=grid?'none':'block';
+});
 function renderGearWeights(){
   const el=$('#gWeightList'); if(!el) return;
   const ks=Object.keys(gWeights.byStatId||{});
