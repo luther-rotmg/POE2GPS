@@ -79,3 +79,6 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
       Atlas open, Sealed Vault / Sacred Reservoir / Derelict Mansion ring purple with a
       `<name> · N dynasty gems` label + arrow + auto-route; the Jade Isles stays Citadel-gold;
       toggle off → they disappear. The dashboard Atlas tab lists the 4 maps · boss · gems.
+- [ ] **Label vocabulary:** `GET /api/labels` returns the grouped vocabulary; the Entity Atlas +
+      Director classify pickers autocomplete the curated labels (Waypoint, Shrine, etc.) and accept
+      a typed custom label; an existing classification (e.g. "Boss") still works.
