@@ -652,7 +652,8 @@ internal static class DashboardHtml
               <input id="eaSearch" class="numin" type="text" placeholder="filter…" style="width:200px">
               <button class="numin" id="eaExport">Export pack</button>
               <label class="numin" style="cursor:pointer">Import pack<input id="eaImport" type="file" accept="application/json" style="display:none"></label>
-              <button class="numin" id="eaContribute" title="Export your pack, then attach it on the submission form — your names ship to everyone next release.">Contribute names →</button>
+              <button class="numin" id="eaContribute" title="With a Contribute URL set in Settings, uploads your pack in one click; otherwise opens the submission form.">Contribute names →</button>
+              <span class="saved" id="savedMsgEa">&#10003; contributed — thank you!</span>
             </div>
           </div>
           <div class="card">
@@ -1328,8 +1329,15 @@ $('#eaExport')?.addEventListener('click',async()=>{
     a.href=u; a.download='atlas-pack.json'; a.click(); URL.revokeObjectURL(u);
   }catch(e){}
 });
-$('#eaContribute')?.addEventListener('click',()=>{
-  window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener');
+function flashEa(){ const m=$('#savedMsgEa'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
+let _eaContribUrl=null;
+async function eaContribUrl(){ if(_eaContribUrl===null){ try{ const s=await getJSON('/api/settings'); _eaContribUrl=(s.contributeUrl||'').trim(); }catch(e){ _eaContribUrl=''; } } return _eaContribUrl; }
+$('#eaContribute')?.addEventListener('click',async()=>{
+  const url=await eaContribUrl();
+  if(!url){ window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener'); return; }
+  if(!window._eaOkOnce){ if(!confirm('Share your discovered entity names + objectives publicly? This contains no character data.')) return; window._eaOkOnce=true; }
+  try{ const r=await fetch('/api/contribute',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok){ flashEa(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
 });
 
 /* ── gear tab: god-roll detector (experimental, default off) ── */
