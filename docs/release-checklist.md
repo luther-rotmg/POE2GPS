@@ -58,3 +58,10 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
       focused.
 - [ ] **Quick-Target Cycler (controller — needs an XInput pad):** L3 = prev, R3 = next cycle the same way.
       Confirm normal gameplay is unaffected (R3 still toggles PoE2's life/mana number display — expected).
+- [ ] **Menu chord:** L3+R3 toggles the top-left nav list open/closed without changing the active
+      target; Ctrl+Alt+M does the same; clicking the chip still toggles; the chip reads "POE2GPS".
+- [ ] **Monolith panel:** off by default; the Settings "Monolith reward panel" toggle shows/hides
+      it live.
+- [ ] **Gear Scorer v2:** with the scorer on, items show nonzero scores out of the box; each affix
+      shows clickable stat-id chips; "Load meta starter" repopulates weights; rarity colors + the
+      grid heatmap render.
