@@ -597,6 +597,11 @@ public sealed class ApiServer : IDisposable
                     }), Json));
                 break;
 
+            case "/api/labels":
+                // Read-only: the curated classification label vocabulary (grouped). No identifying data.
+                Write(ctx, 200, JsonSerializer.Serialize(LabelVocabulary.Shared.Groups, Json));
+                break;
+
             default:
                 Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found", path }, Json));
                 break;

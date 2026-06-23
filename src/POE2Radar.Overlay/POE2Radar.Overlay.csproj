@@ -35,6 +35,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Web\default_watched.json" />
     <EmbeddedResource Include="Web\default_campaign_objectives.json" />
+    <EmbeddedResource Include="Web\labels.json" />
   </ItemGroup>
 
 </Project>

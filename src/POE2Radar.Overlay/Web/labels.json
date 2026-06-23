@@ -1,0 +1,9 @@
+{
+  "Progression":        ["MainProgression", "Transition", "Checkpoint", "Waypoint", "SideZone", "Optional"],
+  "Rewards & Upgrades": ["Reward", "PermanentUpgrade", "GemSource", "Vendor", "Merchant", "Currency"],
+  "Bosses":             ["Boss", "SideBoss", "Pinnacle", "Citadel"],
+  "League & Seasonal":  ["League", "Seasonal", "Event"],
+  "Mechanics":          ["Breach", "Expedition", "Ritual", "Delirium", "Strongbox", "Essence", "Abyss", "Shrine", "Trial", "Sanctum"],
+  "Atlas":              ["Tower", "Temple", "Vault", "Unique"],
+  "Entities":           ["NPC", "Chest", "Door", "Other"]
+}
