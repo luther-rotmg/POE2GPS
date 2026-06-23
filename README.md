@@ -45,12 +45,12 @@ POE2GPS does three things **never** — and an automated compliance gate *fails 
 - 🛰️ **Entity radar** — enemies, NPCs, chests, transitions, players, and POIs; optional world-space HP bars; dangerous rare/magic mods flagged.
 - 🧱 **Terrain + map overlay** — the walkable-terrain mask and entity dots, projected onto the in-game map.
 - 📍 **Tile landmarks** — boss arenas, transitions, reward rooms, surfaced the moment you enter a zone, with community-curated names.
-- 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Draw-only — never drives input.**
+- 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Cycle** the active target hands-free — keyboard (`Ctrl+Alt+]`/`[`) or controller (**R3 / L3**). **Draw-only — never sends input to the game.**
 - 🌌 **Atlas overlay + route planning** — labels nodes by content, off-screen arrows to tracked maps, shortest-hop auto-routes.
 - 🏷️ **Reward/name labels** — names of ground drops and Ritual / Runeforge / monolith rewards (no economy values).
 - 🧪 **Objective Director** *(experimental, off by default)* — auto-routes you through a zone's objectives in priority order: **seasonal event → side bosses → side zones → exit**. Still maturing — [roadmap below](#-roadmap).
 - 🗺️ **Entity Atlas** — name every entity the radar doesn't recognize (your names show on the radar instantly), classify the notable ones into Director objectives, and **export/import shareable packs**. Submitted names get folded into the built-in table each release — a community effort to [map the whole game](docs/CONTRIBUTING-atlas.md).
-- ⭐ **God-Roll Detector** *(experimental, off by default)* — scores your inventory items 0–100 against stat weights you set, and stars the god rolls. Dashboard **Gear** tab; reads inventory only while enabled.
+- ⭐ **God-Roll Detector** *(experimental, off by default)* — scores your inventory items 0–100 and stars the god rolls, with **meta-derived starter weights** distilled from the current ladder so it works the moment you switch it on. One-click stat-id chips to tune what you value, rarity-colored items, and a green→red **score heatmap grid**. Dashboard **Gear** tab; reads inventory only while enabled.
 - 🎨 **Customizable icons & display rules** — per-rule shape/color/size, editable live; drop your own `*.svg` into `icons/`.
 - 🕵️ **Stealth / low footprint** — relaunches under a random-named hardlink, randomized window class/title, neutral assembly name + binary metadata, character name never exposed, release binary string-scrubbed, and **hidden from screen capture** (screenshots / OBS / share-screen) by default — toggle off in Settings if you want to capture the overlay itself.
 - 🖥️ **Web dashboard** (`http://localhost:7777`, or **F12**) — click any entity/landmark to navigate to it; tune radar/icons/atlas. Local-only, loopback-gated.
@@ -64,11 +64,14 @@ Grab the latest **`POE2GPS-vX.Y.Z-win-x64.zip`** from the [**Releases**](https:/
 | Key | Action |
 |---|---|
 | **F12** | open the web dashboard |
+| **L3 + R3** / **Ctrl + Alt + M** | toggle the top-left nav-menu list |
+| **Ctrl + Alt + ] / [** *(or **R3 / L3**)* | cycle active nav target next / prev |
+| **Ctrl + Alt + 1–9 / 0** | jump to nav target slot / clear |
 | **F6 / F7** | route to nearest landmark/POI / clear routes |
 | **F10** | (Atlas open) inspect hovered tile, set route start/end |
 | **F9** | quit (or right-click tray → Exit) |
 
-*(No F8 — auto-flask was removed on purpose.)*
+*(All hotkeys are **read-only** and fire only while PoE2 is focused — keys are read, never sent to the game. No F8 — auto-flask was removed on purpose.)*
 
 ## 🔧 Build from source
 
