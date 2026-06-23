@@ -659,7 +659,7 @@ internal static class DashboardHtml
               <input id="eaSearch" class="numin" type="text" placeholder="filter…" style="width:200px">
               <button class="numin" id="eaExport">Export pack</button>
               <label class="numin" style="cursor:pointer">Import pack<input id="eaImport" type="file" accept="application/json" style="display:none"></label>
-              <button class="numin" id="eaContribute" title="With a Contribute URL set in Settings, uploads your pack in one click; otherwise opens the submission form.">Contribute names →</button>
+              <button class="numin" id="eaContribute" title="Contribute your discovered names + labels to the community master list (one click). With no Contribute URL set, opens the submission form instead.">Contribute names →</button>
               <span class="saved" id="savedMsgEa">&#10003; contributed — thank you!</span>
             </div>
           </div>

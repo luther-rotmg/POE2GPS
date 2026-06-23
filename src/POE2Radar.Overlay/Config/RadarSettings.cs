@@ -54,9 +54,12 @@ public sealed class RadarSettings
     //    One of "TopLeft", "TopRight", "BottomLeft", "BottomRight". ──
     public string NavMenuCorner { get; set; } = "TopLeft";
 
-    // Community Contribute: the Cloudflare Worker URL the dashboard POSTs your non-identifying pack to.
-    // Empty = the Contribute button keeps the GitHub-issue-template fallback (no upload).
-    public string ContributeUrl { get; set; } = "";
+    // Community Contribute: the project's Cloudflare Worker URL the dashboard uploads your non-identifying
+    // pack to (one-click for everyone). SET THIS to the deployed project Worker URL before a release to
+    // enable one-click community contribute; left as the placeholder, the Contribute button falls back to
+    // the GitHub issue-submission form (no upload).
+    public const string DefaultContributeUrl = ""; // ← paste the deployed Worker URL here, e.g. "https://poe2gps-contribute.<you>.workers.dev"
+    public string ContributeUrl { get; set; } = DefaultContributeUrl;
 
     // ── Persistent auto-nav: substrings matched (case-insensitive Contains) against a navigation
     //    target's MatchKey (tile path / entity metadata). On every zone change, every target whose
