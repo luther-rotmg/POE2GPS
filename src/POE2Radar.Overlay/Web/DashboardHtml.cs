@@ -977,6 +977,14 @@ async function loadModVocab(){
   if(!dl){ dl=document.createElement('datalist'); dl.id='modVocab'; document.body.appendChild(dl); }
   dl.innerHTML=mods.map(m=>`<option value="${esc(m)}">`).join('');
 }
+async function loadLabelVocab(){
+  let dl=document.getElementById('labelVocab');
+  if(!dl){ dl=document.createElement('datalist'); dl.id='labelVocab'; document.body.appendChild(dl); }
+  let groups={};
+  try{ groups=await getJSON('/api/labels'); }catch(e){}
+  const labels=[]; Object.values(groups).forEach(arr=>(arr||[]).forEach(l=>labels.push(l)));
+  dl.innerHTML = labels.map(l=>'<option value="'+esc(l)+'"></option>').join('');
+}
 
 /* ── Display Rules: the unified ordered ruleset. The page holds the array, edits it, and re-POSTs
    the WHOLE list on any change (add / remove / reorder / toggle / field) — same pattern styles used. ── */
@@ -1263,11 +1271,9 @@ function renderDirector(){
   }
 }
 function candRow(p){
-  const opts=['League','SideBoss','SideZone','MainProgression','Bosses','Other']
-    .map(c=>'<option value="'+c+'">'+c+'</option>').join('');
   return '<div class="row" data-sig="'+esc(p.signature)+'">'
     + '<div class="rl">'+esc(p.name)+'<small>'+esc(p.category)+' · '+esc(p.zone||'?')+' · ×'+p.count+'</small></div>'
-    + '<select class="numin selin dir-cat">'+opts+'</select>'
+    + '<input class="numin dir-cat" list="labelVocab" placeholder="label…" style="width:130px">'
     + '<input class="numin dir-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
     + '<button class="delbtn dir-add">Add</button></div>';
 }
@@ -1320,11 +1326,9 @@ function eaNameRow(a){
     + '<button class="delbtn ea-save">Save</button></div>';
 }
 function eaClassRow(a){
-  const opts=['League','PermanentUpgrade','GemSource','Boss','SideZone','SideBoss','Other']
-    .map(c=>'<option value="'+c+'">'+c+'</option>').join('');
   return '<div class="row" data-m="'+esc(a.metadata)+'">'
     + '<div class="rl">'+esc(a.name)+'<small>'+esc(a.category)+' · '+esc(a.zone||'?')+' · ×'+a.count+'</small></div>'
-    + '<select class="numin selin ea-cat">'+opts+'</select>'
+    + '<input class="numin ea-cat" list="labelVocab" placeholder="label…" style="width:130px">'
     + '<input class="numin ea-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
     + '<button class="delbtn ea-add">Classify</button></div>';
 }
@@ -1679,6 +1683,7 @@ async function checkVersion(){
 }
 
 wireSettings(); wireHpBars(); wireTerrain(); wireGround();
+loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 checkVersion();
