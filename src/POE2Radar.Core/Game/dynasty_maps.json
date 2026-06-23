@@ -1,0 +1,6 @@
+{
+  "MapVaalVault":            { "name": "Sealed Vault",     "boss": "Maztli / Ytzara",   "gems": ["Atalui's Bloodletting", "Paquate's Pact", "Xibaqua's Rending"] },
+  "MapDerelictMansion":      { "name": "Derelict Mansion", "boss": "Varloch / Avelyne", "gems": ["Ailith's Chimes", "Rigwald's Ferocity", "Einhar's Beastrite"] },
+  "MapCavernCity":           { "name": "Sacred Reservoir", "boss": "Zahmir",            "gems": ["Varashta's Blessing", "Zarokh's Refrain", "Garukhan's Resolve", "Khatal's Rejuvenation"] },
+  "MapUberBoss_JadeCitadel": { "name": "The Jade Isles",   "boss": "Manoki",            "gems": ["Rakiata's Flow", "Tawhoa's Tending", "Kaom's Madness", "Tasalio's Rhythm"] }
+}

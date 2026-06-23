@@ -21,6 +21,7 @@
     <EmbeddedResource Include="Game\expedition2_recipes.json" />
     <EmbeddedResource Include="Game\starter_stat_weights.json" />
     <EmbeddedResource Include="Game\poe2_mod_ranges.json" />
+    <EmbeddedResource Include="Game\dynasty_maps.json" />
   </ItemGroup>
 
 </Project>
