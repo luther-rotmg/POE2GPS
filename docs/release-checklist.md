@@ -75,3 +75,7 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
 - [ ] **Tier-aware god-roll:** on identified gear, each affix that has range data shows its
       `%-of-max` roll quality and a `T#/N` tier badge (e.g. `T1/5`); affixes at ≥ 90 % of max
       are highlighted gold.
+- [ ] **Dynasty-support map highlighting:** with **Highlight dynasty-support maps** ON and the
+      Atlas open, Sealed Vault / Sacred Reservoir / Derelict Mansion ring purple with a
+      `<name> · N dynasty gems` label + arrow + auto-route; the Jade Isles stays Citadel-gold;
+      toggle off → they disappear. The dashboard Atlas tab lists the 4 maps · boss · gems.
