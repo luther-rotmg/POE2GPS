@@ -327,6 +327,8 @@ internal static class DashboardHtml
   .ipop-cell svg{width:20px; height:20px; display:block}
   .ipop-cell .cn{font-size:7px; line-height:1; color:var(--ink-faint); max-width:36px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .delbtn:hover{border-color:var(--blood-bright)}
+  .chip{font-family:inherit; font-size:10px; color:var(--ink); background:#0c0a07; border:1px solid var(--line); border-radius:10px; padding:2px 8px; margin:0 4px 4px 0; cursor:pointer}
+  .chip:hover{border-color:var(--gold-deep); color:var(--gold)}
   .addbtn{font-family:"Cinzel","Georgia",serif; font-size:11px; letter-spacing:.1em; color:var(--gold-bright); background:transparent; border:1px dashed var(--gold-deep); border-radius:3px; padding:8px 14px; cursor:pointer; width:100%; margin-top:4px}
   .addbtn:hover{background:rgba(200,160,73,.07)}
 
@@ -672,6 +674,7 @@ internal static class DashboardHtml
               <input id="gStatId" class="numin" type="text" placeholder="stat id (copy from an affix above)" style="width:220px">
               <input id="gWeight" class="numin" type="number" step="0.1" placeholder="weight" style="width:80px">
               <button class="numin" id="gSetWeight">Set</button>
+              <button class="numin" id="gLoadStarter" title="replace your weights with the ladder-meta starter set">Load meta starter</button>
             </div>
             <div class="row"><div class="rl">Target<small>raw weighted total that = a score of 100</small></div><input id="gTarget" class="numin" type="number" style="width:90px"></div>
             <div class="row"><div class="rl">God-roll threshold<small>score (0&ndash;100) at/above which an item gets a &#9733;</small></div><input id="gThreshold" class="numin" type="number" style="width:90px"></div>
@@ -1334,11 +1337,22 @@ async function loadGear(){
 function renderGearItems(items){
   const el=$('#gItems'); if(!el) return;
   el.innerHTML = items.length ? items.map(it=>{
-    const aff=(it.affixes||[]).map(a=>'<div class="rl hint-row" style="padding-left:12px">'+esc(a.line||'')+' &middot; roll '+a.value+(a.weight?(' &middot; w'+a.weight+' &rarr; '+a.points+'pts'):'')+'</div>').join('');
-    return '<div class="row" style="flex-wrap:wrap"><div class="rl">'+(it.godRoll?'&#9733; ':'')+esc(it.name||'(item)')+'<small>'+esc(it.rarity||'')+' &middot; inv '+it.inventoryId+'</small></div>'
+    const aff=(it.affixes||[]).map(a=>{
+      const chips=(a.statIds||[]).map(id=>'<button class="chip g-chip" data-id="'+esc(id)+'" data-val="'+a.value+'" title="weight this stat (meta scale)">'+esc(id)+'</button>').join(' ');
+      return '<div class="rl hint-row" style="padding-left:12px">'+esc(a.line||'')+' &middot; roll '+a.value
+        +(a.weight?(' &middot; w'+a.weight+' &rarr; '+a.points+'pts'):'')+'<div style="margin-top:3px">'+chips+'</div></div>';
+    }).join('');
+    return '<div class="row" style="flex-wrap:wrap"><div class="rl"><span class="rar-'+esc(it.rarity||'Normal')+'">'+(it.godRoll?'&#9733; ':'')+esc(it.name||'(item)')+'</span><small>'+esc(it.rarity||'')+' &middot; inv '+it.inventoryId+'</small></div>'
       +'<div class="numin" style="min-width:54px;text-align:right;font-weight:600">'+it.score+'</div>'
       +'<div style="flex-basis:100%">'+aff+'</div></div>';
   }).join('') : '<div class="row"><div class="rl hint-row">No scored items yet. (Turn the scorer on in Settings and open your inventory in-game.)</div></div>';
+  // one-click: weight the chip's stat id on the meta scale (10), norm from the observed roll if unknown.
+  el.querySelectorAll('.g-chip').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.id, val=parseFloat(b.dataset.val)||1;
+    const body={setWeight:{statId:id,weight:10}};
+    if(!(gWeights.normById&&gWeights.normById[id]>0)) body.setWeight.norm=Math.max(val,1);
+    postGear(body);
+  });
 }
 function renderGearWeights(){
   const el=$('#gWeightList'); if(!el) return;
@@ -1355,6 +1369,7 @@ async function postGear(body){
   renderGearWeights();
 }
 $('#gSetWeight')?.addEventListener('click',()=>{ const id=($('#gStatId').value||'').trim(); const w=parseFloat($('#gWeight').value); if(id&&!isNaN(w)) postGear({setWeight:{statId:id,weight:w}}); });
+$('#gLoadStarter')?.addEventListener('click',()=>{ if(confirm('Replace your weights with the ladder-meta starter set?')) postGear({reset:'starter'}).then(loadGear); });
 $('#gTarget')?.addEventListener('change',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) postGear({target:v}); });
 $('#gThreshold')?.addEventListener('change',e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)) postGear({threshold:v}); });
 $('#eaImport')?.addEventListener('change',e=>{
