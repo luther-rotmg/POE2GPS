@@ -549,6 +549,8 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="enableControllerCycle"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Overlay FPS cap<small>lower = less load on the game; 60 is smooth for a radar (15&ndash;360)</small></div>
               <input class="numin" type="number" step="1" min="15" max="360" data-set="fpsCap"></div>
+            <div class="row"><div class="rl">Contribute URL<small>your Cloudflare Worker endpoint; set this to enable one-click &ldquo;Contribute&rdquo;</small></div>
+              <input class="numin" type="text" data-set="contributeUrl" placeholder="https://&hellip;workers.dev" style="width:240px"></div>
           </div>
           <div class="card">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
@@ -783,7 +785,7 @@ function wireSettings(){
     const k=el.dataset.set;
     if(el.type==='checkbox') el.onchange=()=>saveSetting(k,el.checked);
     else if(el.tagName==='SELECT') el.onchange=()=>saveSetting(k,el.value);
-    else el.onchange=()=>{ const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v); };
+    else if(el.type==='number'){ el.onchange=()=>{const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v);}; } else { el.onchange=()=>saveSetting(k, el.value); }
   });
 }
 /* ── icon / HP-bar / mechanics editors (nested objects: POST the whole {styles}/{hpBars}) ── */

@@ -54,6 +54,10 @@ public sealed class RadarSettings
     //    One of "TopLeft", "TopRight", "BottomLeft", "BottomRight". ──
     public string NavMenuCorner { get; set; } = "TopLeft";
 
+    // Community Contribute: the Cloudflare Worker URL the dashboard POSTs your non-identifying pack to.
+    // Empty = the Contribute button keeps the GitHub-issue-template fallback (no upload).
+    public string ContributeUrl { get; set; } = "";
+
     // ── Persistent auto-nav: substrings matched (case-insensitive Contains) against a navigation
     //    target's MatchKey (tile path / entity metadata). On every zone change, every target whose
     //    MatchKey matches ANY pattern is auto-selected (up to the 8-color cap), so entering a new

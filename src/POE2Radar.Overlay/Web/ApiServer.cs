@@ -616,6 +616,7 @@ public sealed class ApiServer : IDisposable
         hpBars = _settings.HpBars,   // monster HP-bar geometry (width/height/offset)
         terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
         groundItems = _settings.GroundItems, // ground-item value overlay (enabled / highlight threshold / league)
+        contributeUrl = _settings.ContributeUrl,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -650,6 +651,7 @@ public sealed class ApiServer : IDisposable
                 case "enableTargetHotkeys" when TryBool(p.Value, out var b): _settings.EnableTargetHotkeys = b; applied.Add(p.Name); break;
                 case "enableControllerCycle" when TryBool(p.Value, out var b): _settings.EnableControllerCycle = b; applied.Add(p.Name); break;
                 case "showMonolithPanel" when TryBool(p.Value, out var b): _settings.Monoliths.ShowPanel = b; applied.Add(p.Name); break;
+                case "contributeUrl" when TryString(p.Value, out var s): _settings.ContributeUrl = s.Trim(); applied.Add(p.Name); break;
                 case "fpsCap" when TryInt(p.Value, out var n): _settings.FpsCap = Math.Clamp(n, 15, 360); applied.Add(p.Name); break;
                 case "hpBarNormal" when TryBool(p.Value, out var b): _settings.HpBarNormal = b; applied.Add(p.Name); break;
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
@@ -1083,6 +1085,12 @@ public sealed class ApiServer : IDisposable
         if (e.ValueKind == JsonValueKind.True) { v = true; return true; }
         if (e.ValueKind == JsonValueKind.False) { v = false; return true; }
         v = false; return false;
+    }
+
+    private static bool TryString(JsonElement e, out string v)
+    {
+        if (e.ValueKind == JsonValueKind.String) { v = e.GetString() ?? ""; return true; }
+        v = ""; return false;
     }
 
     private static bool TryFloat(JsonElement e, out float v)
