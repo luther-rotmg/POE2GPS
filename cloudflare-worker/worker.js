@@ -14,11 +14,13 @@ export default {
     if (request.method !== 'POST') return json(405, { error: 'method not allowed' });
 
     const body = await request.text();
-    if (body.length > MAX_BYTES) return json(413, { error: 'payload too large' });
+    if (new TextEncoder().encode(body).length > MAX_BYTES) return json(413, { error: 'payload too large' });
 
     let pack;
     try { pack = JSON.parse(body); } catch { return json(400, { error: 'invalid json' }); }
-    if (!pack || typeof pack !== 'object' || typeof pack.names !== 'object' || !Array.isArray(pack.objectives))
+    if (!pack || typeof pack !== 'object'
+        || typeof pack.names !== 'object' || Array.isArray(pack.names)
+        || !Array.isArray(pack.objectives))
       return json(400, { error: 'expected {names:object, objectives:array}' });
 
     // Defense-in-depth: reject anything that smells identifying.
