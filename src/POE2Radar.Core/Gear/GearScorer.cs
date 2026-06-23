@@ -5,14 +5,17 @@ namespace POE2Radar.Core.Gear;
 public sealed record Affix(string StatLine, IReadOnlyList<string> StatIds, double Value);
 
 /// <summary>The user's scoring config: a weight per GGG stat id, the raw total that maps to 100, and the
-/// 0–100 score at/above which an item is a "god roll".</summary>
+/// 0–100 score at/above which an item is a "god roll". <paramref name="NormById"/> is the per-stat
+/// normalization denominator (e.g. median god-roll value); when present, contribution is
+/// <c>(value / norm) × weight</c> instead of <c>value × weight</c>.</summary>
 public sealed record StatWeights(
     IReadOnlyDictionary<string, double> ByStatId,
     double Target,
-    double GodRollThreshold);
+    double GodRollThreshold,
+    IReadOnlyDictionary<string, double>? NormById = null);
 
 /// <summary>One affix's contribution to the score (for the dashboard breakdown).</summary>
-public sealed record AffixContribution(string Line, double Value, double Weight, double Points);
+public sealed record AffixContribution(string Line, IReadOnlyList<string> StatIds, double Value, double Weight, double Points);
 
 /// <summary>The result of scoring one item.</summary>
 public sealed record GearScore(double Score, bool IsGodRoll, IReadOnlyList<AffixContribution> Affixes);
@@ -34,9 +37,10 @@ public static class GearScorer
         foreach (var a in affixes)
         {
             var weight = WeightFor(a.StatIds, weights.ByStatId);
-            var points = a.Value * weight;
+            var norm = NormFor(a.StatIds, weights.NormById);
+            var points = a.Value / norm * weight;
             raw += points;
-            contributions.Add(new AffixContribution(a.StatLine, a.Value, weight, points));
+            contributions.Add(new AffixContribution(a.StatLine, a.StatIds, a.Value, weight, points));
         }
 
         var score = Math.Clamp(raw / target * 100.0, 0.0, 100.0);
@@ -51,6 +55,19 @@ public static class GearScorer
         for (var i = 0; i < statIds.Count; i++)
             if (byStatId.TryGetValue(statIds[i], out var w) && w > best)
                 best = w;
+        return best;
+    }
+
+    /// <summary>The normalization denominator for this affix: the norm of the SAME stat id that supplied the
+    /// max weight, or 1 when no norm is configured. Keeps big-number stats (Life ~115) comparable to small
+    /// ones (resist ~37).</summary>
+    private static double NormFor(IReadOnlyList<string> statIds, IReadOnlyDictionary<string, double>? normById)
+    {
+        if (normById == null) return 1.0;
+        double best = 1.0;
+        for (var i = 0; i < statIds.Count; i++)
+            if (normById.TryGetValue(statIds[i], out var n) && n > 0)
+                return n;   // first configured norm wins (stat ids are positional; one per affix in practice)
         return best;
     }
 }
