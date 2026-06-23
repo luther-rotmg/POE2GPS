@@ -159,8 +159,9 @@ the user to "copy a stat id from an affix above," but no stat id is shown.
 
 ### Scope (per the user's choice)
 
-Dashboard un-break + UI polish **and** an inventory **grid heatmap**. The in-game tooltip/overlay is a
-separate live-discovery track (not in this release).
+Dashboard un-break + UI polish **and** an inventory **grid heatmap**, with **meta-derived** starter
+weights (Tincture). The tier-aware "god roll" (%-of-max-roll + T#/N) and the in-game tooltip/overlay are
+separate tracks (not in this release) — see Out of scope.
 
 ### 3a. Expose stat ids in `/api/gear`
 
@@ -174,29 +175,59 @@ contribution so the dashboard can render + one-click them:
 This is the keystone: it makes the starter weight set verifiable against the user's real items (the ids
 shown are exactly the ids the scorer keys on).
 
-### 3b. Starter weight set (shipped, editable)
+### 3b. Starter weight set — meta-derived from Tincture (shipped, editable)
 
-`GearWeightStore` seeds a **starter weight set** when no `config/stat_weights.json` exists yet (first
-run / fresh install), instead of loading empty. The starter set weights common build-defining stats:
-maximum life, the four elemental + chaos resistances, movement speed, %physical/elemental damage,
-attack speed, cast speed, critical chance/multiplier, and flat added damage — each at a sensible
-relative weight (e.g. life/res high, speed medium).
+The starter weights are **derived from the live PoE2 ladder meta**, not hand-guessed. Source (verified
+live, high confidence — see `research: tincture-gear-research`): `meta-detail.json` in
+[luther-rotmg/Tincture](https://github.com/luther-rotmg/Tincture) — the PoE2 meta distilled from the
+ladder. Its `global.gear` (and per-ascendancy `byAsc[slug].gear`) arrays list the top-equipped rolled
+affixes as `{name, pct, lo, hi}`: `name` = the GGG English stat line (values templated to `#`), `pct` =
+% of sampled rare/magic chase items carrying that affix (an empirical "the meta values this stat"
+signal), `lo`/`hi` = the 25th/75th percentile of observed rolls.
 
-- The exact stat-id strings are **pinned in the implementation plan** by extracting them from the
-  embedded `src/POE2Radar.Core/Game/poe2_mod_stats.json` (the modId→statId map the scorer uses) and
-  **validated against the live 48-item read** once 3a exposes the ids — so the starter weights provably
-  hit real affixes rather than guessed strings.
-- Seeding only happens when the config file is **absent**; an existing user file is never overwritten.
-- A dashboard **"Load starter weights"** button (POST `/api/gear-weights {reset:"starter"}`) lets a
-  user who already has an (empty) file pull in the starter set on demand. The store exposes
-  `LoadStarter()` (replaces current weights with the embedded defaults, saves).
+**Reconciliation (verified, 31/31 lines):** Tincture's `gear[].name` lines resolve to our GGG/RePoE
+stat ids using the **format-aware renderer `ItemModTranslator` already ships** — render each
+`poe2_stat_descriptions.json` template (honoring the `format` field: `{i}`→`+#` for signed tokens / `#`
+otherwise, and `[link|display]`→`display`), build a rendered-line→statIds index, and match Tincture's
+lines against it. **No new data, no fuzzy text matching.** This MUST use the real renderer — a naive
+`{0}`→`#` replace silently drops every signed `+#` line.
 
-### 3c. One-click weighting
+**Weight formula (verified recipe):** for each matched stat id, `weight = pct` and a per-stat
+normalization `norm = (lo+hi)/2` (the median roll). The scorer's contribution becomes
+`(value / norm) × weight`, so a stat rolled near its meta-typical value contributes ≈ `pct`, and
+big-number stats (Life mid ~115) are comparable to small-number ones (resist mid ~37). `target` stays
+the Σ→100 scaler (default 100). Stats **outside** the meta set get weight `0` (only meta-relevant stats
+drive the score) — an item with no meta stats correctly scores low. No blanket floor: a floor applied to
+unnormalized values would inflate big-number junk; the un-break is already satisfied because any item
+carrying life/resist/etc. now scores nonzero from the seeded weights.
+
+**Scorer change (small, additive, back-compatible):** `StatWeights` gains an optional
+`NormById: IReadOnlyDictionary<string,double>`; `GearScorer.Score` computes `value / norm × weight`
+with `norm` defaulting to `1` when absent (so existing behavior/tests are unchanged when no norm map is
+supplied).
+
+**Generation (offline, dev-time, reuses the real renderer):** a `POE2Radar.Research` probe
+(`--gen-weights`) consumes a **vendored frozen snapshot** of `meta-detail.json` + our
+`poe2_stat_descriptions.json` through `ItemModTranslator` and emits `starter_stat_weights.json`
+(`{byStatId, normById, target, godRollThreshold}`), committed + **embedded** in the app. Reusing the
+C# renderer (not a re-implementation) guarantees the match stays consistent with the scorer. Re-run per
+patch alongside the RePoE table regeneration.
+
+**Seeding:** `GearWeightStore` loads the embedded starter table when `config/stat_weights.json` is
+**absent** (fresh install); an existing user file is never overwritten. A dashboard
+**"Load meta starter weights"** button (POST `/api/gear-weights {reset:"starter"}` → `LoadStarter()`)
+lets a user with an existing (empty) file pull the starter set on demand.
+
+### 3c. One-click weighting (on the meta scale)
 
 Each affix row in the items list renders its stat id(s) as clickable chips. Clicking a chip adds that
-stat id at a default weight (e.g. 1) via the existing `POST /api/gear-weights {setWeight:{statId,weight}}`
-— no copy-paste. The manual "stat id + weight" inputs stay for fine-tuning. (The scorer takes the MAX
-weight over an affix's ids, so weighting any one id of a multi-id affix is sufficient.)
+stat id via the existing `POST /api/gear-weights {setWeight:{statId,weight}}` — no copy-paste — at a
+**default importance on the same `pct` scale as the meta weights** (e.g. `10` = "moderately important"),
+NOT a bare `1` (which would be off-scale next to the seeded weights). If the clicked stat has no starter
+`norm`, the store sets `norm` from the affix's **observed rolled value** (so the click contributes ≈ its
+weight at that roll and scales with better rolls) — keeping hand-added and meta-seeded weights coherent.
+The manual "stat id + weight" inputs stay for fine-tuning. (The scorer takes the MAX weight over an
+affix's ids, so weighting any one id of a multi-id affix is sufficient.)
 
 ### 3d. UI love — rarity colors + roomier list
 
@@ -228,12 +259,18 @@ off). No input/write/pricing APIs. Gate stays green.
 
 ### Tests
 
-- `GearScorer` already has unit tests; extend for the `AffixContribution.StatIds` field and a
-  weighted-scoring case proving a starter-weighted affix yields nonzero points.
-- `GearWeightStore`: a test that a fresh store (no file) loads the **starter** weights (nonempty), and
-  that an existing file is **not** overwritten by seeding. (`GearWeightStore` is in Overlay; if the test
-  project can't see it, test the pure starter-defaults provider — a `Core`-side `StarterWeights.Default`
-  dictionary — and have the store consume it.)
+- `GearScorer`: extend for `AffixContribution.StatIds`; a per-stat **normalization** case proving
+  `(value/norm)×weight` with `norm` present, and that `norm` absent falls back to `×1` (existing tests
+  unchanged); a case proving a meta-starter-weighted affix yields **nonzero** points (the un-break).
+- Starter weights: the generated `starter_stat_weights.json` is embedded; a `Core`-side
+  `StarterWeights` loader exposes it. Test that it parses, is **nonempty**, and that a representative
+  stat (e.g. `base_maximum_life`) has a positive weight + a positive norm.
+- `GearWeightStore` (Overlay): a fresh store (no file) loads the starter weights (nonempty); an existing
+  file is **not** overwritten by seeding. (If the test project can't see Overlay, the assertion lives on
+  the `Core`-side `StarterWeights` loader the store consumes.)
+- Reconciliation: a focused test that `ItemModTranslator`'s rendered-line index matches a known Tincture
+  line (e.g. `"+# to maximum Life"` → `base_maximum_life`, `"+#% to Cold Resistance"` →
+  `base_cold_damage_resistance_%`), guarding the signed-`+#` format handling the skeptic flagged.
 
 ---
 
@@ -242,26 +279,62 @@ off). No input/write/pricing APIs. Gate stays green.
 **New / owned files:**
 - `Core/Input/ControllerChord.cs` (or `Core/Navigation/`) — pure `ControllerInput` record +
   `Resolve(prev,cur)` seam (Part 1).
-- `Core/Gear/StarterWeights.cs` — the embedded starter weight dictionary (Part 3b), Core-side so tests
-  see it.
-- Tests in `tests/POE2Radar.Tests` for the chord seam, starter weights, and gear scoring.
+- `Core/Gear/StarterWeights.cs` — loads the embedded generated `starter_stat_weights.json` (Part 3b),
+  Core-side so tests see it.
+- `src/POE2Radar.Core/Game/starter_stat_weights.json` — the **generated, committed** meta-derived
+  starter table (embedded resource).
+- `resources/poe2-data/tincture-meta-detail.json` — the **vendored frozen snapshot** of Tincture's
+  `meta-detail.json` (credited; regenerated per patch).
+- Tests in `tests/POE2Radar.Tests` for the chord seam, starter weights, scorer normalization, and the
+  reconciliation match.
 
-**Thin hooks into shared files (do not restructure):**
+**Thin hooks into shared / owned files (do not restructure shared ones):**
 - `Input/ControllerCycler.cs` — call the seam; return `ControllerInput`.
+- `Core/Gear/GearScorer.cs` — add `AffixContribution.StatIds`; add `StatWeights.NormById`; contribution
+  = `(value/norm)×weight` (norm defaults 1).
+- `Core/Game/ItemModTranslator.cs` — expose/extend a rendered-line→statIds index for the generator
+  (reused by `--gen-weights`); the rendering itself already exists.
+- `POE2Radar.Research/Program.cs` — new `--gen-weights` probe (offline generator; never linked into the
+  overlay).
 - `RadarApp.cs` — `HandleHotkeys` controller + keyboard blocks; `_nextMenuAt`; `GearJson` statIds +
-  grid fields; the console branding one-liner.
+  grid fields (slot/box dims if exposing positional grid); the console branding one-liner (`:534`).
 - `OverlayRenderer.cs:848` — chip text → "POE2GPS".
-- `RadarSettings.cs` — `ShowPanel` default false.
+- `RadarSettings.cs` — `Monoliths.ShowPanel` default false.
 - `Web/ApiServer.cs` — `/api/settings` projection + `ApplySettings` case for `monolithShowPanel`;
   `/api/gear-weights` `{reset:"starter"}` action.
-- `Web/GearWeightStore.cs` — seed starter on absent file; `LoadStarter()`.
+- `Web/GearWeightStore.cs` — seed embedded starter on absent file; `LoadStarter()`; carry `NormById`
+  through `Snapshot()`/`SetWeight` (one-click norm-from-value).
 - `Web/DashboardHtml.cs` — Settings monolith toggle row; Gear tab: rarity colors, roomier cards, affix
-  stat-id chips (one-click), "Load starter weights" button, grid-heatmap view.
+  stat-id chips (one-click), "Load meta starter weights" button, grid-heatmap view.
+
+## Data provenance & licensing
+
+- **Tincture** (`meta-detail.json`) has no stated license; it's a fan aggregation of poe.ninja (itself
+  GGG-ladder-derived). We **vendor a frozen snapshot** as derived data, **credit it**, and treat it as
+  an offline regeneration input — never a runtime network dependency. POE2GPS keeps working if the repo
+  disappears. Regenerate per league/patch.
+- **PathOfBuilding-PoE2 is GPLv3**; its `Data/` Lua is "Item data © GGG". To avoid copyleft
+  contamination of POE2GPS we **do NOT vendor PoB's Lua**. The tier/roll-range fast-follow (below)
+  sources its min/max/tier numbers from **RePoE** — the same GGG-data source we already use for
+  `poe2_mod_stats.json` (`resources/poe2-data/regenerate.py`) — keeping our license clean. The PoB dig
+  only *confirmed* the data shape + that the mod-id join is exact (2549/2549, 100%); we re-derive the
+  facts from RePoE.
 
 ## Out of scope (separate tracks)
 
+- **Tier-aware "god roll" (FAST-FOLLOW — next release after v0.1.9):** `%-of-max-roll` + "T# of N" tier
+  display, so a god roll means "near the top of the real GGG range / high tier", not just high
+  weight×value. The scorer already has each affix's mod id + rolled value from memory; we add an
+  embedded `mod-id → {min, max, tier, tierCount}` table **regenerated from RePoE** (license-clean; PoB
+  not vendored) and surface the % + tier in the Gear tab. Its own spec.
+- **Community Contribute (one-click upload)** — a "big satisfying" dashboard button that POSTs the
+  non-identifying POI/entity packs to a Cloudflare Worker → `luther-rotmg/POE2GPS` → green
+  "thank you!" feedback. The Worker holds a scoped token (never shipped in the client), validates,
+  rate-limits. Its own spec; the user deploys the Worker once.
 - **In-game gear-score overlay** (score on a hovered item / over the real inventory panel) — needs live
-  RE discovery of the inventory-panel UI element. Its own spec after discovery.
+  RE discovery of the inventory-panel UI element. The `poe2-craft-inspector` clipboard route is a
+  possible *alternate* input path for this (parsing the game's Ctrl-C item text), noted for that track —
+  not coupled to the memory-read scorer. Its own spec after discovery.
 - **Console glow-up** beyond the branding fix (ASCII art, theme, hotkey panel).
 - **Richer Director/Entity-Atlas cataloging** (checkpoints/NPCs/flags/league events) + the
   backward-door classification. Tracked in the director roadmap.
