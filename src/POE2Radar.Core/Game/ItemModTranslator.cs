@@ -42,6 +42,47 @@ public sealed class ItemModTranslator
     /// <summary>The ordered stat ids a mod grants, or null if the mod id is unknown.</summary>
     public string[]? StatIdsFor(string modId) => _modStats.GetValueOrDefault(modId);
 
+    private Dictionary<string, string[]>? _renderedIndex;
+    private readonly object _renderedIndexGate = new();
+
+    /// <summary>The stat ids for a fully value-templated stat line (numbers shown as the format token, e.g.
+    /// <c>"+# to maximum Life"</c> / <c>"#% increased Movement Speed"</c>), or null if unrecognized. Used by
+    /// the offline starter-weights generator to bridge Tincture's meta stat lines to our stat ids.</summary>
+    public string[]? StatIdsForRenderedLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line)) return null;
+        EnsureRenderedIndex();
+        return _renderedIndex!.GetValueOrDefault(NormalizeLine(line));
+    }
+
+    private void EnsureRenderedIndex()
+    {
+        if (_renderedIndex != null) return;
+        lock (_renderedIndexGate)
+        {
+            if (_renderedIndex != null) return;
+            var idx = new Dictionary<string, string[]>(StringComparer.Ordinal);
+            foreach (var list in _byStat.Values)
+            foreach (var entry in list)
+            foreach (var rule in entry.English)
+            {
+                var s = rule.String ?? "";
+                var fmt = rule.Format ?? Array.Empty<string>();
+                for (var i = 0; i < fmt.Length; i++)
+                {
+                    var token = "{" + i + "}";
+                    s = fmt[i].Contains("ignore", StringComparison.Ordinal) ? s.Replace(token, "") : s.Replace(token, fmt[i]);
+                }
+                var key = NormalizeLine(CleanTags(s));
+                if (key.Length > 0) idx.TryAdd(key, entry.Ids);
+            }
+            _renderedIndex = idx;
+        }
+    }
+
+    private static string NormalizeLine(string s) =>
+        Regex.Replace(s.Trim(), @"\s+", " ").ToLowerInvariant();
+
     /// <summary>
     /// Render one item mod to its English stat line(s). <paramref name="values"/> are the rolled
     /// values read from the mod's ModArrayStruct, in stat order. Returns one entry per displayed line
