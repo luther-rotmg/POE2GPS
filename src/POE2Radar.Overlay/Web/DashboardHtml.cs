@@ -517,6 +517,8 @@ internal static class DashboardHtml
             <h3>Radar Display</h3>
             <div class="row"><div class="rl">Show terrain<small>walkable-terrain bitmap</small></div>
               <label class="sw"><input type="checkbox" data-set="showTerrain"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Monolith reward panel<small>the nearby-monolith reward list drawn over the minimap (off by default)</small></div>
+              <label class="sw"><input type="checkbox" data-set="showMonolithPanel"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Show player blip<small>blue dot marking your own position</small></div>
               <label class="sw"><input type="checkbox" data-set="showPlayerBlip"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Always show overlay<small>draw even when PoE2 isn&rsquo;t focused (e.g. while tweaking this dashboard)</small></div>

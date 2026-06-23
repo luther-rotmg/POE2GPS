@@ -390,7 +390,7 @@ public sealed class MonolithSettings
     public double HighlightMinEx { get; set; } = 30.0;
     public double MinRewardEx { get; set; } = 1.0;       // hide reward rows below this (panel + dashboard)
     public bool HideCollected { get; set; } = true;      // hide monoliths whose reward was already claimed
-    public bool ShowPanel { get; set; } = true;          // the in-overlay nearby-monolith reward panel
+    public bool ShowPanel { get; set; } = false;         // the in-overlay nearby-monolith reward panel (off by default; toggle in Settings)
     public bool ShowMapLabel { get; set; } = true;       // draw the value + top-reward label at the icon
     public float PanelMaxDistance { get; set; } = 0f;    // 0 = every monolith in the area; else only within N grid
 }
