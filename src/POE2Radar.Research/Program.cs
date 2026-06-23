@@ -20,6 +20,9 @@ Console.WriteLine("==================");
 if (HasFlag(args, "--gen-weights"))
     return RunGenWeights(TryGetStrArg(args, "--meta"), TryGetStrArg(args, "--out"));
 
+if (HasFlag(args, "--gen-ranges"))
+    return RunGenRanges(TryGetStrArg(args, "--src"), TryGetStrArg(args, "--out"));
+
 using var process = ProcessHandle.AttachToPoE();
 if (process is null)
 {
@@ -7095,6 +7098,52 @@ static int RunGenWeights(string? metaPath, string? outPath)
 
     Console.WriteLine($"Generated {outPath}: {byStatId.Count} stat ids from {matched}/{total} meta gear lines.");
     if (unmatched.Count > 0) Console.WriteLine("Unmatched (left to hand-weight): " + string.Join(" | ", unmatched));
+    return 0;
+}
+
+static int RunGenRanges(string? srcPath, string? outPath)
+{
+    srcPath ??= "resources/poe2-data/repoe-mods.min.json";
+    outPath ??= "src/POE2Radar.Core/Game/poe2_mod_ranges.json";
+    if (!System.IO.File.Exists(srcPath)) { Console.Error.WriteLine($"RePoE mods snapshot not found: {srcPath}"); return 1; }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(srcPath));
+    var keys = new List<POE2Radar.Core.Game.TierDeriver.ModKey>();
+    var statsByMod = new Dictionary<string, List<object>>(StringComparer.Ordinal);
+
+    foreach (var mod in doc.RootElement.EnumerateObject())
+    {
+        var o = mod.Value;
+        if (o.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+        var group = o.TryGetProperty("groups", out var g) && g.ValueKind == System.Text.Json.JsonValueKind.Array && g.GetArrayLength() > 0 ? (g[0].GetString() ?? "") : "";
+        var genType = o.TryGetProperty("generation_type", out var gt) ? (gt.GetString() ?? "") : "";
+        var domain = o.TryGetProperty("domain", out var dm) ? (dm.GetString() ?? "") : "";
+        var reqLevel = o.TryGetProperty("required_level", out var rl) && rl.TryGetInt32(out var rlv) ? rlv : 0;
+
+        var stats = new List<object>();
+        if (o.TryGetProperty("stats", out var st) && st.ValueKind == System.Text.Json.JsonValueKind.Array)
+            foreach (var s in st.EnumerateArray())
+            {
+                if (!s.TryGetProperty("id", out var sid) || sid.GetString() is not { Length: > 0 } id) continue;
+                double min = s.TryGetProperty("min", out var mn) && mn.TryGetDouble(out var mnv) ? mnv : 0;
+                double max = s.TryGetProperty("max", out var mx) && mx.TryGetDouble(out var mxv) ? mxv : 0;
+                stats.Add(new { id, min, max });
+            }
+        if (stats.Count == 0) continue;   // skip mods with no numeric stats (nothing to range)
+        keys.Add(new(mod.Name, group, genType, domain, reqLevel));
+        statsByMod[mod.Name] = stats;
+    }
+
+    var tiers = POE2Radar.Core.Game.TierDeriver.Derive(keys);
+    var table = new Dictionary<string, object>(StringComparer.Ordinal);
+    foreach (var k in keys)
+    {
+        var (tier, count) = tiers.TryGetValue(k.ModId, out var t) ? t : (1, 1);
+        table[k.ModId] = new { stats = statsByMod[k.ModId], tier, tierCount = count };
+    }
+
+    System.IO.File.WriteAllText(outPath, System.Text.Json.JsonSerializer.Serialize(table) + "\n");
+    Console.WriteLine($"Generated {outPath}: {table.Count} mods with ranges + derived tiers.");
     return 0;
 }
 
