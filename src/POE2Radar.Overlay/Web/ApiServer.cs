@@ -588,6 +588,15 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/dynasty-maps":
+                // Read-only reference: the curated dynasty-support map table (no identifying data).
+                Write(ctx, 200, JsonSerializer.Serialize(
+                    POE2Radar.Core.Game.DynastyMaps.Shared.All.Select(kv => new
+                    {
+                        code = kv.Key, name = kv.Value.Name, boss = kv.Value.Boss, gems = kv.Value.Gems
+                    }), Json));
+                break;
+
             default:
                 Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found", path }, Json));
                 break;
@@ -631,6 +640,7 @@ public sealed class ApiServer : IDisposable
         terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
         groundItems = _settings.GroundItems, // ground-item value overlay (enabled / highlight threshold / league)
         contributeUrl = _settings.ContributeUrl,
+        highlightDynastyMaps = _settings.HighlightDynastyMaps,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -685,6 +695,7 @@ public sealed class ApiServer : IDisposable
                 case "groundItems" when p.Value.ValueKind == JsonValueKind.Object:
                     if (TryParseGroundItems(p.Value, out var gi)) { _settings.GroundItems = gi; applied.Add(p.Name); }
                     break;
+                case "highlightDynastyMaps" when TryBool(p.Value, out var b): _settings.HighlightDynastyMaps = b; applied.Add(p.Name); break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }
