@@ -552,7 +552,21 @@ public sealed class RadarApp : IDisposable
             {
                 name = i.Name, rarity = i.Rarity, identified = i.Identified, inventoryId = i.InventoryId,
                 score = Math.Round(i.Score, 1), godRoll = i.IsGodRoll,
-                affixes = i.Affixes.Select(a => new { line = a.Line, statIds = a.StatIds, value = a.Value, weight = a.Weight, points = Math.Round(a.Points, 2) }),
+                affixes = i.Affixes.Select(a =>
+                {
+                    int? pctOfMax = null; int? tier = null; int? tierCount = null;
+                    if (a.ModId.Length > 0 && POE2Radar.Core.Game.ModRanges.Shared.TryGet(a.ModId, out var ri))
+                    {
+                        tier = ri.Tier; tierCount = ri.TierCount;
+                        // Match the affix's stat to a stat range; use the first stat with a real range.
+                        var sr = ri.Stats.FirstOrDefault(x => a.StatIds.Contains(x.Id));
+                        if (sr.Id == null) sr = ri.Stats.Count > 0 ? ri.Stats[0] : default;
+                        if (sr.Id != null && sr.Max > sr.Min)
+                            pctOfMax = (int)Math.Round(Math.Clamp((a.Value - sr.Min) / (sr.Max - sr.Min) * 100.0, 0, 100));
+                        else if (sr.Id != null) pctOfMax = 100; // fixed roll (min==max)
+                    }
+                    return new { line = a.Line, statIds = a.StatIds, value = a.Value, weight = a.Weight, points = Math.Round(a.Points, 2), pctOfMax, tier, tierCount };
+                }),
             }),
         };
     }
