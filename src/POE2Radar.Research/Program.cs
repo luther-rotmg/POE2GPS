@@ -15,6 +15,11 @@ using POE2Radar.Research;
 Console.WriteLine("POE2Radar.Research");
 Console.WriteLine("==================");
 
+// Offline generator (no live game): build the meta-derived starter weight table from a vendored Tincture
+// meta-detail.json snapshot. Dispatched here, ABOVE AttachToPoE, so it runs without PoE2 running.
+if (HasFlag(args, "--gen-weights"))
+    return RunGenWeights(TryGetStrArg(args, "--meta"), TryGetStrArg(args, "--out"));
+
 using var process = ProcessHandle.AttachToPoE();
 if (process is null)
 {
@@ -7047,6 +7052,49 @@ static int RunAobScan(ProcessHandle process, MemoryReader reader)
         foreach (var slot in slots)
             Console.WriteLine($"  slot @ 0x{slot:X16}  -> 0x{(reader.TryReadStruct<nint>(slot, out var v) ? v : 0):X16}");
     }
+    return 0;
+}
+
+static int RunGenWeights(string? metaPath, string? outPath)
+{
+    metaPath ??= "resources/poe2-data/tincture-meta-detail.json";
+    outPath ??= "src/POE2Radar.Core/Game/starter_stat_weights.json";
+    if (!System.IO.File.Exists(metaPath)) { Console.Error.WriteLine($"meta snapshot not found: {metaPath}"); return 1; }
+
+    using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(metaPath));
+    if (!doc.RootElement.TryGetProperty("global", out var global) || !global.TryGetProperty("gear", out var gear))
+    { Console.Error.WriteLine("meta-detail.json has no global.gear array."); return 1; }
+
+    var byStatId = new Dictionary<string, double>(StringComparer.Ordinal);
+    var normById = new Dictionary<string, double>(StringComparer.Ordinal);
+    int matched = 0, total = 0;
+    var unmatched = new List<string>();
+
+    foreach (var g in gear.EnumerateArray())
+    {
+        total++;
+        var name = g.GetProperty("name").GetString() ?? "";
+        var pct = g.TryGetProperty("pct", out var p) && p.TryGetDouble(out var pv) ? pv : 0;
+        double lo = g.TryGetProperty("lo", out var le) && le.TryGetDouble(out var lov) ? lov : 0;
+        double hi = g.TryGetProperty("hi", out var he) && he.TryGetDouble(out var hiv) ? hiv : 0;
+        var ids = POE2Radar.Core.Game.ItemModTranslator.Shared.StatIdsForRenderedLine(name);
+        if (ids == null || ids.Length == 0) { unmatched.Add(name); continue; }
+        matched++;
+        var norm = (lo > 0 || hi > 0) ? (lo + hi) / 2.0 : 1.0;
+        foreach (var id in ids)
+        {
+            if (pct > byStatId.GetValueOrDefault(id)) byStatId[id] = Math.Round(pct, 2);   // strongest meta signal wins
+            if (norm > 0) normById[id] = Math.Round(norm, 2);
+        }
+    }
+
+    var model = new { byStatId, normById, target = 100.0, godRollThreshold = 85.0 };
+    var json = System.Text.Json.JsonSerializer.Serialize(model,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    System.IO.File.WriteAllText(outPath, json);
+
+    Console.WriteLine($"Generated {outPath}: {byStatId.Count} stat ids from {matched}/{total} meta gear lines.");
+    if (unmatched.Count > 0) Console.WriteLine("Unmatched (left to hand-weight): " + string.Join(" | ", unmatched));
     return 0;
 }
 

@@ -423,7 +423,9 @@ POE2GPS-*-win-x64.zip
 
 
 # local-only scratch + reference material (community notes, third-party dumps)
-resources/
+# resources/poe2-data/ is tracked (vendored snapshots); everything else is local-only.
+resources/*
+!resources/poe2-data/
 
 
 # POE2GPS reference clones (inspection only)

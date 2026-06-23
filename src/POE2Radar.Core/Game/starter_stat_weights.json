@@ -1,0 +1,24 @@
+{
+  "byStatId": {
+    "local_energy_shield": 23.8,
+    "base_maximum_mana": 23.6,
+    "base_cold_damage_resistance_%": 21.5,
+    "base_maximum_life": 20.7,
+    "base_lightning_damage_resistance_%": 20.5,
+    "local_energy_shield_\u002B%": 20.2,
+    "base_fire_damage_resistance_%": 20.1,
+    "base_item_found_rarity_\u002B%": 15.4
+  },
+  "normById": {
+    "local_energy_shield": 60.5,
+    "base_maximum_mana": 130.5,
+    "base_cold_damage_resistance_%": 38,
+    "base_maximum_life": 114.5,
+    "base_lightning_damage_resistance_%": 39,
+    "local_energy_shield_\u002B%": 93,
+    "base_fire_damage_resistance_%": 36.5,
+    "base_item_found_rarity_\u002B%": 17
+  },
+  "target": 100,
+  "godRollThreshold": 85
+}
