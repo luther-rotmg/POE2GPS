@@ -82,3 +82,7 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
 - [ ] **Label vocabulary:** `GET /api/labels` returns the grouped vocabulary; the Entity Atlas +
       Director classify pickers autocomplete the curated labels (Waypoint, Shrine, etc.) and accept
       a typed custom label; an existing classification (e.g. "Boss") still works.
+- [ ] **Community contribute:** with a real `DefaultContributeUrl` (deployed Worker), clicking
+      Contribute files a `community-pack` + `needs-review` issue with a summary; junk
+      (profanity/gibberish/identifying/oversized) is auto-rejected; with the placeholder URL the
+      issue-form fallback opens. `merge_community.py --dry-run` reports approved packs.
