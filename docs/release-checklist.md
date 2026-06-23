@@ -65,3 +65,13 @@ powershell -ExecutionPolicy Bypass -File publish.ps1 v0.0.0-smoke
 - [ ] **Gear Scorer v2:** with the scorer on, items show nonzero scores out of the box; each affix
       shows clickable stat-id chips; "Load meta starter" repopulates weights; rarity colors + the
       grid heatmap render.
+- [ ] **Console glow-up:** on startup the console prints the POE2GPS ASCII banner + a themed
+      hotkey reference list; the window title and process name remain neutral (no "POE2GPS" or
+      "POE2Radar" in the title bar).
+- [ ] **Community contribute:** in the dashboard with a Worker URL configured in Settings, clicking
+      "Contribute" uploads the local pack and shows a green success toast, and a GitHub issue is
+      filed automatically. Without a Worker URL configured, clicking "Contribute" opens the GitHub
+      new-issue form in the browser instead.
+- [ ] **Tier-aware god-roll:** on identified gear, each affix that has range data shows its
+      `%-of-max` roll quality and a `T#/N` tier badge (e.g. `T1/5`); affixes at ≥ 90 % of max
+      are highlighted gold.

@@ -46,8 +46,10 @@ clearly gated — a personal QoL tool, not a headless bot.
 - `Game/LifeValidator.cs` — value-scan to find the Life component by HP (Research `--hp`).
 - `Game/ItemModTranslator.cs` — renders item mods (internal mod id + rolled values read from memory) to
   the game's English stat lines (e.g. `IncreasedLife5 [67]` → "+67 to maximum Life"). Two embedded RePoE
-  PoE2 tables (`poe2_mod_stats.json` mod→stat-ids, `poe2_stat_descriptions.json` GGG stat descriptions),
-  regenerated per patch via `resources/poe2-data/regenerate.py`. Validate with `--inventory --itemmods`.
+  PoE2 tables (`poe2_mod_stats.json` mod→stat-ids, `poe2_stat_descriptions.json` GGG stat descriptions,
+  `poe2_mod_ranges.json` per-mod roll ranges), regenerated per patch via the `POE2Radar.Research --gen-*`
+  probes (e.g. `--gen-weights`, `--gen-ranges`) from vendored RePoE snapshots under `resources/poe2-data/`
+  (there is no `regenerate.py`). Validate with `--inventory --itemmods`.
 - `Pathfinding/MapProjection.cs` + `GridConstants.cs` — isometric grid→screen projection and the
   grid↔world scale (250/23 ≈ 10.87).
 
