@@ -156,6 +156,7 @@ internal static class DashboardHtml
   }
   .chip:hover{border-color:var(--gold-deep); color:var(--ink)}
   .chip.on{background:var(--gold-deep); border-color:var(--gold); color:#1a140a; font-weight:600}
+  .tier{color:var(--ink-faint)} .tier-top{color:var(--gold); font-weight:600}
   .chips{display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 12px}
   input[type=search]{
     font-family:inherit; font-size:12px; color:var(--ink); background:#0c0a07;
@@ -1359,8 +1360,9 @@ function renderGearItems(items){
   el.innerHTML = items.length ? items.map(it=>{
     const aff=(it.affixes||[]).map(a=>{
       const chips=(a.statIds||[]).map(id=>'<button class="chip g-chip" data-id="'+esc(id)+'" data-val="'+a.value+'" title="weight this stat (meta scale)">'+esc(id)+'</button>').join(' ');
+      const tierTxt=(a.tier?(' &middot; <span class="'+(a.pctOfMax>=90?'tier-top':'tier')+'">T'+a.tier+'/'+a.tierCount+(a.pctOfMax!=null?(' &middot; '+a.pctOfMax+'%'):'')+'</span>'):'');
       return '<div class="rl hint-row" style="padding-left:12px">'+esc(a.line||'')+' &middot; roll '+a.value
-        +(a.weight?(' &middot; w'+a.weight+' &rarr; '+a.points+'pts'):'')+'<div style="margin-top:3px">'+chips+'</div></div>';
+        +(a.weight?(' &middot; w'+a.weight+' &rarr; '+a.points+'pts'):'')+tierTxt+'<div style="margin-top:3px">'+chips+'</div></div>';
     }).join('');
     return '<div class="row" style="flex-wrap:wrap"><div class="rl"><span class="rar-'+esc(it.rarity||'Normal')+'">'+(it.godRoll?'&#9733; ':'')+esc(it.name||'(item)')+'</span><small>'+esc(it.rarity||'')+' &middot; inv '+it.inventoryId+'</small></div>'
       +'<div class="numin" style="min-width:54px;text-align:right;font-weight:600">'+it.score+'</div>'
