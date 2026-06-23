@@ -845,7 +845,7 @@ public sealed class OverlayRenderer : IDisposable
         var headerY = isBottom && expanded ? top + panelH - NavPad - NavHeaderH : top + NavPad;
 
         // "POE2Radar" chip (click → toggle dropdown). Sized to its text so the corner buttons sit after it.
-        const string chip = "POE2Radar";
+        const string chip = "POE2GPS";
         var chipW = chip.Length * 7.3f + 8f;
         var chipRect = new Vortice.RawRectF(left + NavPad, headerY, left + NavPad + chipW, headerY + NavHeaderH - 2f);
         rt.FillRectangle(chipRect, _bPanel!);

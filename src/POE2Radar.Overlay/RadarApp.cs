@@ -243,8 +243,9 @@ public sealed class RadarApp : IDisposable
     private uint _selectionAreaHash;
     private const int MaxRememberedZones = 64;
 
-    // ── Collapsible "POE2Radar" navigation menu widget state (drawn always-on; persisted corner). ──
+    // ── Collapsible "POE2GPS" navigation menu widget state (drawn always-on; persisted corner). ──
     private bool _navMenuExpanded;                                       // dropdown open? (default collapsed)
+    private DateTime _nextMenuAt = DateTime.MinValue;                    // Ctrl+Alt+M menu-toggle debounce
 
     public void RequestShutdown() => _shutdown = true;
 
@@ -531,7 +532,7 @@ public sealed class RadarApp : IDisposable
                 if (u.UpdateAvailable)
                     Console.WriteLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}. Download: {u.Url} ***\n");
                 else
-                    Console.WriteLine($"POE2Radar v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
+                    Console.WriteLine($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
             });
         }
     }
@@ -1336,13 +1337,27 @@ public sealed class RadarApp : IDisposable
             }
             if (fired) _nextCycleAt = DateTime.UtcNow.AddMilliseconds(250);
         }
-        // Quick-Target Cycler (controller): L3 = prev, R3 = next. Poll every frame to keep edge state
-        // fresh; only ACT while PoE2 is foreground. Read-only XInput — sends nothing to the game.
+        // Nav-menu toggle (keyboard): Ctrl+Alt+M flips the top-left nav-menu dropdown. Foreground-gated +
+        // debounced. Reads keys only — sends nothing to the game.
+        if (_settings.EnableTargetHotkeys && DateTime.UtcNow >= _nextMenuAt
+            && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd
+            && Down(0x11) && Down(0x12) && Down(0x4D))   // Ctrl + Alt + M
+        {
+            _navMenuExpanded = !_navMenuExpanded;
+            _nextMenuAt = DateTime.UtcNow.AddMilliseconds(300);
+        }
+        // Quick-Target Cycler + nav-menu chord (controller): L3 = prev, R3 = next, L3+R3 = toggle the nav
+        // menu. Poll every frame to keep edge state fresh; only ACT while PoE2 is foreground. The chord
+        // suppresses the single-stick cycle so opening the menu never also flips the active target.
+        // Read-only XInput — sends nothing to the game.
         if (_settings.EnableControllerCycle)
         {
-            var dir = _controllerCycler.Poll();
-            if (dir != 0 && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd)
-                Cycle(dir < 0 ? CycleAction.Prev : CycleAction.Next);
+            var input = _controllerCycler.Poll();
+            if (_gameHwnd != 0 && GetForegroundWindow() == _gameHwnd)
+            {
+                if (input.MenuToggle) _navMenuExpanded = !_navMenuExpanded;
+                else if (input.Cycle != 0) Cycle(input.Cycle < 0 ? CycleAction.Prev : CycleAction.Next);
+            }
         }
     }
 

@@ -1,20 +1,21 @@
+using POE2Radar.Core.Input;
+
 namespace POE2Radar.Overlay.Input;
 
-/// <summary>Edge-detects L3 (prev) / R3 (next) on XInput controller 0 → a cycle direction. Read-only.</summary>
+/// <summary>Polls XInput controller 0 and resolves L3/R3 into a <see cref="ControllerInput"/> via the pure
+/// <see cref="ControllerChord"/> seam: L3=prev, R3=next, L3+R3=menu toggle. Read-only — never emits input.</summary>
 internal sealed class ControllerCycler
 {
     private ushort _prev;
 
-    /// <summary>Poll once. Returns -1 (L3 pressed = prev), +1 (R3 pressed = next), or 0. Edge-triggered:
-    /// fires once per physical press. Always call it each frame so the edge state stays correct.</summary>
-    public int Poll()
+    /// <summary>Poll once. Returns the resolved cycle direction + menu-toggle edge. Always call each frame
+    /// so the edge state stays correct.</summary>
+    public ControllerInput Poll()
     {
         var read = XInputNative.TryGetButtons();
-        if (read is not { } cur) { _prev = 0; return 0; }
-        var pressed = (ushort)(cur & ~_prev);   // rising edges since last poll
+        if (read is not { } cur) { _prev = 0; return default; }
+        var result = ControllerChord.Resolve(_prev, cur);
         _prev = cur;
-        if ((pressed & XInputNative.GamepadLeftThumb) != 0) return -1;
-        if ((pressed & XInputNative.GamepadRightThumb) != 0) return +1;
-        return 0;
+        return result;
     }
 }
