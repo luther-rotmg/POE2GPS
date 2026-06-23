@@ -28,9 +28,8 @@ if (!args.Contains("--launched"))
 }
 
 var myName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "Overlay");
-Console.Title = myName;
-Console.WriteLine(myName);
-Console.WriteLine(new string('=', myName.Length));
+Console.Title = myName;                 // neutral/randomized — anti-detection (do NOT brand the title)
+POE2Radar.Overlay.Overlay.ConsoleTheme.Banner();
 
 using var process = ProcessHandle.AttachToPoE();
 if (process is null)
@@ -38,7 +37,7 @@ if (process is null)
     Console.Error.WriteLine("Game not running (no matching process found).");
     return 1;
 }
-Console.WriteLine($"Attached to {process.ProcessName} (PID {process.ProcessId})");
+POE2Radar.Overlay.Overlay.ConsoleTheme.Ok($"Attached to {process.ProcessName} (PID {process.ProcessId})");
 
 var reader = new MemoryReader(process);
 var slot = Bootstrap.ResolveGameStateSlot(process, reader);
@@ -46,7 +45,7 @@ if (slot == 0)
     return 2;
 
 Console.WriteLine();
-Console.WriteLine("Running. Open the in-game map to see terrain + entities. Ctrl+C to exit.");
+POE2Radar.Overlay.Overlay.ConsoleTheme.Accent("Running. Open the in-game map to see terrain + entities. Ctrl+C to exit.");
 
 using var app = new RadarApp(process, reader, slot);
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; app.RequestShutdown(); };

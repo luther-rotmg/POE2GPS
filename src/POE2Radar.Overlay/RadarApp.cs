@@ -8,6 +8,7 @@ using POE2Radar.Core.Gear;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Native;
 using POE2Radar.Overlay.Navigation;
+using POE2Radar.Overlay.Overlay;
 using POE2Radar.Overlay.Web;
 
 namespace POE2Radar.Overlay;
@@ -254,8 +255,9 @@ public sealed class RadarApp : IDisposable
         _process = process;
         _reader = reader;
         _settings = RadarSettings.Load();
-        Console.WriteLine($"Settings: {RadarSettings.FilePath}");
-        Console.WriteLine($"Entity names: {EntityNameResolver.Shared.Count} mappings; zones: {ZoneGuide.Shared.Count}");
+        ConsoleTheme.Section("POE2GPS");
+        ConsoleTheme.Kv("settings", RadarSettings.FilePath);
+        ConsoleTheme.Kv("entity names", $"{EntityNameResolver.Shared.Count} mappings · {ZoneGuide.Shared.Count} zones");
         _live = new Poe2Live(reader, gameStateSlot);
         // Independent reader stacks for the render + API threads (see the field declarations): each owns
         // its own MemoryReader/Poe2Live so the world walk, the render-frame reads, and the API tile scan
@@ -508,19 +510,16 @@ public sealed class RadarApp : IDisposable
         _entityAtlas = new EntityAtlasLog(Path.Combine(ConfigDir, "entity_atlas.json"));
         _entityNameStore = new EntityNameStore(Path.Combine(ConfigDir, "entity_names_user.json"));
         _gearWeights = new GearWeightStore(Path.Combine(ConfigDir, "stat_weights.json"));
-        Console.WriteLine($"Hidden entities: {_hidden.Count} pattern(s); display rules: {_displayRules.Count}; known mods: {_modCatalog.Count}");
+        ConsoleTheme.Kv("rules", $"{_hidden.Count} hidden · {_displayRules.Count} display · {_modCatalog.Count} mods");
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
                              _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
                              GearJson, _gearWeights,
                              AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, _settings.ApiPort);
-        try { _api.Start(); Console.WriteLine($"API on http://localhost:{_settings.ApiPort} (dashboard at /)"); }
+        try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
-        Console.WriteLine("Hotkeys: F6=add nearest path target  F7=clear path targets  "
-                          + "F9=quit  F12=open dashboard");
-        Console.WriteLine("         F10 (Atlas open) = inspect hovered tile (dumps map name + code + content"
-                          + " to console for web-UI filters) and set route START->END (3rd press resets)");
+        ConsoleTheme.Hotkeys();
         // Best-effort version check against GitHub (non-blocking; never fails startup). The only outbound
         // request the overlay makes beyond loopback — opt out via CheckForUpdates for zero network egress.
         if (_settings.CheckForUpdates)
@@ -530,9 +529,9 @@ public sealed class RadarApp : IDisposable
                 var u = await UpdateChecker.CheckAsync();
                 _update = u;
                 if (u.UpdateAvailable)
-                    Console.WriteLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}. Download: {u.Url} ***\n");
+                    ConsoleTheme.WarnLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}. Download: {u.Url} ***\n");
                 else
-                    Console.WriteLine($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
+                    ConsoleTheme.Accent($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
             });
         }
     }
