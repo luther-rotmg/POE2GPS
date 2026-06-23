@@ -553,7 +553,7 @@ public sealed class RadarApp : IDisposable
             {
                 name = i.Name, rarity = i.Rarity, identified = i.Identified, inventoryId = i.InventoryId,
                 score = Math.Round(i.Score, 1), godRoll = i.IsGodRoll,
-                affixes = i.Affixes.Select(a => new { line = a.Line, value = a.Value, weight = a.Weight, points = Math.Round(a.Points, 2) }),
+                affixes = i.Affixes.Select(a => new { line = a.Line, statIds = a.StatIds, value = a.Value, weight = a.Weight, points = Math.Round(a.Points, 2) }),
             }),
         };
     }

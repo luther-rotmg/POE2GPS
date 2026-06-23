@@ -883,22 +883,40 @@ public sealed class ApiServer : IDisposable
     }
 
     /// <summary>Apply a Gear-tab weight edit: {"setWeight":{"statId":..,"weight":n}} / {"target":n} /
-    /// {"threshold":n}. Edits the local stat-weight config only — never the game.</summary>
+    /// {"threshold":n} / {"reset":"starter"} / {"setNorm":{"statId":..,"norm":n}}.
+    /// Edits the local stat-weight config only — never the game.</summary>
     private void ApplyGearWeights(string body)
     {
         if (string.IsNullOrWhiteSpace(body)) return;
-        using var doc = JsonDocument.Parse(body);
-        var root = doc.RootElement;
-        if (root.ValueKind != JsonValueKind.Object) return;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return;
 
-        if (root.TryGetProperty("setWeight", out var sw) && sw.ValueKind == JsonValueKind.Object
-            && sw.TryGetProperty("statId", out var sid) && sid.GetString() is { Length: > 0 } statId
-            && sw.TryGetProperty("weight", out var wv) && wv.TryGetDouble(out var weight))
-            _gearWeights.SetWeight(statId, weight);
-        if (root.TryGetProperty("target", out var tv) && tv.TryGetDouble(out var target))
-            _gearWeights.SetTarget(target);
-        if (root.TryGetProperty("threshold", out var thv) && thv.TryGetDouble(out var threshold))
-            _gearWeights.SetThreshold(threshold);
+            if (root.TryGetProperty("reset", out var rv) && rv.GetString() == "starter")
+                _gearWeights.LoadStarter();
+
+            if (root.TryGetProperty("setWeight", out var sw) && sw.ValueKind == JsonValueKind.Object
+                && sw.TryGetProperty("statId", out var sid) && sid.GetString() is { Length: > 0 } statId
+                && sw.TryGetProperty("weight", out var wv) && wv.TryGetDouble(out var weight))
+            {
+                _gearWeights.SetWeight(statId, weight);
+                if (sw.TryGetProperty("norm", out var nv) && nv.TryGetDouble(out var norm))
+                    _gearWeights.SetNorm(statId, norm);
+            }
+
+            if (root.TryGetProperty("setNorm", out var sn) && sn.ValueKind == JsonValueKind.Object
+                && sn.TryGetProperty("statId", out var nsid) && nsid.GetString() is { Length: > 0 } normStatId
+                && sn.TryGetProperty("norm", out var nnv) && nnv.TryGetDouble(out var normVal))
+                _gearWeights.SetNorm(normStatId, normVal);
+
+            if (root.TryGetProperty("target", out var tv) && tv.TryGetDouble(out var target))
+                _gearWeights.SetTarget(target);
+            if (root.TryGetProperty("threshold", out var thv) && thv.TryGetDouble(out var threshold))
+                _gearWeights.SetThreshold(threshold);
+        }
+        catch (JsonException) { /* malformed body → ignore, like the atlas handlers */ }
     }
 
     /// <summary>Apply a Director-tab command: {"add":{objective}} upserts; {"remove":{"id":...}} deletes.
