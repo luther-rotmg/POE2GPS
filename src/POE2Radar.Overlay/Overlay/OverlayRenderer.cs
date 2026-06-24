@@ -132,6 +132,7 @@ public sealed class OverlayRenderer : IDisposable
                 DrawRuneforge(rt, ctx);
                 DrawRitualRewards(rt, ctx);            // name labels on the ritual tribute-shop tiles (screen-space)
                 DrawMonolithPanel(rt, ctx);            // nearby-monolith reward list (screen-space)
+                DrawSessionHud(rt, ctx);               // session pace/zone/death HUD (screen-space)
             }
         }
         finally { rt.EndDraw(); }
@@ -547,6 +548,73 @@ public sealed class OverlayRenderer : IDisposable
                 rt.DrawText($"  {r.Ex,4:F0}  {r.Name}", _tf!, new Rect(x + pad, cy, x + w - pad, cy + lineH), _bText!, DrawTextOptions.Clip);
                 cy += lineH; shown++;
             }
+        }
+    }
+
+    private void DrawSessionHud(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        var hud = ctx.SessionHudSettings;
+        if (hud == null || !hud.Enabled) return;
+        var sess = ctx.Session;
+        if (sess == null) return;
+
+        // Build only the enabled rows (pre-formatted strings). Line count drives the panel height.
+        var lines = new List<(string text, bool isDeath)>(6);
+        if (hud.ShowPace)
+        {
+            lines.Add(($"Session  {(int)sess.SessionElapsed.TotalHours:D2}:{sess.SessionElapsed.Minutes:D2}:{sess.SessionElapsed.Seconds:D2}", false));
+            lines.Add(($"Zone     {(int)sess.ZoneElapsed.TotalHours:D2}:{sess.ZoneElapsed.Minutes:D2}:{sess.ZoneElapsed.Seconds:D2}", false));
+            lines.Add(($"Zones    {sess.ZonesEntered}   {sess.ZonesPerHour:F1}/hr", false));
+        }
+        if (hud.ShowZoneContext)
+        {
+            lines.Add(($"Area     {sess.CurrentZoneName}", false));
+            lines.Add(($"Level    {sess.CurrentAreaLevel}", false));
+        }
+        if (hud.ShowDeaths)
+        {
+            lines.Add(($"Deaths   {sess.Deaths} ({sess.DeathsThisZone} here)", sess.Deaths > 0));
+        }
+
+        int enabledRowCount = lines.Count;
+        if (enabledRowCount == 0) return;   // nothing enabled — touch nothing
+
+        const float panelW = 240f;          // narrower than the 248f monolith panel
+        const float pad = 6f, lineH = 15f;  // all rows are data rows — no title row
+        float panelH = enabledRowCount * lineH + pad * 2;
+
+        // Corner anchoring — inline arithmetic with signed offsets + clamp.
+        var corner = hud.Anchor;
+        bool isRight  = corner is "TopRight"   or "BottomRight";
+        bool isBottom = corner is "BottomLeft" or "BottomRight";
+        const float margin = 10f;
+
+        float left = isRight
+            ? ctx.WindowWidth  - margin - panelW + hud.OffsetX
+            : margin + hud.OffsetX;
+        float top  = isBottom
+            ? ctx.WindowHeight - margin - panelH + hud.OffsetY
+            : margin + hud.OffsetY;
+        left = Math.Clamp(left, margin, ctx.WindowWidth  - margin - panelW);
+        top  = Math.Clamp(top,  margin, ctx.WindowHeight - margin - panelH);
+
+        // Panel fill uses RawRectF (every FillRectangle in this file takes RawRectF; Rect is DrawText-only).
+        rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
+
+        float cy = top + pad;
+        foreach (var (text, isDeath) in lines)
+        {
+            var rowRect = new Rect(left + pad, cy, left + panelW - pad, cy + lineH);
+            if (isDeath)
+            {
+                _bStyle!.Color = new Color4(1f, 0.85f, 0.2f, 1f);   // yellow when Deaths > 0
+                rt.DrawText(text, _tf!, rowRect, _bStyle!, DrawTextOptions.Clip);
+            }
+            else
+            {
+                rt.DrawText(text, _tf!, rowRect, _bText!, DrawTextOptions.Clip);
+            }
+            cy += lineH;
         }
     }
 
