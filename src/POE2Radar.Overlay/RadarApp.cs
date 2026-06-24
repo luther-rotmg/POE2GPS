@@ -78,7 +78,7 @@ public sealed class RadarApp : IDisposable
     // A route/marker point: the node's UiElement (so the render thread re-reads live RelativePos per frame →
     // smooth pan) PLUS the world-walk's baked position as a fallback when that read is rejected (stale/freed
     // element scrolled off-screen, or garbage) — without the fallback those bad reads streaked lines.
-    private readonly record struct AtlasPoint(nint El, float Bx, float By);
+    private readonly record struct AtlasPoint(nint El, float Bx, float By, float W = 40f, float H = 40f);
     private sealed record AtlasAutoSpec(IReadOnlyList<AtlasPoint> Points, string? Color, int Hops);
     private sealed record AtlasRender(bool Open, IReadOnlyList<AtlasMark> Marks, AtlasPoint? Start, AtlasPoint? End, IReadOnlyList<AtlasPoint>? Route, AtlasPoint? Current, IReadOnlyList<AtlasAutoSpec> AutoRoutes)
     {
@@ -850,11 +850,17 @@ public sealed class RadarApp : IDisposable
             if (ar.Open)
             {
                 foreach (var m in ar.Marks)
-                    _atlasMarkFrame.Add(m.Element != 0 && _liveRender.TryRelPos(m.Element, out var mx, out var my) ? m with { X = mx, Y = my } : m);
+                    _atlasMarkFrame.Add(
+                        m.Element != 0 && _liveRender.TryRelPos(m.Element, out var mx, out var my)
+                            ? m with { X = AtlasGeometry.AtlasCentre(mx, m.W), Y = AtlasGeometry.AtlasCentre(my, m.H) }
+                            : m);
 
                 // Fresh live pos when the read validates, else the world-walk's baked pos — never a garbage
                 // coordinate (which would streak route lines off-screen). Points stay contiguous (no dropping).
-                NumVec2 Pt(AtlasPoint p) => p.El != 0 && _liveRender.TryRelPos(p.El, out var rx, out var ry) ? new NumVec2(rx, ry) : new NumVec2(p.Bx, p.By);
+                NumVec2 Pt(AtlasPoint p) =>
+                    p.El != 0 && _liveRender.TryRelPos(p.El, out var rx, out var ry)
+                        ? new NumVec2(AtlasGeometry.AtlasCentre(rx, p.W), AtlasGeometry.AtlasCentre(ry, p.H))
+                        : new NumVec2(p.Bx, p.By);  // Bx/By already centered at construction
                 atlasStart = ar.Start is { } sp ? Pt(sp) : (NumVec2?)null;
                 atlasEnd = ar.End is { } ep ? Pt(ep) : (NumVec2?)null;
                 atlasCurrent = ar.Current is { } cp ? Pt(cp) : (NumVec2?)null;
@@ -2188,7 +2194,12 @@ public sealed class RadarApp : IDisposable
         var gridToPoint = new Dictionary<(int, int), AtlasPoint>(nodes.Count);
         var trackedGrids = new List<(int, int)>();
         var gridColor = new Dictionary<(int, int), string?>();
-        foreach (var n in nodes) gridToPoint[n.Grid] = new AtlasPoint(n.Element, n.X, n.Y);
+        foreach (var n in nodes)
+            gridToPoint[n.Grid] = new AtlasPoint(
+                n.Element,
+                AtlasGeometry.AtlasCentre(n.X, n.W),
+                AtlasGeometry.AtlasCentre(n.Y, n.H),
+                n.W, n.H);
         foreach (var n in nodes)
         {
             var selected = sel.Contains(n.Element);
@@ -2215,7 +2226,12 @@ public sealed class RadarApp : IDisposable
             }
             // Route to NAV tiles that aren't already done — independent of the ring/arrow toggles.
             if (isNav && !n.Completed) { trackedGrids.Add(n.Grid); gridColor[n.Grid] = color; }
-            marks.Add(new AtlasMark(n.X, n.Y, isTracked, n.HasContent, n.Visited, n.Unlocked, n.Biome, n.IconType, label, color, isArrow, isNav, n.Element));
+            marks.Add(new AtlasMark(
+                AtlasGeometry.AtlasCentre(n.X, n.W),
+                AtlasGeometry.AtlasCentre(n.Y, n.H),
+                n.W, n.H,
+                isTracked, n.HasContent, n.Visited, n.Unlocked,
+                n.Biome, n.IconType, label, color, isArrow, isNav, n.Element));
         }
 
         // ── Auto-routing (improvement 1): "you are here" + a route to each tracked tile ──────────────
@@ -2267,7 +2283,12 @@ public sealed class RadarApp : IDisposable
         if (nodes.Count == 0) return (null, null, route);
 
         var gridToPoint = new Dictionary<(int, int), AtlasPoint>(nodes.Count);
-        foreach (var n in nodes) gridToPoint[n.Grid] = new AtlasPoint(n.Element, n.X, n.Y);
+        foreach (var n in nodes)
+            gridToPoint[n.Grid] = new AtlasPoint(
+                n.Element,
+                AtlasGeometry.AtlasCentre(n.X, n.W),
+                AtlasGeometry.AtlasCentre(n.Y, n.H),
+                n.W, n.H);
 
         if (startGrid is { } s && gridToPoint.TryGetValue(s, out var sp)) startPt = sp;
         if (goalGrid is { } g && gridToPoint.TryGetValue(g, out var gp)) endPt = gp;

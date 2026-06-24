@@ -48,7 +48,12 @@ public readonly record struct ItemLabel(Vector3 World, string Name, string Value
 /// <summary><see cref="Element"/> is the node's UiElement address; the render thread re-reads its
 /// RelativePos into <see cref="X"/>/<see cref="Y"/> every frame so rings track atlas pan smoothly (the
 /// X/Y published by the world walk are the last-known fallback). 0 = no live element.</summary>
-public readonly record struct AtlasMark(float X, float Y, bool Selected, bool HasContent, bool Visited, bool Unlocked, int Biome, int IconType, string? Label = null, string? Color = null, bool Arrow = false, bool Nav = false, nint Element = 0);
+public readonly record struct AtlasMark(
+    float X, float Y, float W, float H,
+    bool Selected, bool HasContent, bool Visited, bool Unlocked,
+    int Biome, int IconType,
+    string? Label = null, string? Color = null,
+    bool Arrow = false, bool Nav = false, nint Element = 0);
 
 /// <summary>One auto-route polyline from the player's current atlas node (or the accessible frontier) to a
 /// tracked target tile. <see cref="Points"/> are canvas-space node centers (relPos), projected with the
