@@ -406,6 +406,16 @@ internal static class DashboardHtml
         <div id="dirList" class="znotes" style="display:block"></div>
       </div>
 
+      <div id="session-panel" class="card" style="display:none">
+        <div class="card-title">Session</div>
+        <div class="row"><div class="rl">Session</div><span id="sp-session">—</span></div>
+        <div class="row"><div class="rl">Zone</div><span id="sp-zone">—</span></div>
+        <div class="row"><div class="rl">Zones</div><span id="sp-zones">—</span></div>
+        <div class="row"><div class="rl">Area</div><span id="sp-area">—</span></div>
+        <div class="row"><div class="rl">Level</div><span id="sp-level">—</span></div>
+        <div class="row"><div class="rl">Deaths</div><span id="sp-deaths">—</span></div>
+      </div>
+
       <div style="height:24px"></div>
     </aside>
 
@@ -561,6 +571,43 @@ internal static class DashboardHtml
               <input class="numin" type="number" step="1" min="15" max="360" data-set="fpsCap"></div>
             <div class="row"><div class="rl">Contribute URL<small>your Cloudflare Worker endpoint; set this to enable one-click &ldquo;Contribute&rdquo;</small></div>
               <input class="numin" type="text" data-set="contributeUrl" placeholder="https://&hellip;workers.dev" style="width:240px"></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Session HUD</div>
+
+            <div class="row"><div class="rl">Enable HUD<small>Show session stats overlay</small></div>
+              <label class="sw"><input type="checkbox" data-set="sessionHudEnabled">
+                <span class="track"></span><span class="knob"></span></label></div>
+
+            <div class="row"><div class="rl">Pace stats<small>Clock / zones / rate</small></div>
+              <label class="sw"><input type="checkbox" data-set="sessionHudShowPace">
+                <span class="track"></span><span class="knob"></span></label></div>
+
+            <div class="row"><div class="rl">Zone context<small>Area name + level</small></div>
+              <label class="sw"><input type="checkbox" data-set="sessionHudShowZoneContext">
+                <span class="track"></span><span class="knob"></span></label></div>
+
+            <div class="row"><div class="rl">Deaths<small>Session + per-zone counter</small></div>
+              <label class="sw"><input type="checkbox" data-set="sessionHudShowDeaths">
+                <span class="track"></span><span class="knob"></span></label></div>
+
+            <div class="row"><div class="rl">Exclude towns<small>Omit towns from pace</small></div>
+              <label class="sw"><input type="checkbox" data-set="sessionHudExcludeTowns">
+                <span class="track"></span><span class="knob"></span></label></div>
+
+            <div class="row"><div class="rl">Anchor corner</div>
+              <select class="numin" data-set="sessionHudAnchor">
+                <option value="TopLeft">Top Left</option>
+                <option value="TopRight">Top Right</option>
+                <option value="BottomLeft">Bottom Left</option>
+                <option value="BottomRight">Bottom Right</option>
+              </select></div>
+
+            <div class="row"><div class="rl">Offset X</div>
+              <input class="numin" type="number" step="1" data-set="sessionHudOffsetX"></div>
+
+            <div class="row"><div class="rl">Offset Y</div>
+              <input class="numin" type="number" step="1" data-set="sessionHudOffsetY"></div>
           </div>
           <div class="card">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
@@ -1619,6 +1666,23 @@ $$('#atlasViewCatalog,#atlasViewRegion,#atlasViewNodes').forEach(b=>b?.addEventL
   renderAtlas();
 }));
 
+/* ── session HUD live panel ── */
+function renderSessionPanel() {
+    const s = state && state.session;
+    const el = document.getElementById('session-panel');
+    if (!el) return;
+    if (!s) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    document.getElementById('sp-session').textContent = s.sessionElapsed || '—';
+    document.getElementById('sp-zone').textContent    = s.zoneElapsed    || '—';
+    document.getElementById('sp-zones').textContent   = s.zonesEntered != null
+        ? `${s.zonesEntered}  (${(s.zonesPerHour||0).toFixed(1)}/hr)` : '—';
+    document.getElementById('sp-area').textContent    = s.currentZoneName || '—';
+    document.getElementById('sp-level').textContent   = s.currentAreaLevel ?? '—';
+    document.getElementById('sp-deaths').textContent  = s.deaths != null
+        ? `${s.deaths} (${s.deathsThisZone} here)` : '—';
+}
+
 /* ── left rail ── */
 function renderState(){
   const s=state; if(!s) return;
@@ -1671,6 +1735,8 @@ function renderState(){
     zn.hidden=false;
     zn.innerHTML='<div class="zt">'+esc(zone.title||zone.name||'')+'</div>'+esc(zone.notes);
   } else { zn.hidden=true; }
+
+  renderSessionPanel();
 }
 
 // Update banner: show a download link if a newer version exists on GitHub (best-effort).
