@@ -104,6 +104,7 @@ When you label an entity or POI in the **Entity Atlas** tab (dashboard → **F12
 - **What's sent:** only your **discovered names + labels** — a map of *game* entity paths (e.g. `Metadata/Monsters/…`) to the friendly names and categories you picked. **Never** your character, account, position, or anything identifying. It's **opt-in** — nothing leaves your machine until you click, and the first click asks you to confirm.
 - **What happens next:** the project's collector **auto-filters junk** (spam, gibberish, oversized, or anything that looks identifying) and files the clean submissions as reviewable GitHub issues. A maintainer approves the good ones, and each release they're **folded into the built-in name table + label vocabulary** — so everyone's coverage ships to everyone. Over many releases, that's how we map the whole game.
 - **How to help:** open the dashboard (**F12**) → **Entity Atlas** → give a few unnamed entities friendly names → **Contribute**. That's the whole loop. 💚
+- 📖 **Full walkthrough:** the [**Labeling & Contributing guide**](docs/labeling-and-contributing.md) covers scan → label → contribute → what it unlocks, step by step.
 
 💬 **Questions, bug reports, or ideas for what to map next?** Join the community on **[Discord](https://discord.gg/32qdzWRja3)**.
 
