@@ -123,6 +123,8 @@ internal static class DashboardHtml
   .tab:hover{color:var(--ink-dim)}
   .tab.on{color:var(--gold-bright); background:var(--panel); border-color:var(--line); }
   .tab.on::after{content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--panel)}
+  .dlink{margin-left:auto; align-self:center; color:#5865F2; font-size:12px; letter-spacing:.08em; text-decoration:none; padding:0 10px; font-weight:600}
+  .dlink:hover{text-decoration:underline; filter:brightness(1.2)}
 
   .view{overflow:auto; padding:22px 26px; min-height:0}
   .view[hidden]{display:none}
@@ -416,6 +418,7 @@ internal static class DashboardHtml
         <button class="tab" data-tab="director">Director</button>
             <button class="tab" data-tab="entatlas">Entity Atlas</button>
             <button class="tab" data-tab="gear">Gear &#9733;</button>
+        <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
       <section class="view" data-view="filters">

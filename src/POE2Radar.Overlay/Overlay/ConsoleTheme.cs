@@ -44,6 +44,7 @@ internal static class ConsoleTheme
         Console.WriteLine();
         foreach (var line in Art) Console.WriteLine(Gold + line + R);
         Console.WriteLine($"  {Cyan}read-only PoE2 GPS overlay{R}   {Dim}v{UpdateChecker.Current}{R}");
+        Console.WriteLine($"  {Dim}community + support:{R} {Cyan}https://discord.gg/32qdzWRja3{R}");
         Console.WriteLine();
     }
 
