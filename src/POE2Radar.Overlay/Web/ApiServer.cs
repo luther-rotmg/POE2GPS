@@ -376,12 +376,19 @@ public sealed class ApiServer : IDisposable
                 // Director catalog already covers it (uncatalogued ones are the worklist). Read-only.
                 Write(ctx, 200, JsonSerializer.Serialize(new
                 {
-                    pois = _seenPois().Select(p => new
+                    pois = _seenPois().Select(p =>
                     {
-                        signature = p.Signature, name = p.FriendlyName, category = p.Category,
-                        zone = p.FirstZone, count = p.Count, poi = p.Poi,
-                        metadata = p.Metadata, landmarkPath = p.LandmarkPath,
-                        covered = _objectives.Covers(p),
+                        var guess = ObjectiveClassifier.Classify(p.Metadata, p.Category, p.Poi, p.Rarity);
+                        return new
+                        {
+                            signature = p.Signature, name = p.FriendlyName, category = p.Category,
+                            zone = p.FirstZone, count = p.Count, poi = p.Poi,
+                            metadata = p.Metadata, landmarkPath = p.LandmarkPath,
+                            covered = _objectives.Covers(p),
+                            guessedTier     = guess?.Tier.ToString(),
+                            guessedCategory = guess?.SuggestedCategory,
+                            guessedConf     = guess?.Confidence.ToString(),
+                        };
                     }),
                 }, Json));
                 break;
@@ -400,6 +407,7 @@ public sealed class ApiServer : IDisposable
                             ? r : Poe2Live.Rarity.NonMonster;
                         var e = new Poe2Live.EntityDot(0, 0, default, default, cat, a.Metadata, 0, 0, a.Poi, 0, rar, false);
                         var named = EntityNameResolver.Shared.Resolve(a.Metadata);
+                        var guess = ObjectiveClassifier.Classify(a.Metadata, a.Category, a.Poi, a.Rarity);
                         return new
                         {
                             metadata = a.Metadata,
@@ -409,6 +417,9 @@ public sealed class ApiServer : IDisposable
                             zone = a.FirstZone, count = a.Count,
                             notable = PoiCandidate.IsCandidate(in e),
                             covered = _objectives.Covers(in e),
+                            guessedTier     = guess?.Tier.ToString(),
+                            guessedCategory = guess?.SuggestedCategory,
+                            guessedConf     = guess?.Confidence.ToString(),
                         };
                     }),
                 }, Json));

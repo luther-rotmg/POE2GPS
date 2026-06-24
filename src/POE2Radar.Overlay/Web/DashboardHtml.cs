@@ -1328,8 +1328,9 @@ function renderDirector(){
       el.querySelector('.dir-add').onclick=()=>{
         const cat=el.querySelector('.dir-cat').value;
         const prio=parseInt(el.querySelector('.dir-prio').value,10)||50;
+        const tier=el.querySelector('.dir-tier').value||undefined;
         const match = p.landmarkPath ? {landmarkPath:[p.landmarkPath]} : {metadata:[p.metadata]};
-        postObjectives({add:Object.assign({id:p.signature,label:p.name,category:cat,priority:prio,enabled:true},match)});
+        postObjectives({add:Object.assign({id:p.signature,label:p.name,category:cat,priority:prio,enabled:true,tier:tier},match)});
       };
     });
   }
@@ -1345,9 +1346,15 @@ function renderDirector(){
   renderDirectorQueue();
 }
 function candRow(p){
+  const tierOpts = ['SeasonalEvent','SideBoss','Bonus','SideZone','Exit']
+    .map(t => `<option value="${t}"${t===(p.guessedTier||'Exit')?'selected':''}>${t}</option>`)
+    .join('');
+  const tierSel = `<select class='numin dir-tier'>${tierOpts}</select>`;
   return '<div class="row" data-sig="'+esc(p.signature)+'">'
     + '<div class="rl">'+esc(p.name)+'<small>'+esc(p.category)+' · '+esc(p.zone||'?')+' · ×'+p.count+'</small></div>'
-    + '<input class="numin dir-cat" list="labelVocab" placeholder="label…" style="width:130px">'
+    + tierSel
+    + `<input class='numin dir-cat' list='labelVocab' placeholder='label…' style='width:130px'`
+    + ` value='${esc(p.guessedCategory||"")}' title='${p.guessedConf ? "Classifier: "+p.guessedConf : ""}'>`
     + '<input class="numin dir-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
     + '<button class="delbtn dir-add">Add</button></div>';
 }
@@ -1386,8 +1393,9 @@ function renderEntAtlas(){
       el.querySelector('.ea-add').onclick=async()=>{
         const cat=el.querySelector('.ea-cat').value;
         const prio=parseInt(el.querySelector('.ea-prio').value,10)||50;
+        const tier=el.querySelector('.ea-tier').value||undefined;
         try{ await fetch('/api/objectives',{method:'POST',headers:{'Content-Type':'application/json'},
-             body:JSON.stringify({add:{id:'e:'+a.metadata,label:a.name,category:cat,priority:prio,enabled:true,metadata:[a.metadata]}})}); }catch(e){}
+             body:JSON.stringify({add:{id:'e:'+a.metadata,label:a.name,category:cat,priority:prio,enabled:true,tier:tier,metadata:[a.metadata]}})}); }catch(e){}
         loadEntAtlas();
       };
     });
@@ -1400,9 +1408,15 @@ function eaNameRow(a){
     + '<button class="delbtn ea-save">Save</button></div>';
 }
 function eaClassRow(a){
+  const tierOpts = ['SeasonalEvent','SideBoss','Bonus','SideZone','Exit']
+    .map(t => `<option value="${t}"${t===(a.guessedTier||'Exit')?'selected':''}>${t}</option>`)
+    .join('');
+  const tierSel = `<select class='numin ea-tier'>${tierOpts}</select>`;
   return '<div class="row" data-m="'+esc(a.metadata)+'">'
     + '<div class="rl">'+esc(a.name)+'<small>'+esc(a.category)+' · '+esc(a.zone||'?')+' · ×'+a.count+'</small></div>'
-    + '<input class="numin ea-cat" list="labelVocab" placeholder="label…" style="width:130px">'
+    + tierSel
+    + `<input class='numin ea-cat' list='labelVocab' placeholder='label…' style='width:130px'`
+    + ` value='${esc(a.guessedCategory||"")}' title='${a.guessedConf ? "Classifier: "+a.guessedConf : ""}'>`
     + '<input class="numin ea-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
     + '<button class="delbtn ea-add">Classify</button></div>';
 }
