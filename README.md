@@ -50,7 +50,7 @@ POE2GPS does three things **never** — and an automated compliance gate *fails 
 - 💎 **Dynasty-support maps** *(opt-in)* — highlight the endgame maps whose Anomaly bosses drop Lineage/Dynasty support gems (Sealed Vault, Sacred Reservoir, Derelict Mansion, The Jade Isles), each labeled with the gems it drops — full Citadel-style ring + arrow + track. Toggle in Settings; a dashboard reference card lists every map · boss · gems.
 - 🏷️ **Reward/name labels** — names of ground drops and Ritual / Runeforge / monolith rewards (no economy values).
 - 🧪 **Objective Director** *(experimental, off by default)* — auto-routes you through a zone's objectives in priority order: **seasonal event → side bosses → side zones → exit**. Still maturing — [roadmap below](#-roadmap).
-- 🗺️ **Entity Atlas** — name every entity the radar doesn't recognize (your names show on the radar instantly), classify the notable ones into Director objectives, and **export/import shareable packs** — or **one-click Contribute** straight to the project (set up your own collector via [`cloudflare-worker/`](cloudflare-worker/)). Submitted names get folded into the built-in table each release — a community effort to [map the whole game](docs/CONTRIBUTING-atlas.md).
+- 🗺️ **Entity Atlas** — name every entity the radar doesn't recognize (your names show on the radar instantly), classify the notable ones from a rich label set, and **export/import shareable packs** — or **[Contribute](#-community-mapping)** your finds to the whole community in **one click**. Submitted names get folded into the built-in table each release — a community effort to map the whole game.
 - ⭐ **God-Roll Detector** *(experimental, off by default)* — scores your inventory items 0–100 and stars the god rolls, with **meta-derived starter weights** distilled from the current ladder so it works the moment you switch it on. One-click stat-id chips to tune what you value, rarity-colored items, per-affix **tier (T#/N) + % of max roll** (so you see *how good* a roll is, not just *that* the stat matters), and a green→red **score heatmap grid**. Dashboard **Gear** tab; reads inventory only while enabled.
 - 🎨 **Customizable icons & display rules** — per-rule shape/color/size, editable live; drop your own `*.svg` into `icons/`.
 - 🕵️ **Stealth / low footprint** — relaunches under a random-named hardlink, randomized window class/title, neutral assembly name + binary metadata, character name never exposed, release binary string-scrubbed, and **hidden from screen capture** (screenshots / OBS / share-screen) by default — toggle off in Settings if you want to capture the overlay itself.
@@ -93,6 +93,18 @@ powershell -ExecutionPolicy Bypass -File scripts/compliance-gate.ps1
 ```
 
 It also catches accidentally re-introducing removed code when merging upstream from Sikaka — see [docs/upstream-merge.md](docs/upstream-merge.md).
+
+## 🤝 Community mapping
+
+POE2GPS gets smarter the more players name the things the radar doesn't recognize yet — and you can pitch in with **one click**, no setup and no account.
+
+When you label an entity or POI in the **Entity Atlas** tab (dashboard → **F12**), hit **Contribute** and your finds go straight to the shared community list:
+
+- **What's sent:** only your **discovered names + labels** — a map of *game* entity paths (e.g. `Metadata/Monsters/…`) to the friendly names and categories you picked. **Never** your character, account, position, or anything identifying. It's **opt-in** — nothing leaves your machine until you click, and the first click asks you to confirm.
+- **What happens next:** the project's collector **auto-filters junk** (spam, gibberish, oversized, or anything that looks identifying) and files the clean submissions as reviewable GitHub issues. A maintainer approves the good ones, and each release they're **folded into the built-in name table + label vocabulary** — so everyone's coverage ships to everyone. Over many releases, that's how we map the whole game.
+- **How to help:** open the dashboard (**F12**) → **Entity Atlas** → give a few unnamed entities friendly names → **Contribute**. That's the whole loop. 💚
+
+<sub>The collector is a small open-source Cloudflare Worker ([`cloudflare-worker/`](cloudflare-worker/)); the GitHub token lives only as a server-side Worker secret — **never** in the app. Forking POE2GPS? Point it at your own collector via the **Contribute URL** setting.</sub>
 
 ## 🏗️ Architecture
 
