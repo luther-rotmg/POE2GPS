@@ -1354,7 +1354,7 @@ function candRow(p){
     + '<div class="rl">'+esc(p.name)+'<small>'+esc(p.category)+' · '+esc(p.zone||'?')+' · ×'+p.count+'</small></div>'
     + tierSel
     + `<input class='numin dir-cat' list='labelVocab' placeholder='label…' style='width:130px'`
-    + ` value='${esc(p.guessedCategory||"")}' title='${p.guessedConf ? "Classifier: "+p.guessedConf : ""}'>`
+    + ` value='${esc(p.guessedCategory||"")}' title='${p.guessedConf ? "Classifier: "+esc(p.guessedConf) : ""}'>`
     + '<input class="numin dir-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
     + '<button class="delbtn dir-add">Add</button></div>';
 }
@@ -1416,7 +1416,7 @@ function eaClassRow(a){
     + '<div class="rl">'+esc(a.name)+'<small>'+esc(a.category)+' · '+esc(a.zone||'?')+' · ×'+a.count+'</small></div>'
     + tierSel
     + `<input class='numin ea-cat' list='labelVocab' placeholder='label…' style='width:130px'`
-    + ` value='${esc(a.guessedCategory||"")}' title='${a.guessedConf ? "Classifier: "+a.guessedConf : ""}'>`
+    + ` value='${esc(a.guessedCategory||"")}' title='${a.guessedConf ? "Classifier: "+esc(a.guessedConf) : ""}'>`
     + '<input class="numin ea-prio" type="number" min="0" max="1000" value="50" style="width:64px">'
     + '<button class="delbtn ea-add">Classify</button></div>';
 }
