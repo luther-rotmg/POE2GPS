@@ -55,10 +55,10 @@ public sealed class RadarSettings
     public string NavMenuCorner { get; set; } = "TopLeft";
 
     // Community Contribute: the project's Cloudflare Worker URL the dashboard uploads your non-identifying
-    // pack to (one-click for everyone). SET THIS to the deployed project Worker URL before a release to
-    // enable one-click community contribute; left as the placeholder, the Contribute button falls back to
-    // the GitHub issue-submission form (no upload).
-    public const string DefaultContributeUrl = ""; // ← paste the deployed Worker URL here, e.g. "https://poe2gps-contribute.<you>.workers.dev"
+    // pack to (one-click for everyone). LIVE — the project-hosted collector that auto-filters submissions
+    // and files them as reviewable GitHub issues (the token lives only as a Worker secret). A user can
+    // override this in Settings; empty would fall back to the GitHub issue-submission form.
+    public const string DefaultContributeUrl = "https://poe2gps-contribute.luther-rotmg.workers.dev";
     public string ContributeUrl { get; set; } = DefaultContributeUrl;
 
     // ── Persistent auto-nav: substrings matched (case-insensitive Contains) against a navigation
