@@ -11,6 +11,7 @@
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
 ![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
+[![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?logo=discord&logoColor=white)](https://discord.gg/32qdzWRja3)
 <br>
 ![Input: read-only](https://img.shields.io/badge/input-read--only-2ea043)
 ![No process writes](https://img.shields.io/badge/process-never%20written-2ea043)
@@ -103,6 +104,8 @@ When you label an entity or POI in the **Entity Atlas** tab (dashboard → **F12
 - **What's sent:** only your **discovered names + labels** — a map of *game* entity paths (e.g. `Metadata/Monsters/…`) to the friendly names and categories you picked. **Never** your character, account, position, or anything identifying. It's **opt-in** — nothing leaves your machine until you click, and the first click asks you to confirm.
 - **What happens next:** the project's collector **auto-filters junk** (spam, gibberish, oversized, or anything that looks identifying) and files the clean submissions as reviewable GitHub issues. A maintainer approves the good ones, and each release they're **folded into the built-in name table + label vocabulary** — so everyone's coverage ships to everyone. Over many releases, that's how we map the whole game.
 - **How to help:** open the dashboard (**F12**) → **Entity Atlas** → give a few unnamed entities friendly names → **Contribute**. That's the whole loop. 💚
+
+💬 **Questions, bug reports, or ideas for what to map next?** Join the community on **[Discord](https://discord.gg/32qdzWRja3)**.
 
 <sub>The collector is a small open-source Cloudflare Worker ([`cloudflare-worker/`](cloudflare-worker/)); the GitHub token lives only as a server-side Worker secret — **never** in the app. Forking POE2GPS? Point it at your own collector via the **Contribute URL** setting.</sub>
 
