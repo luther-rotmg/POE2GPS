@@ -1674,13 +1674,13 @@ function renderSessionPanel() {
     if (!s) { el.style.display = 'none'; return; }
     el.style.display = '';
     document.getElementById('sp-session').textContent = s.sessionElapsed || '—';
-    document.getElementById('sp-zone').textContent    = s.zoneElapsed    || '—';
+    document.getElementById('sp-zone').textContent    = s.zoneElapsed    ?? '—';
     document.getElementById('sp-zones').textContent   = s.zonesEntered != null
-        ? `${s.zonesEntered}  (${(s.zonesPerHour||0).toFixed(1)}/hr)` : '—';
+        ? `${s.zonesEntered} (${(s.zonesPerHour||0).toFixed(1)}/hr)` : '—';
     document.getElementById('sp-area').textContent    = s.currentZoneName || '—';
     document.getElementById('sp-level').textContent   = s.currentAreaLevel ?? '—';
     document.getElementById('sp-deaths').textContent  = s.deaths != null
-        ? `${s.deaths} (${s.deathsThisZone} here)` : '—';
+        ? `${s.deaths} (${s.deathsThisZone ?? 0} here)` : '—';
 }
 
 /* ── left rail ── */
