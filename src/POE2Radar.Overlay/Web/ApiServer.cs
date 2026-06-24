@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using POE2Radar.Core.Campaign;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
 
 namespace POE2Radar.Overlay.Web;
@@ -193,6 +194,17 @@ public sealed class ApiServer : IDisposable
                     // Objective Director: active objective + queue for the dashboard panel (read-only).
                     director = (s.Director ?? Array.Empty<POE2Radar.Core.Campaign.RankedObjective>())
                         .Select(o => new { id = o.Id, label = o.Label, category = o.Category, priority = o.Priority }),
+                    // Session HUD: elapsed times, zone pace, deaths. Null when tracker not running.
+                    session = s.Session == null ? (object?)null : new {
+                        sessionElapsed    = FormatTimeSpan(s.Session.SessionElapsed),
+                        zoneElapsed       = FormatTimeSpan(s.Session.ZoneElapsed),
+                        zonesEntered      = s.Session.ZonesEntered,
+                        zonesPerHour      = s.Session.ZonesPerHour,
+                        currentZoneName   = s.Session.CurrentZoneName,
+                        currentAreaLevel  = s.Session.CurrentAreaLevel,
+                        deaths            = s.Session.Deaths,
+                        deathsThisZone    = s.Session.DeathsThisZone,
+                    },
                 }, Json));
                 break;
             }
@@ -646,6 +658,14 @@ public sealed class ApiServer : IDisposable
         groundItems = _settings.GroundItems, // ground-item value overlay (enabled / highlight threshold / league)
         contributeUrl = _settings.ContributeUrl,
         highlightDynastyMaps = _settings.HighlightDynastyMaps,
+        sessionHudEnabled        = _settings.SessionHud.Enabled,
+        sessionHudShowPace       = _settings.SessionHud.ShowPace,
+        sessionHudShowZoneContext= _settings.SessionHud.ShowZoneContext,
+        sessionHudShowDeaths     = _settings.SessionHud.ShowDeaths,
+        sessionHudAnchor         = _settings.SessionHud.Anchor,
+        sessionHudOffsetX        = _settings.SessionHud.OffsetX,
+        sessionHudOffsetY        = _settings.SessionHud.OffsetY,
+        sessionHudExcludeTowns   = _settings.SessionHud.ExcludeTownsFromPace,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -701,6 +721,14 @@ public sealed class ApiServer : IDisposable
                     if (TryParseGroundItems(p.Value, out var gi)) { _settings.GroundItems = gi; applied.Add(p.Name); }
                     break;
                 case "highlightDynastyMaps" when TryBool(p.Value, out var b): _settings.HighlightDynastyMaps = b; applied.Add(p.Name); break;
+                case "sessionHudEnabled" when TryBool(p.Value, out var b): _settings.SessionHud.Enabled = b; applied.Add(p.Name); break;
+                case "sessionHudShowPace" when TryBool(p.Value, out var b): _settings.SessionHud.ShowPace = b; applied.Add(p.Name); break;
+                case "sessionHudShowZoneContext" when TryBool(p.Value, out var b): _settings.SessionHud.ShowZoneContext = b; applied.Add(p.Name); break;
+                case "sessionHudShowDeaths" when TryBool(p.Value, out var b): _settings.SessionHud.ShowDeaths = b; applied.Add(p.Name); break;
+                case "sessionHudExcludeTowns" when TryBool(p.Value, out var b): _settings.SessionHud.ExcludeTownsFromPace = b; applied.Add(p.Name); break;
+                case "sessionHudAnchor" when TryString(p.Value, out var s): _settings.SessionHud.Anchor = s.Trim(); applied.Add(p.Name); break;
+                case "sessionHudOffsetX" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetX = n; applied.Add(p.Name); break;
+                case "sessionHudOffsetY" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetY = n; applied.Add(p.Name); break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }
@@ -708,6 +736,9 @@ public sealed class ApiServer : IDisposable
         if (applied.Count > 0) _settings.Save();
         return applied.ToArray();
     }
+
+    private static string FormatTimeSpan(TimeSpan t) =>
+        $"{(int)t.TotalHours:D2}:{t.Minutes:D2}:{t.Seconds:D2}";
 
     private static readonly Regex HexColor = new("^#[0-9A-Fa-f]{6}$", RegexOptions.Compiled);
 
@@ -1228,7 +1259,9 @@ public sealed record RadarState(
     // Objective Director queue (active objective first) for the dashboard panel; null/empty when off.
     IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective>? Director = null,
     // Measured effective render FPS (rolling window) — for verifying the overlay actually hits FpsCap.
-    float Fps = 0)
+    float Fps = 0,
+    // Session HUD data: elapsed times, pace, zone context, deaths. Null when tracker not running.
+    SessionStats? Session = null)
 {
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,

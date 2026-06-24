@@ -188,6 +188,9 @@ public sealed class RadarSettings
     // ── Runeshape-monolith reward overlay: value-coloured map icon + N badge + nearby reward panel. ──
     public MonolithSettings Monoliths { get; set; } = new();
 
+    // ── Session HUD: elapsed time, zone pace, death counter overlay. Off by default. ──
+    public SessionHudSettings SessionHud { get; set; } = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -403,6 +406,21 @@ public sealed class MonolithSettings
     public bool ShowPanel { get; set; } = false;         // the in-overlay nearby-monolith reward panel (off by default; toggle in Settings)
     public bool ShowMapLabel { get; set; } = true;       // draw the value + top-reward label at the icon
     public float PanelMaxDistance { get; set; } = 0f;    // 0 = every monolith in the area; else only within N grid
+}
+
+public sealed class SessionHudSettings
+{
+    public bool   Enabled               { get; set; } = false;
+    public bool   ShowPace              { get; set; } = false;
+    public bool   ShowZoneContext       { get; set; } = false;
+    public bool   ShowDeaths            { get; set; } = false;
+    public string Anchor                { get; set; } = "TopLeft";
+    // Legal values: "TopLeft", "TopRight", "BottomLeft", "BottomRight"
+    // Mirrors NavMenuCorner (RadarSettings.cs line 55) — plain string, no C# enum.
+    public int    OffsetX               { get; set; } = 0;
+    public int    OffsetY               { get; set; } = 0;
+    // Behavior-tuning flag (NOT a visibility toggle): defaults TRUE so towns are excluded from pace.
+    public bool   ExcludeTownsFromPace  { get; set; } = true;
 }
 
 public sealed class GroundItemSettings
