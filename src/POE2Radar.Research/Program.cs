@@ -150,6 +150,9 @@ if (HasFlag(args, "--info"))
 if (HasFlag(args, "--xp"))
     return RunXp(process, reader);
 
+if (HasFlag(args, "--quest"))
+    return RunQuest(process, reader);
+
 if (HasFlag(args, "--presence"))
     return RunPresence(process, reader, HasFlag(args, "--diff"));
 
@@ -1471,6 +1474,99 @@ static int RunXp(ProcessHandle process, MemoryReader reader)
         Console.WriteLine("Check that you are in-game with a character loaded, or widen the scan range.");
     }
 
+    return 0;
+}
+
+// ── Quest-state discovery probe ────────────────────────────────────────────────────────────────────
+// EXPLORATORY: dumps the full ServerDataStructure (qword-by-qword, 0x000..0x600) so a human can
+// spot quest-state candidates by eye.  Quest completion flags / current-quest pointers are very
+// likely a sibling field next to PlayerInventories (+0x320) inside this same structure.
+//
+// Resolution chain (mirrors --inventory):
+//   AreaInstance+0x580 → ServerData
+//   ServerData+0x48    → StdVector<ptr> PlayerServerData ; [0] → ServerDataStructure base
+//
+// Output key:
+//   PTR  — qword looks like a userspace heap pointer (canonical 64-bit, 8-aligned, > 0x10000)
+//   val  — small / non-pointer scalar (could be a count, flag, enum, …)
+//   <<< std::vector? — three consecutive PTRs where begin ≤ end ≤ cap (quest lists are often vecs)
+//
+//   Usage:  <Research.exe> --quest   (with PoE2 running, character in-game)
+static int RunQuest(ProcessHandle process, MemoryReader reader)
+{
+    var (_, _, ai, _) = ResolveChain(process, reader);
+    if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
+
+    var serverData = SafePtr(reader, ai + Poe2.AreaInstance.ServerDataPtr);
+    Console.WriteLine($"AreaInstance 0x{ai:X}  ServerData(+0x580) 0x{serverData:X}");
+    if (serverData == 0) { Console.Error.WriteLine("ServerData null — wrong offset or not in game."); return 1; }
+
+    // Resolve ServerDataStructure via the same helper used by --inventory.
+    var sdStruct = ResolveServerDataStruct(reader, serverData);
+    if (sdStruct == 0) { Console.Error.WriteLine("Could not resolve ServerDataStructure (PlayerServerData vec at ServerData+0x48)."); return 1; }
+    Console.WriteLine($"ServerDataStructure 0x{sdStruct:X}");
+    Console.WriteLine();
+    Console.WriteLine("── Field dump (qword, 0x000..0x600) ──────────────────────────────────────────");
+    Console.WriteLine("  (PTR = looks like a heap pointer; val = scalar; <<< = StdVector-shaped triple)");
+    Console.WriteLine();
+
+    const int DumpEnd  = 0x600;
+    const int Step     = 8;
+    // Canonical userspace pointer range for Windows x64.
+    const ulong PtrLo  = 0x10000UL;
+    const ulong PtrHi  = 0x00007FFFFFFFFFFFUL;
+
+    static bool IsPtr(ulong v) => v >= PtrLo && v <= PtrHi && (v & 7) == 0;
+
+    // Read all qwords into a flat array so we can look ahead for vector triples.
+    int slots = DumpEnd / Step;
+    var words = new ulong[slots];
+    for (var i = 0; i < slots; i++)
+        reader.TryReadStruct<ulong>((nint)(sdStruct + i * Step), out words[i]);
+
+    var annotated = new HashSet<int>(); // indices already annotated as part of a vector triple
+
+    // First pass: mark vector-shaped triples.
+    for (var i = 0; i + 2 < slots; i++)
+    {
+        var b = words[i]; var e = words[i + 1]; var c = words[i + 2];
+        if (IsPtr(b) && IsPtr(e) && IsPtr(c) && b <= e && e <= c && (c - b) <= 0x100000)
+        {
+            annotated.Add(i); annotated.Add(i + 1); annotated.Add(i + 2);
+        }
+    }
+
+    // Second pass: print.
+    for (var i = 0; i < slots; i++)
+    {
+        var off = i * Step;
+        var val = words[i];
+        if (val == 0) continue;   // skip nulls to keep output readable
+
+        var kind = IsPtr(val) ? "PTR " : "val ";
+        Console.WriteLine($"  +0x{off:X3}  {kind} {(IsPtr(val) ? $"0x{val:X}" : val.ToString())}");
+
+        // If this is the start of a vector triple, append a summary line.
+        if (annotated.Contains(i) && i + 2 < slots)
+        {
+            var b = words[i]; var e = (i + 1 < slots ? words[i + 1] : 0); var cap = (i + 2 < slots ? words[i + 2] : 0);
+            if (IsPtr(b) && IsPtr(e) && IsPtr(cap) && b <= e && e <= cap)
+            {
+                var countBy8  = (long)(e - b) / 8;
+                var countBy16 = (long)(e - b) / 16;
+                Console.WriteLine($"      <<< looks like a std::vector at +0x{off:X3} " +
+                                  $"(span 0x{e - b:X}; count≈{countBy8}×8 or {countBy16}×16)");
+            }
+        }
+    }
+
+    Console.WriteLine();
+    Console.WriteLine($"── Known anchor: PlayerInventories vec @ +0x320 ──");
+    Console.WriteLine("   Compare the dump above: fields near +0x320 are inventory-related.");
+    Console.WriteLine("   Quest-state is likely a nearby vector or small-int array — look for");
+    Console.WriteLine("   PTR triples or repeated small vals in the +0x200..+0x500 range.");
+    Console.WriteLine();
+    Console.WriteLine("Tip: run --serverdata-vec <off> on any PTR triple address to walk its elements.");
     return 0;
 }
 
