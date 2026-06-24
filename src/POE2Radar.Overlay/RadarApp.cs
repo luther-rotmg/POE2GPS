@@ -5,6 +5,7 @@ using POE2Radar.Core;
 using POE2Radar.Core.Game;
 using POE2Radar.Core.Navigation;
 using POE2Radar.Core.Gear;
+using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Native;
 using POE2Radar.Overlay.Navigation;
@@ -57,6 +58,10 @@ public sealed class RadarApp : IDisposable
     private readonly GearWeightStore _gearWeights;
     private volatile GearSnapshot? _gearSnapshot;   // God-Roll Detector (experimental); null when off
     private int _gearTickCounter;
+    // ── Session HUD tracker + published snapshot (render thread reads _sessionSnapshot lock-free). ──
+    private readonly SessionTracker  _session = new();
+    private volatile SessionStats?   _sessionSnapshot;
+    private DateTime                 _nextSessionResetAt = DateTime.MinValue;
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -878,6 +883,23 @@ public sealed class RadarApp : IDisposable
         // snapshot's area hash matches the live one; otherwise draw none this frame (player blip + map still
         // draw). The API still serves the latest snapshot regardless (no visual artifact there).
         var worldFresh = inGame && snap.InGame && snap.AreaHash == _areaHash;
+
+        // Session HUD: feed the pure tracker only on fresh frames, so areaHash/areaCode/areaLevel all
+        // describe the SAME zone (snapshot-consistent). Skip on stale frames and reuse the last snapshot.
+        // Zero new memory reads: every value below is already read by the loops.
+        if (worldFresh)
+        {
+            bool isTown = ZoneGuide.Shared.Area(snap.AreaCode)?.Town ?? false;
+            _sessionSnapshot = _session.Update(
+                snap.AreaHash,
+                snap.AreaCode,
+                snap.AreaLevel,
+                _hpPct,
+                DateTime.UtcNow.Ticks,
+                _settings.SessionHud.ExcludeTownsFromPace,
+                isTown);
+        }
+
         var entities = worldFresh ? snap.Entities : Array.Empty<Poe2Live.EntityDot>();
         var landmarks = worldFresh ? snap.Landmarks : Array.Empty<Poe2Live.Landmark>();
         var terrain = worldFresh ? snap.Terrain : null;
@@ -892,7 +914,8 @@ public sealed class RadarApp : IDisposable
 
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
-            snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps);
+            snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
+            Session: _sessionSnapshot);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
@@ -968,7 +991,9 @@ public sealed class RadarApp : IDisposable
             RitualRewards: rit.Open ? rit.Labels : null,
             // Runeshape monoliths: value-coloured map markers + nearby reward panel (world-space).
             Monoliths: monoliths,
-            ShowMonolithPanel: _settings.Monoliths.ShowPanel);
+            ShowMonolithPanel: _settings.Monoliths.ShowPanel,
+            Session: _sessionSnapshot,
+            SessionHudSettings: _settings.SessionHud);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
@@ -1358,6 +1383,16 @@ public sealed class RadarApp : IDisposable
         {
             _navMenuExpanded = !_navMenuExpanded;
             _nextMenuAt = DateTime.UtcNow.AddMilliseconds(300);
+        }
+        // Ctrl+Alt+R — reset session counters (read-only: GetAsyncKeyState polling + GetForegroundWindow,
+        // no input emission, no process write).
+        if (_settings.SessionHud.Enabled
+            && DateTime.UtcNow >= _nextSessionResetAt
+            && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd
+            && Down(0x11) && Down(0x12) && Down(0x52))  // VK_CONTROL=0x11, VK_MENU=0x12, VK_R=0x52
+        {
+            _session.Reset(DateTime.UtcNow.Ticks);
+            _nextSessionResetAt = DateTime.UtcNow.AddMilliseconds(500);
         }
         // Quick-Target Cycler + nav-menu chord (controller): L3 = prev, R3 = next, L3+R3 = toggle the nav
         // menu. Poll every frame to keep edge state fresh; only ACT while PoE2 is foreground. The chord

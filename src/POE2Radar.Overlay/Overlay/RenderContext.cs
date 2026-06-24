@@ -185,4 +185,9 @@ public sealed record RenderContext(
     // Runeshape monoliths to mark on the map (value-coloured icon + N badge + value/reward label) and
     // list in the nearby-monolith panel. World-space (grid). Null/empty → none.
     IReadOnlyList<MonolithMarker>? Monoliths = null,
-    bool ShowMonolithPanel = true);
+    bool ShowMonolithPanel = true,
+    // ── Session HUD (read-only pace/zone/death overlay). Both discrete fields, mirroring how
+    // RenderContext carries Styles/HpBars/TerrainStyle/NavMenuCorner — there is no whole-RadarSettings
+    // member. Session is null when the snapshot has not been published yet. ──
+    POE2Radar.Core.Session.SessionStats?  Session            = null,
+    Config.SessionHudSettings             SessionHudSettings = null!);
