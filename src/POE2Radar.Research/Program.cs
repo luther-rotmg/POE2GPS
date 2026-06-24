@@ -147,6 +147,9 @@ if (HasFlag(args, "--validate"))
 if (HasFlag(args, "--info"))
     return RunInfo(process, reader);
 
+if (HasFlag(args, "--xp"))
+    return RunXp(process, reader);
+
 if (HasFlag(args, "--presence"))
     return RunPresence(process, reader, HasFlag(args, "--diff"));
 
@@ -1374,6 +1377,100 @@ static int RunInfo(ProcessHandle process, MemoryReader reader)
                 Console.WriteLine($"  +0x{i:X3}  {f}");
             }
     }
+    return 0;
+}
+
+// ── XP: brute-scan the Player component for the current Experience field ──
+// Experience is a large monotonically-increasing uint64 (≈4.25e9 at level 100, so < 5e9 total).
+// The Level field is confirmed at Player+0x204. XP should be nearby; scan 0x1F0..0x300 in 8-byte
+// steps, print candidates (0 < value < 5_000_000_000), then repeat 3× with 5-second sleeps so
+// the field that INCREASES while mobs die is flagged. Kill a mob or two between passes.
+//
+//   Usage:  <Research.exe> --xp   (with PoE2 running, character in-game)
+static int RunXp(ProcessHandle process, MemoryReader reader)
+{
+    const ulong XpMax = 5_000_000_000UL;   // level-100 XP ceiling (≈4.25e9), generous headroom
+    const int   StartOff = 0x1F0;
+    const int   EndOff   = 0x300;
+    const int   Passes   = 3;
+    const int   SleepMs  = 5000;
+
+    var (_, _, ai, lp) = ResolveChain(process, reader);
+    if (ai == 0 || lp == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
+    Console.WriteLine($"AreaInstance 0x{ai:X}  LocalPlayer 0x{lp:X}");
+
+    var pc = ResolveComponentAddr(reader, lp, "Player");
+    if (pc == 0) { Console.Error.WriteLine("Player component not found on LocalPlayer."); return 1; }
+    Console.WriteLine($"Player component @ 0x{pc:X}");
+
+    // Sanity-check: read the known Level byte at +0x204.
+    reader.TryReadStruct<byte>(pc + 0x204, out var level);
+    Console.WriteLine($"  Level @ +0x204 = {level}  (expected 1–100; if 0 the chain may have drifted)");
+    Console.WriteLine();
+
+    // Collect candidate offsets from first pass, then track per-pass values for delta analysis.
+    var candidates = new List<int>();
+    var history    = new Dictionary<int, ulong[]>();  // off -> value per pass
+
+    for (var pass = 0; pass < Passes; pass++)
+    {
+        if (pass > 0)
+        {
+            Console.WriteLine($"  [sleeping {SleepMs / 1000}s — kill a mob or two now]");
+            Thread.Sleep(SleepMs);
+            // Re-resolve the chain each pass in case the reader's cached state shifts.
+            var (_, _, ai2, lp2) = ResolveChain(process, reader);
+            if (ai2 == 0 || lp2 == 0) { Console.Error.WriteLine("Chain lost between passes."); break; }
+            pc = ResolveComponentAddr(reader, lp2, "Player");
+            if (pc == 0) { Console.Error.WriteLine("Player component lost between passes."); break; }
+        }
+
+        Console.WriteLine($"── Pass {pass + 1}/{Passes}  (Player component @ 0x{pc:X}) ──");
+
+        for (var off = StartOff; off <= EndOff; off += 8)
+        {
+            if (!reader.TryReadStruct<ulong>((nint)(pc + off), out var val)) continue;
+            if (val == 0 || val >= XpMax) continue;
+
+            if (pass == 0)
+            {
+                candidates.Add(off);
+                history[off] = new ulong[Passes];
+            }
+
+            if (history.TryGetValue(off, out var hist))
+            {
+                hist[pass] = val;
+                Console.WriteLine($"  +0x{off:X3} = {val,15:N0}");
+            }
+        }
+
+        Console.WriteLine();
+    }
+
+    // Delta report — flag offsets whose value strictly increased across ALL consecutive passes.
+    if (Passes >= 2 && candidates.Count > 0)
+    {
+        Console.WriteLine("── Delta report ──");
+        foreach (var off in candidates)
+        {
+            var hist = history[off];
+            var strictlyIncreased = true;
+            for (var p = 1; p < Passes; p++)
+                if (hist[p] <= hist[p - 1]) { strictlyIncreased = false; break; }
+
+            var deltas = string.Join("  ", Enumerable.Range(1, Passes - 1)
+                .Select(p => $"Δ{p}={(long)(hist[p] - hist[p - 1]):+#;-#;0}"));
+            var tag = strictlyIncreased ? "  <<< XP candidate (increased)" : "";
+            Console.WriteLine($"  +0x{off:X3}  pass1={hist[0],12:N0}  {deltas}{tag}");
+        }
+    }
+    else if (candidates.Count == 0)
+    {
+        Console.WriteLine("No candidates found in range 0x1F0..0x300 (0 < value < 5e9).");
+        Console.WriteLine("Check that you are in-game with a character loaded, or widen the scan range.");
+    }
+
     return 0;
 }
 
