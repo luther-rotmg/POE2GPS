@@ -590,10 +590,10 @@ public sealed class OverlayRenderer : IDisposable
         const float margin = 10f;
 
         float left = isRight
-            ? ctx.WindowWidth  - margin - panelW + hud.OffsetX
+            ? ctx.WindowWidth  - margin - panelW - hud.OffsetX
             : margin + hud.OffsetX;
         float top  = isBottom
-            ? ctx.WindowHeight - margin - panelH + hud.OffsetY
+            ? ctx.WindowHeight - margin - panelH - hud.OffsetY
             : margin + hud.OffsetY;
         left = Math.Clamp(left, margin, ctx.WindowWidth  - margin - panelW);
         top  = Math.Clamp(top,  margin, ctx.WindowHeight - margin - panelH);

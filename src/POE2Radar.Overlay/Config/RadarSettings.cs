@@ -417,8 +417,8 @@ public sealed class SessionHudSettings
     public string Anchor                { get; set; } = "TopLeft";
     // Legal values: "TopLeft", "TopRight", "BottomLeft", "BottomRight"
     // Mirrors NavMenuCorner (RadarSettings.cs line 55) — plain string, no C# enum.
-    public int    OffsetX               { get; set; } = 0;
-    public int    OffsetY               { get; set; } = 0;
+    public int    OffsetX               { get; set; } = 0; // pixels inward from the anchored corner (positive = toward screen center)
+    public int    OffsetY               { get; set; } = 0; // pixels inward from the anchored corner (positive = toward screen center)
     // Behavior-tuning flag (NOT a visibility toggle): defaults TRUE so towns are excluded from pace.
     public bool   ExcludeTownsFromPace  { get; set; } = true;
 }
