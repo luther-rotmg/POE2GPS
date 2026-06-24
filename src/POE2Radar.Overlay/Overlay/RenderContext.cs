@@ -43,8 +43,9 @@ public readonly record struct HpBarTarget(Vector3 World, float Frac, float Width
 /// essences, currency…) only the value is drawn in a compact chip. <see cref="Highlight"/> adds a border.</summary>
 public readonly record struct ItemLabel(Vector3 World, string Name, string Value, bool Highlight, bool ShowName);
 
-/// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the node's canvas-space
-/// RelativePos; the renderer projects them to screen via the atlas transform (scale + offset).</summary>
+/// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the canvas-space CENTER of
+/// the node (RelativePos top-left + half node dimension), via <c>AtlasGeometry.AtlasCentre</c>; the
+/// renderer projects them to screen via the atlas transform (scale + offset).</summary>
 /// <summary><see cref="Element"/> is the node's UiElement address; the render thread re-reads its
 /// RelativePos into <see cref="X"/>/<see cref="Y"/> every frame so rings track atlas pan smoothly (the
 /// X/Y published by the world walk are the last-known fallback). 0 = no live element.</summary>
