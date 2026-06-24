@@ -2,7 +2,7 @@ using POE2Radar.Core.Campaign;
 
 public class ObjectiveDirectorTests
 {
-    private static RankedObjective R(string id, int prio) => new(id, id, "c", prio, 0f);
+    private static RankedObjective R(string id, int prio) => new(id, id, "c", prio, ObjectiveTier.Exit, 0f);
     private static readonly string[] None = System.Array.Empty<string>();
     private static readonly RankedObjective[] NoObjectives = System.Array.Empty<RankedObjective>();
 

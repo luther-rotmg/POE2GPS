@@ -14,9 +14,9 @@ public class ObjectiveCatalogTests
 
     private static readonly CampaignObjective[] Seed =
     {
-        new("event", "Event", "League", 100, true, Metadata: new() { "RunesOfAldur" }),
-        new("boss", "Boss", "SideBoss", 80, true, Metadata: new() { "*Ascendancy*" }),
-        new("exit", "Continue", "MainProgression", 10, true,
+        new("event", "Event", "League", 100, Enabled: true, Metadata: new() { "RunesOfAldur" }),
+        new("boss", "Boss", "SideBoss", 80, Enabled: true, Metadata: new() { "*Ascendancy*" }),
+        new("exit", "Continue", "MainProgression", 10, Enabled: true,
             Categories: new() { "Transition" }),
     };
 
@@ -64,7 +64,7 @@ public class ObjectiveCatalogTests
     {
         var cat = new ObjectiveCatalog(new[]
         {
-            new CampaignObjective("arena", "Arena", "Bosses", 70, true,
+            new CampaignObjective("arena", "Arena", "Bosses", 70, Enabled: true,
                 LandmarkPath: new() { "*Arena*" }),
         });
         var landmarks = new[] { Lm("Maps/Arena/Boss.tdt", new Vector2(4, 0)) };
@@ -78,8 +78,8 @@ public class ObjectiveCatalogTests
     {
         var cat = new ObjectiveCatalog(new[]
         {
-            new CampaignObjective("a", "A", "X", 10, true, Metadata: new() { "Boss" }),
-            new CampaignObjective("b", "B", "Y", 90, true, Metadata: new() { "Boss" }),
+            new CampaignObjective("a", "A", "X", 10, Enabled: true, Metadata: new() { "Boss" }),
+            new CampaignObjective("b", "B", "Y", 90, Enabled: true, Metadata: new() { "Boss" }),
         });
         var entities = new[] { Ent(1, "Metadata/Boss", Vector2.Zero) };
         var ranked = cat.Rank(entities, Array.Empty<Poe2Live.Landmark>(), Vector2.Zero);

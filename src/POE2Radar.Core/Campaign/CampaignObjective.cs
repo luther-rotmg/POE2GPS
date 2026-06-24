@@ -1,8 +1,19 @@
 using Vector2 = System.Numerics.Vector2;
 using System.Text.RegularExpressions;
+using System.Text.Json.Serialization;
 using POE2Radar.Core.Game;
 
 namespace POE2Radar.Core.Campaign;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
+public enum ObjectiveTier
+{
+    SeasonalEvent = 4,
+    SideBoss      = 3,
+    Bonus         = 2,
+    SideZone      = 1,
+    Exit          = 0,
+}
 
 /// <summary>
 /// One catalog objective: a MATCHER over the live entity/landmark data the radar already reads,
@@ -16,17 +27,29 @@ public sealed record CampaignObjective(
     string Label,
     string Category,
     int Priority,
+    ObjectiveTier? Tier = null,
     bool Enabled = true,
     List<string>? Metadata = null,    // entity metadata terms (substring, or glob if it has * / ?)
     List<string>? Categories = null,  // EntityCategory names
     string? Poi = null,               // "Yes" | "No"
     string? Rarity = null,            // Normal | Magic | Rare | Unique
     List<string>? LandmarkPath = null // terrain-tile .tdt path terms (substring/glob)
-);
+)
+{
+    public static ObjectiveTier DefaultTierForCategory(string? category) =>
+        category switch
+        {
+            "League"          => ObjectiveTier.SeasonalEvent,
+            "SideBoss"        => ObjectiveTier.SideBoss,
+            "SideZone"        => ObjectiveTier.SideZone,
+            "MainProgression" => ObjectiveTier.Exit,
+            _                 => ObjectiveTier.Exit,
+        };
+}
 
 /// <summary>A matched, rankable objective in the current zone. <see cref="Id"/> is the stable
 /// nav-selection id ("e:&lt;entityId&gt;" / "t:&lt;landmarkKey&gt;").</summary>
-public readonly record struct RankedObjective(string Id, string Label, string Category, int Priority, float DistanceSq);
+public readonly record struct RankedObjective(string Id, string Label, string Category, int Priority, ObjectiveTier Tier, float DistanceSq);
 
 /// <summary>
 /// Compiles a set of <see cref="CampaignObjective"/>s and ranks the ones present in the current
@@ -72,9 +95,14 @@ public sealed class ObjectiveCatalog
         }
 
         var list = new List<RankedObjective>(best.Values);
-        list.Sort((a, b) => a.Priority != b.Priority
-            ? b.Priority.CompareTo(a.Priority)        // priority desc
-            : a.DistanceSq.CompareTo(b.DistanceSq));   // nearest asc
+        list.Sort((a, b) =>
+        {
+            int tc = ((int)b.Tier).CompareTo((int)a.Tier);   // tier desc
+            if (tc != 0) return tc;
+            int pc = b.Priority.CompareTo(a.Priority);        // priority desc
+            if (pc != 0) return pc;
+            return a.DistanceSq.CompareTo(b.DistanceSq);      // nearest asc
+        });
         return list;
     }
 
@@ -111,7 +139,10 @@ public sealed class ObjectiveCatalog
     private static void Consider(Dictionary<string, RankedObjective> best, string id, CampaignObjective o, float distSq)
     {
         if (best.TryGetValue(id, out var cur) && cur.Priority >= o.Priority) return;
-        best[id] = new RankedObjective(id, o.Label, o.Category, o.Priority, distSq);
+        best[id] = new RankedObjective(
+            id, o.Label, o.Category, o.Priority,
+            o.Tier ?? CampaignObjective.DefaultTierForCategory(o.Category),
+            distSq);
     }
 
     // Index a List/IReadOnlyList by ref without copying the (largish) EntityDot struct per access.

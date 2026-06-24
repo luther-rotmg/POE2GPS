@@ -9,10 +9,10 @@ public class ObjectiveCatalogCoversTests
 
     private static readonly ObjectiveCatalog Cat = new(new[]
     {
-        new CampaignObjective("event", "Event", "League", 100, true, Metadata: new() { "RunesOfAldur" }),
-        new CampaignObjective("exit", "Exit", "MainProgression", 10, true, Categories: new() { "Transition" }),
-        new CampaignObjective("arena", "Arena", "Bosses", 70, true, LandmarkPath: new() { "*Arena*" }),
-        new CampaignObjective("off", "Off", "X", 50, false, Metadata: new() { "ShouldNotMatch" }),
+        new CampaignObjective("event", "Event", "League", 100, Enabled: true, Metadata: new() { "RunesOfAldur" }),
+        new CampaignObjective("exit", "Exit", "MainProgression", 10, Enabled: true, Categories: new() { "Transition" }),
+        new CampaignObjective("arena", "Arena", "Bosses", 70, Enabled: true, LandmarkPath: new() { "*Arena*" }),
+        new CampaignObjective("off", "Off", "X", 50, Enabled: false, Metadata: new() { "ShouldNotMatch" }),
     });
 
     [Fact] public void Covers_MatchingEntityMetadata()
