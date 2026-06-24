@@ -41,6 +41,7 @@ public sealed record CampaignObjective(
         {
             "League"          => ObjectiveTier.SeasonalEvent,
             "SideBoss"        => ObjectiveTier.SideBoss,
+            "Bonus"           => ObjectiveTier.Bonus,
             "SideZone"        => ObjectiveTier.SideZone,
             "MainProgression" => ObjectiveTier.Exit,
             _                 => ObjectiveTier.Exit,

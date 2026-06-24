@@ -82,6 +82,7 @@ public class ObjectiveTierRankTests
     // ── DefaultTierForCategory ─────────────────────────────────────────────────
     [Fact] public void DefaultTier_League_IsSeasonalEvent()      => Assert.Equal(ObjectiveTier.SeasonalEvent, CampaignObjective.DefaultTierForCategory("League"));
     [Fact] public void DefaultTier_SideBoss_IsSideBoss()         => Assert.Equal(ObjectiveTier.SideBoss,      CampaignObjective.DefaultTierForCategory("SideBoss"));
+    [Fact] public void DefaultTier_Bonus_IsBonus()               => Assert.Equal(ObjectiveTier.Bonus,         CampaignObjective.DefaultTierForCategory("Bonus"));
     [Fact] public void DefaultTier_SideZone_IsSideZone()         => Assert.Equal(ObjectiveTier.SideZone,      CampaignObjective.DefaultTierForCategory("SideZone"));
     [Fact] public void DefaultTier_MainProgression_IsExit()       => Assert.Equal(ObjectiveTier.Exit,          CampaignObjective.DefaultTierForCategory("MainProgression"));
     [Fact] public void DefaultTier_Unknown_IsExit()               => Assert.Equal(ObjectiveTier.Exit,          CampaignObjective.DefaultTierForCategory("UnknownCategory"));
@@ -137,7 +138,7 @@ public class ObjectiveTierRankTests
         var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         opts.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
         var json = JsonSerializer.Serialize(obj, opts);
-        Assert.Contains("\"SideBoss\"", json);
+        Assert.Contains("\"tier\":\"SideBoss\"", json);   // positive: field is present as string name
         Assert.DoesNotContain("\"3\"", json);
         Assert.DoesNotContain(":3", json);
     }
