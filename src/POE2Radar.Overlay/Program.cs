@@ -83,7 +83,9 @@ static void SweepOldHardlinks(string dir, string baseExe)
     if (!GetByHandle(baseExe, out var baseInfo)) return;
     foreach (var f in Directory.GetFiles(dir, "*.exe"))
     {
+        // Primary guard: never delete the running base exe (Overlay.exe) itself.
         if (string.Equals(f, baseExe, StringComparison.OrdinalIgnoreCase)) continue;
+        // Defensive backstop in case path normalization ever differs from Environment.ProcessPath.
         if (string.Equals(Path.GetFileNameWithoutExtension(f), "Overlay",
                           StringComparison.OrdinalIgnoreCase)) continue;
         if (!GetByHandle(f, out var fi)) continue;
