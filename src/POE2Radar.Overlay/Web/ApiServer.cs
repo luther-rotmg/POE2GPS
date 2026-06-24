@@ -193,7 +193,8 @@ public sealed class ApiServer : IDisposable
                     }),
                     // Objective Director: active objective + queue for the dashboard panel (read-only).
                     director = (s.Director ?? Array.Empty<POE2Radar.Core.Campaign.RankedObjective>())
-                        .Select(o => new { id = o.Id, label = o.Label, category = o.Category, priority = o.Priority }),
+                        .Select(o => new { id = o.Id, label = o.Label, category = o.Category,
+                                           priority = o.Priority, tier = o.Tier.ToString() }),
                     // Session HUD: elapsed times, zone pace, deaths. Null when tracker not running.
                     session = s.Session == null ? (object?)null : new {
                         sessionElapsed    = FormatTimeSpan(s.Session.SessionElapsed),
@@ -1079,6 +1080,9 @@ public sealed class ApiServer : IDisposable
             LandmarkPath = CleanTerms(o.LandmarkPath),
             Rarity = OneOf(o.Rarity, "Normal", "Magic", "Rare", "Unique"),
             Poi = OneOf(o.Poi, "Yes", "No"),
+            Tier = Enum.TryParse<ObjectiveTier>(o.Tier?.ToString(), ignoreCase: true, out var t)
+                       ? t
+                       : (ObjectiveTier?)null,
         };
     }
 

@@ -691,6 +691,10 @@ internal static class DashboardHtml
       </section>
 
         <section class="view" data-view="director" hidden>
+          <div class="card" id="dirQueueCard">
+            <h3>Zone Plan <small>live ranked queue for this area</small></h3>
+            <div id="dirQueue"></div>
+          </div>
           <div class="card">
             <h3>Needs cataloguing <small>notable POIs/landmarks you've seen that no objective covers yet</small></h3>
             <div class="row"><input id="dirSearch" class="numin" type="text" placeholder="filter…" style="width:200px"></div>
@@ -1280,6 +1284,25 @@ $('#lmImport')?.addEventListener('click',()=>{
   inp.click();
 });
 
+/* ── director tab: Zone Plan (live ranked queue from /state) ── */
+function renderDirectorQueue(){
+  const dq = document.getElementById('dirQueue');
+  if (!dq) return;
+  const dir = (state && state.director) || [];
+  if (dir.length === 0){
+    dq.innerHTML = '<div style="opacity:.5;padding:4px 0">No active objectives in this zone</div>';
+    return;
+  }
+  dq.innerHTML = dir.map((o, i) =>
+    `<div class="navrow" style="font-weight:${i===0?'600':'400'};opacity:${i===0?'1':'.75'}">` +
+    `${i===0 ? '&#9654; ' : ''}` +
+    `<span class="navname">${esc(o.label)}</span>` +
+    `<span class="navtag">${esc(o.tier||o.category)}</span>` +
+    `<span class="navdist">P${o.priority}</span>` +
+    `</div>`
+  ).join('');
+}
+
 /* ── director tab: catalog builder (seen-POIs → objectives) ── */
 let dirSeen=[], dirObjs=[], dirQ='';
 async function loadDirector(){
@@ -1319,6 +1342,7 @@ function renderDirector(){
       : '<div class="row"><div class="rl hint-row">No objectives yet.</div></div>';
     objs.forEach(o=>{ const el=cat.querySelector('[data-id="'+cssEsc(o.id)+'"]'); if(el) el.querySelector('.dir-del').onclick=()=>postObjectives({remove:{id:o.id}}); });
   }
+  renderDirectorQueue();
 }
 function candRow(p){
   return '<div class="row" data-sig="'+esc(p.signature)+'">'
@@ -1736,6 +1760,7 @@ function renderState(){
     zn.innerHTML='<div class="zt">'+esc(zone.title||zone.name||'')+'</div>'+esc(zone.notes);
   } else { zn.hidden=true; }
 
+  renderDirectorQueue();
   renderSessionPanel();
 }
 
