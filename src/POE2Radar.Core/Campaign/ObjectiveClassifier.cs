@@ -34,7 +34,7 @@ public static class ObjectiveClassifier
         if ((HasMeta("BossArena") || HasMeta("Boss")) && IsCat("Monster") && IsRarity("Unique"))
             return new(ObjectiveTier.SideBoss, "SideBoss", ClassifyConfidence.High);
 
-        // Rule 10: Boss path + Monster + poi (any rarity)
+        // Rule 10: Boss path + Monster + poi (any rarity; only reached when rarity is NOT Unique — rule 9 already consumed that case)
         if (HasMeta("Boss") && IsCat("Monster") && poi)
             return new(ObjectiveTier.SideBoss, "SideBoss", ClassifyConfidence.Medium);
 

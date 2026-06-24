@@ -20,6 +20,7 @@ public class ObjectiveClassifierTests
         var r = ObjectiveClassifier.Classify("Metadata/Monsters/BossArena/ActBoss", "Monster", false, "Unique");
         Assert.NotNull(r);
         Assert.Equal(ObjectiveTier.SideBoss,       r!.Value.Tier);
+        Assert.Equal("SideBoss",                   r.Value.SuggestedCategory);
         Assert.Equal(ClassifyConfidence.High,      r.Value.Confidence);
     }
 
@@ -57,6 +58,7 @@ public class ObjectiveClassifierTests
         var r = ObjectiveClassifier.Classify("Metadata/Monsters/SomeRare/SomeBoss", "Monster", true, "Normal");
         Assert.NotNull(r);
         Assert.Equal(ObjectiveTier.SideBoss,       r!.Value.Tier);
+        Assert.Equal("SideBoss",                   r.Value.SuggestedCategory);
         Assert.Equal(ClassifyConfidence.Medium,    r.Value.Confidence);
     }
 
