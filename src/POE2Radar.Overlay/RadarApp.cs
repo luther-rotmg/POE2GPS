@@ -743,6 +743,17 @@ public sealed class RadarApp : IDisposable
             return;
         }
 
+        // ScanLootLabels grabs EVERY visible UI text element, including the open "Runeshape Combinations"
+        // (monolith) reward panel rows ("3x Glassblower's Bauble"). Those would be priced at the UNIT value
+        // (StripCount drops the "3x") and chipped on top of the runeforge stack-total chip — two overlapping
+        // labels. While that panel is open you're interacting with it, not the ground, so suppress ground
+        // tags (UpdateRuneforge ran earlier this tick, so PanelOpen is current).
+        if (_runeforge.PanelOpen)
+        {
+            if (!ReferenceEquals(_lootTags, LootTagRender.Empty)) _lootTags = LootTagRender.Empty;
+            return;
+        }
+
         var now = DateTime.UtcNow;
         if (now < _nextLootScanUtc) return;   // between scans: keep the last published specs (render re-reads rects live)
         _nextLootScanUtc = now.AddMilliseconds(LootScanThrottleMs);
