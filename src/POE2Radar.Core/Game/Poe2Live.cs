@@ -1669,4 +1669,79 @@ public sealed class Poe2Live
         if (outv.Count == 0 && _reader.TryReadStruct<int>(modArray + 0x18, out var v0)) outv.Add(v0);
         return outv;
     }
+
+    // ── Island Rumours read (Expedition "Uncharted Waters" offer screen) ───────────────────────────
+
+    /// <summary>BFS the in-game UI tree from UiRoot, visiting ALL children unconditionally.
+    /// Pool elements for the rumour catalog sit inside invisible wrapper elements; pruning on
+    /// the visibility flag would discard the target data and produce empty results at the
+    /// selection screen. Text-match against the rumour table (via MatchLabel inside
+    /// TryReadRumourLabel) is the SOLE discriminator between target labels and the rest of
+    /// the UI tree. Returns an EMPTY list when not at the rumour screen (zero text-matches).
+    /// Bounded to <paramref name="maxNodes"/> elements. Runs on the world thread;
+    /// allocates fresh collections per call -- call throttled (see RadarApp.UpdateIslandRumours).</summary>
+    public IReadOnlyList<string> ReadOfferedRumours(nint inGameState, int maxNodes = 30000)
+    {
+        var results = new List<string>();
+        var uiRoot = Ptr(inGameState + Poe2.InGameState.UiRoot);
+        if (uiRoot == 0) return results;
+
+        var queue = new Queue<nint>();
+        queue.Enqueue(uiRoot);
+        int visited = 0;
+
+        while (queue.Count > 0 && visited < maxNodes)
+        {
+            var el = queue.Dequeue();
+            if (el == 0) continue;
+            visited++;
+
+            // Attempt the text-read recipe (magic-guard + string extraction + table match).
+            var label = TryReadRumourLabel(el);
+            if (label.Length > 0)
+                results.Add(label);
+
+            // Enqueue children UNCONDITIONALLY -- do NOT gate on visibility.
+            // The offered rumours sit inside invisible wrapper elements in the pool;
+            // pruning invisible nodes would discard the target data.
+            if (ChildSpan(el, out nint first, out long n))
+                for (long k = 0; k < n; k++)
+                {
+                    var child = Ptr(first + (nint)(k * 8));
+                    if (child != 0) queue.Enqueue(child);
+                }
+        }
+
+        // Deduplicate by exact string (same label may appear in multiple pool slots).
+        return results.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>Attempt the Island Rumours text-struct read recipe on a single UI element.
+    /// Returns the raw display label string when it passes the magic-guard AND matches an entry
+    /// in the rumour table. Returns "" on any failure, fast-reject, or no table match.
+    /// The table-match test is what distinguishes the 2-3 offered labels from the 80+ pool
+    /// elements that also have text structs.</summary>
+    private string TryReadRumourLabel(nint el)
+    {
+        // Step 1: read the text-struct pointer at body+0x138.
+        nint ts = Ptr(el + Poe2.IslandRumour.TextStructPtr);
+        if (ts == 0) return "";
+
+        // Step 2: magic-guard -- read 8 bytes at ts+0x10 and reject if they don't match.
+        Span<byte> magic = stackalloc byte[8];
+        if (_reader.TryReadBytes(ts + 0x10, magic) != 8) return "";
+        if (!magic.SequenceEqual(Poe2.IslandRumour.TextStructMagic)) return "";
+
+        // Step 3: read Str1 (ts+0x20) -- the display label or a font/map-name prefix.
+        string s1 = _reader.ReadStringUtf16(ts + Poe2.IslandRumour.Str1);
+
+        // Step 4: if Str1 is a known font/map-name prefix, fall back to Str2 (ts+0x50).
+        string label = IslandRumours.KnownMapNames.Contains(s1)
+            ? _reader.ReadStringUtf16(ts + Poe2.IslandRumour.Str2)
+            : s1;
+
+        // Step 5: only return strings that match a table entry (text-match is the discriminator).
+        // Returns "" when not matched, so ReadOfferedRumours accumulates only true rumour labels.
+        return IslandRumours.Shared.MatchLabel(label) != null ? label : "";
+    }
 }

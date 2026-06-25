@@ -614,4 +614,32 @@ public static class Poe2
         public const int WorldTracker = 0x630; // + 0x630 → world hover tracker
         public const int HoveredEntity = 0x18; // + 0x18 → hovered entity/element
     }
+
+    /// <summary>Offsets for reading the Expedition "Uncharted Waters" label-widget text structs.
+    /// Used by <see cref="Poe2Live.ReadOfferedRumours"/>.
+    /// All validated live (Island Rumours offer screen, June 2026 GOLD dump).</summary>
+    public static class IslandRumour
+    {
+        // Offset from a UiElement body to the text struct pointer.
+        // body+0x138 is the text struct pointer for label widgets (confirmed across Ritual,
+        // Runeforge, and Island Rumours panels in the June 2026 GOLD dump).
+        // Validated live.
+        public const int TextStructPtr = 0x138;
+
+        // Magic guard bytes at text_struct+0x10. Read 8 bytes; must match exactly.
+        // Fast-reject: if these bytes do not match, the element is not a label widget -- skip.
+        // Validated live (confirmed in 83-slot pool scan, June 2026).
+        public static ReadOnlySpan<byte> TextStructMagic =>
+            [0x91, 0x9C, 0x9F, 0xFF, 0x01, 0x01, 0x00, 0x00];
+
+        // Offset from text_struct base to Str1 (first string slot).
+        // Contains the display label OR a font/map-name prefix (e.g. "Fontin Smallcaps").
+        // Validated live.
+        public const int Str1 = 0x20;
+
+        // Offset from text_struct base to Str2 (second string slot).
+        // Contains the actual display label when Str1 is a known font/map-name prefix.
+        // Validated live.
+        public const int Str2 = 0x50;
+    }
 }
