@@ -1,0 +1,202 @@
+[
+  {
+    "rumor": "Fallen Skies",
+    "type": "UniqueMap",
+    "map": "Moor of Fallen Skies",
+    "mods": "Runestones",
+    "tier": "S+",
+    "note": "Unique Expedition Map, 9-10 Rune to unlock"
+  },
+  {
+    "rumor": "All that glitters",
+    "type": "UniqueMap",
+    "map": "Castaway",
+    "mods": "Gold",
+    "tier": "A",
+    "note": "All of the Gold"
+  },
+  {
+    "rumor": "Reflective Waters",
+    "type": "UniqueMap",
+    "map": "Lake of Kalandra",
+    "mods": "Ring Bases",
+    "tier": "A",
+    "note": "The best PoE1 league"
+  },
+  {
+    "rumor": "Almost paradise",
+    "type": "UniqueMap",
+    "map": "Untainted paradise",
+    "mods": "Exp",
+    "tier": "C",
+    "note": "Less XP than a City map"
+  },
+  {
+    "rumor": "A good fellow",
+    "type": "UniqueMap",
+    "map": "Moment of Zen",
+    "mods": "Seer",
+    "tier": "C",
+    "note": "Nameless seer hiding a mageblood"
+  },
+  {
+    "rumor": "Endless Cliffs",
+    "type": "Rumour",
+    "map": "Craggy Peninsula",
+    "mods": "Rarity+Rogue Exiles",
+    "tier": "A",
+    "note": "Good map - juice the rogue exiles"
+  },
+  {
+    "rumor": "Sulphite!",
+    "type": "Rumour",
+    "map": "Scorched Cay",
+    "mods": "Increased Rarity",
+    "tier": "A",
+    "note": "Juice the remnants for boss/Runes"
+  },
+  {
+    "rumor": "Cold as ice",
+    "type": "Rumour",
+    "map": "Frigid Bluffs",
+    "mods": "Old Expedition",
+    "tier": "B",
+    "note": "Juice hard, old-style expedition mobs"
+  },
+  {
+    "rumor": "Unknown Ruins",
+    "type": "Rumour",
+    "map": "Exhumed Ruins",
+    "mods": "Precursor Leylines",
+    "tier": "B",
+    "note": "Run only if adjacent logbook zone is empty"
+  },
+  {
+    "rumor": "Warm but risky",
+    "type": "Rumour",
+    "map": "Grazed Prairie",
+    "mods": "Exp+Beyond+Hoards",
+    "tier": "B",
+    "note": "Juice hard, old-style expedition mobs"
+  },
+  {
+    "rumor": "Wild, Roaming Free",
+    "type": "Rumour",
+    "map": "Lush Island",
+    "mods": "Azmeri Spirits",
+    "tier": "B",
+    "note": "Juice a strong boss with wisps"
+  },
+  {
+    "rumor": "Something Fishy",
+    "type": "Rumour",
+    "map": "Bleached Shoals",
+    "mods": "Amulets",
+    "tier": "C",
+    "note": "Source of All-Res Pearl Ammys"
+  },
+  {
+    "rumor": "Nothing to drink",
+    "type": "Rumour",
+    "map": "Stagnant Basin",
+    "mods": "Oil",
+    "tier": "C",
+    "note": "Check Runes else currency tiles"
+  },
+  {
+    "rumor": "It's dry at least",
+    "type": "Rumour",
+    "map": "Sloughed Gully",
+    "mods": "Monster effectiveness",
+    "tier": "F",
+    "note": "Can spawn untargetable enemies"
+  },
+  {
+    "rumor": "Bleak and Awful",
+    "type": "Rumour",
+    "map": "Barren Atoll",
+    "mods": "Strongbox",
+    "tier": "F",
+    "note": "Can spawn untargetable enemies"
+  },
+  {
+    "rumor": "Crazed Chieftain",
+    "type": "PowerfulBoss",
+    "map": "Jade Isles",
+    "mods": "Powerful Map Boss",
+    "tier": "S+",
+    "note": "Go get a Rakiatas Flow!"
+  },
+  {
+    "rumor": "Stardrinker",
+    "type": "BossEncounter",
+    "map": "Secluded Temple",
+    "mods": "Uhtred",
+    "tier": "S",
+    "note": "Drops the Drained Mana Rune"
+  },
+  {
+    "rumor": "Origin of the Fall",
+    "type": "BossEncounter",
+    "map": "Obscure Island",
+    "mods": "Olroth",
+    "tier": "A",
+    "note": "Drops Triskellion/Flask"
+  },
+  {
+    "rumor": "The Last To Fall",
+    "type": "BossEncounter",
+    "map": "Mournful Cliffside",
+    "mods": "Vorana",
+    "tier": "B",
+    "note": ""
+  },
+  {
+    "rumor": "End of the Circle",
+    "type": "BossEncounter",
+    "map": "Sprawling Jungle",
+    "mods": "Medved",
+    "tier": "B",
+    "note": ""
+  },
+  {
+    "rumor": "Aldurs",
+    "type": "Saga",
+    "map": "NA",
+    "mods": "Buffs expeditions",
+    "tier": "S+",
+    "note": "Gamble on the seed"
+  },
+  {
+    "rumor": "Olroth",
+    "type": "Saga",
+    "map": "Obscure Island",
+    "mods": "Boss Node",
+    "tier": "A",
+    "note": "Guarantees the boss encounter"
+  },
+  {
+    "rumor": "Uhtred",
+    "type": "Saga",
+    "map": "Secluded Temple",
+    "mods": "Boss Node",
+    "tier": "B+",
+    "note": "Guarantees the boss"
+  },
+  {
+    "rumor": "Medved",
+    "type": "Saga",
+    "map": "Strange Jungle",
+    "mods": "Boss Node",
+    "tier": "B+",
+    "note": "Guarantees the boss"
+  },
+  {
+    "rumor": "Vorana",
+    "type": "Saga",
+    "map": "Mournful Cliffside",
+    "mods": "Boss Node",
+    "tier": "B+",
+    "note": "Guarantees the boss"
+  }
+]
