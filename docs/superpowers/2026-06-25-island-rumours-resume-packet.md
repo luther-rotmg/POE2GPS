@@ -59,10 +59,12 @@ just the 2–3 offered. We can't yet isolate which ones are actually OFFERED:
   atlas/map/pathlines all work).
 - So the NEW dumps do **double duty**: (1) re-validate/re-derive the recipe on 0.5.4, (2) the
   offered-vs-catalog discrimination.
-- **The dump TOOL still works on the existing build:** `UiDump` walks `InGameState+0x2F0` (UiRoot), no
-  AreaInstance dependency — so the existing **`v0.5.1-rumourdiag`** prerelease produces valid 0.5.4
-  dumps even though that old build's radar is broken on 0.5.4 (cosmetic; doesn't affect the dump).
-  (If a cleaner build is wanted, merge `main` into `feat/rumour-diag` and cut a fresh prerelease.)
+- **Fresh 0.5.4 diag build is LIVE: `v0.5.1-rumourdiag2`** (branch `diag/rumour-0.5.4`, built off the
+  `v0.5.1-rumourdiag` tag = the config-write Dump tool + merged the 0.5.4 fix; EXCLUDES the rejected
+  browser-download commit `8ca74ee`). Working radar + the "Dump Rumours" button (Settings → Diagnostics,
+  writes a `.txt.gz` to `config/`). Marked **prerelease**; **v0.5.1 stays Latest** (normal users + the
+  update-checker aren't pointed at it). This is the build the user's user uses for the new 0.5.4 dumps.
+  Download: https://github.com/luther-rotmg/POE2GPS/releases/tag/v0.5.1-rumourdiag2
 
 ## What we're waiting for
 
@@ -96,6 +98,7 @@ area-ID signal. (Message drafted; see the chat hand-off / below.)
 ## Cleanup (once the feature lands)
 
 - Drop `stash@{0}` ("rogue agent island-rumours build" — UNUSED).
-- Delete the throwaway `v0.5.1-rumourdiag` prerelease + tag + `feat/rumour-diag` branch + the `UiDump`
-  diagnostic (UiDump.cs, the `/api/diag/ui-dump` endpoint, the Diagnostics dashboard card,
-  `RadarApp.UiDumpDiag`). Removal checklist in `.superpowers/sdd/rumour-diag-report.md`.
+- Delete BOTH throwaway diag prereleases + tags (`v0.5.1-rumourdiag`, `v0.5.1-rumourdiag2`) + BOTH
+  branches (`feat/rumour-diag`, `diag/rumour-0.5.4`) + the `UiDump` diagnostic (UiDump.cs, the
+  `/api/diag/ui-dump` endpoint, the Diagnostics dashboard card, `RadarApp.UiDumpDiag`). Removal
+  checklist in `.superpowers/sdd/rumour-diag-report.md`.
