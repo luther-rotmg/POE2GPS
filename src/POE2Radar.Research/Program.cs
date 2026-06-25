@@ -366,21 +366,21 @@ Console.WriteLine("  --entity <hexAddr>         walk a PoE2 entity: id, metadata
 Console.WriteLine("  --rune-dump [--radius N]   dump nearby entities (path/components/MinimapIcon/small-ints) + tile paths near you");
 Console.WriteLine("  --presence [--diff]        baseline (then --diff) player components to find the presence-radius float");
 Console.WriteLine("  --devtree [--port N]       browser-based live memory/UI/entity explorer (default port 7778)");
-Console.WriteLine("  --serverdata               dump ServerData (AreaInstance+0x580): strings + StdVector quest-list candidates");
+Console.WriteLine("  --serverdata               dump ServerData (AreaInstance+0x598): strings + StdVector quest-list candidates");
 Console.WriteLine("  --aob                      scan for IngameState via AOB patterns");
 return 0;
 
 // ── ServerData probe — locate the quest-state container ────────────────────
-// AreaInstance+0x580 is the PlayerInfo/LocalPlayerStruct base (+0x00 ServerDataPtr,
-// +0x20 LocalPlayerPtr). LocalPlayer @ AreaInstance+0x5A0 (= base+0x20) is validated, so the
-// +0x580 deref is the ServerData object. In PoE1 GameHelper, ServerData holds the quest-states
+// AreaInstance+0x598 is the PlayerInfo/LocalPlayerStruct base on 0.5.4 (was 0x580, +0x18) (+0x00
+// ServerDataPtr, +0x20 LocalPlayerPtr). LocalPlayer @ AreaInstance+0x5B8 (= base+0x20) is validated,
+// so the +0x598 deref is the ServerData object. In PoE1 GameHelper, ServerData holds the quest-states
 // list (among league/guild/passives). This surfaces ServerData's strings (to confirm identity)
 // and its StdVector-shaped fields (quest-list candidates), and writes the raw region to a temp
 // file so two runs (before/after advancing a quest) can be byte-diffed to pinpoint quest flags.
 //
 // FINDINGS (2026-05-31, PAUSED mid-decode — resume here):
-//   • ServerData = *(AreaInstance+0x580) CONFIRMED — its +0x20 equals the validated LocalPlayer
-//     (AreaInstance+0x5A0), so the PlayerInfo shape holds.
+//   • ServerData = *(AreaInstance+0x598) CONFIRMED — its +0x20 equals the validated LocalPlayer
+//     (AreaInstance+0x5B8), so the PlayerInfo shape holds.
 //   • Clean before/after-quest diffs (delta 0, no zone change) RULED OUT two volatile candidates:
 //     +0x22D0 (an int that drifts up AND down between reads) and the +0x23C8 StdVector (reallocates
 //     constantly; grew 27→204 across a zone — content/area-dependent, NOT a stable quest list).
@@ -396,13 +396,13 @@ static int RunServerData(ProcessHandle process, MemoryReader reader)
     var (_, _, ai, _) = ResolveChain(process, reader);
     if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
 
-    var playerInfo = ai + 0x580;
+    var playerInfo = ai + Poe2.AreaInstance.ServerDataPtr;
     var serverData = SafePtr(reader, playerInfo);
     var localPlayer = SafePtr(reader, playerInfo + 0x20);
-    var validatedPlayer = SafePtr(reader, ai + 0x5A0);
-    Console.WriteLine($"AreaInstance 0x{ai:X}  PlayerInfo(+0x580) 0x{playerInfo:X}");
+    var validatedPlayer = SafePtr(reader, ai + Poe2.AreaInstance.LocalPlayer);
+    Console.WriteLine($"AreaInstance 0x{ai:X}  PlayerInfo(+0x{Poe2.AreaInstance.ServerDataPtr:X}) 0x{playerInfo:X}");
     Console.WriteLine($"  ServerDataPtr (+0x00) -> 0x{serverData:X}");
-    Console.WriteLine($"  LocalPlayerPtr(+0x20) -> 0x{localPlayer:X}   (AreaInstance+0x5A0 = 0x{validatedPlayer:X}, {(localPlayer == validatedPlayer && localPlayer != 0 ? "MATCH" : "mismatch")})");
+    Console.WriteLine($"  LocalPlayerPtr(+0x20) -> 0x{localPlayer:X}   (AreaInstance+0x{Poe2.AreaInstance.LocalPlayer:X} = 0x{validatedPlayer:X}, {(localPlayer == validatedPlayer && localPlayer != 0 ? "MATCH" : "mismatch")})");
     if (serverData == 0) { Console.Error.WriteLine("ServerData null — wrong offset or not in game."); return 1; }
 
     const int scan = 0x4000;
@@ -456,7 +456,7 @@ static int RunServerDataVec(ProcessHandle process, MemoryReader reader, int off)
 {
     var (_, _, ai, _) = ResolveChain(process, reader);
     if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
-    var sd = SafePtr(reader, ai + 0x580);
+    var sd = SafePtr(reader, ai + Poe2.AreaInstance.ServerDataPtr);
     if (sd == 0) { Console.Error.WriteLine("ServerData null."); return 1; }
 
     var vec = reader.ReadStruct<POE2Radar.Core.Game.StdVector>(sd + off);
@@ -502,7 +502,7 @@ static int RunServerDataDiff(ProcessHandle process, MemoryReader reader)
 
     var (_, _, ai, _) = ResolveChain(process, reader);
     if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
-    var serverData = SafePtr(reader, ai + 0x580);
+    var serverData = SafePtr(reader, ai + Poe2.AreaInstance.ServerDataPtr);
     if (serverData == 0) { Console.Error.WriteLine("ServerData null."); return 1; }
 
     var cur = new byte[baseline.Length];
@@ -545,7 +545,7 @@ static int RunInventory(ProcessHandle process, MemoryReader reader, int onlyInv,
 
     var serverData = SafePtr(reader, ai + Poe2.AreaInstance.ServerDataPtr);
     var localPlayer = SafePtr(reader, ai + Poe2.AreaInstance.LocalPlayer);
-    Console.WriteLine($"AreaInstance 0x{ai:X}  ServerData(+0x580) 0x{serverData:X}  LocalPlayer(+0x5A0) 0x{localPlayer:X}");
+    Console.WriteLine($"AreaInstance 0x{ai:X}  ServerData(+0x598) 0x{serverData:X}  LocalPlayer(+0x5B8) 0x{localPlayer:X}");
     if (serverData == 0) { Console.Error.WriteLine("ServerData null."); return 1; }
 
     // Step 1 — PlayerServerData vector @ ServerData+0x48; element [0] = the player's ServerDataStructure.
@@ -1342,7 +1342,10 @@ static int RunCamera(ProcessHandle process, MemoryReader reader)
 // name/level, camera/zoom — and dump the camera object so the WorldToScreen matrix can be found.
 static int RunInfo(ProcessHandle process, MemoryReader reader)
 {
-    var (igs, _, ai, lp) = ResolveChain(process, reader);
+    // NOTE: ResolveChain returns (gameState, inGameState, areaInstance, localPlayer). Take the
+    // 2nd element as InGameState (was mistakenly taking the 1st = GameState, making the Camera
+    // read below resolve GameState+0x368 = garbage).
+    var (_, igs, ai, lp) = ResolveChain(process, reader);
     if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
     Console.WriteLine($"InGameState 0x{igs:X}  AreaInstance 0x{ai:X}  LocalPlayer 0x{lp:X}");
 
@@ -1498,7 +1501,7 @@ static int RunQuest(ProcessHandle process, MemoryReader reader)
     if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
 
     var serverData = SafePtr(reader, ai + Poe2.AreaInstance.ServerDataPtr);
-    Console.WriteLine($"AreaInstance 0x{ai:X}  ServerData(+0x580) 0x{serverData:X}");
+    Console.WriteLine($"AreaInstance 0x{ai:X}  ServerData(+0x598) 0x{serverData:X}");
     if (serverData == 0) { Console.Error.WriteLine("ServerData null — wrong offset or not in game."); return 1; }
 
     // Resolve ServerDataStructure via the same helper used by --inventory.
@@ -2620,13 +2623,13 @@ static nint ResolveComponentAddr(MemoryReader reader, nint entity, string name)
 // ── Tiles: read the terrain tile grid (GameHelper2 GetTgtFileData) — each tile's TgtPath →
 // grid positions. Shows what static tile-based landmarks exist (boss arenas, special rooms,
 // waypoints) and whether a per-tile semantic "detail name" is reachable. TerrainStruct @
-// AreaInstance+0x8A0: TotalTiles@+0x18, TileDetailsPtr StdVector@+0x28 (TileStructure=0x38);
-// TileStructure.TgtFilePtr@+0x8 → TgtFileStruct.TgtPath (StdWString)@+0x8.
+// AreaInstance+0x8B8 (0.5.4; was 0x8A0): TotalTiles@+0x18, TileDetailsPtr StdVector@+0x28
+// (TileStructure=0x38); TileStructure.TgtFilePtr@+0x8 → TgtFileStruct.TgtPath (StdWString)@+0x8.
 static int RunTiles(ProcessHandle process, MemoryReader reader)
 {
     var (_, _, ai, _) = ResolveChain(process, reader);
     if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
-    var terrain = ai + 0x8A0;
+    var terrain = ai + Poe2.AreaInstance.TerrainMetadata;
     reader.TryReadStruct<long>(terrain + 0x18, out var tilesX);
     reader.TryReadStruct<nint>(terrain + 0x28, out var first);
     reader.TryReadStruct<nint>(terrain + 0x30, out var last);

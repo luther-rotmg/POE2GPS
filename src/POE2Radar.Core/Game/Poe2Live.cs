@@ -156,7 +156,7 @@ public sealed class Poe2Live
 
     private string _league = ""; private nint _leagueFor = -1;
 
-    /// <summary>Current league name as the game stores it (ServerData @ AreaInstance+0x580 → std::wstring
+    /// <summary>Current league name as the game stores it (ServerData @ AreaInstance+0x598 → std::wstring
     /// +0x21E0), e.g. "HC Runes of Aldur" / "Standard". The "HC " prefix distinguishes hardcore from
     /// softcore. Cached per area. (Pulled from Sikaka v0.15.0; read-only.)</summary>
     public string LeagueName(nint areaInstance)
@@ -1430,7 +1430,7 @@ public sealed class Poe2Live
     // ── Inventory read (experimental; default-OFF) ─────────────────────────────────────────────────
     // Ported faithfully from Research.RunInventory / DumpInventoryItems / ReadItemModIds /
     // ReadModValueArray / ReadModName (Research/Program.cs ~line 527-771).
-    // Same chain: AreaInstance+0x580 → ServerData → +0x48 StdVector [0] → ServerDataStructure
+    // Same chain: AreaInstance+0x598 → ServerData → +0x48 StdVector [0] → ServerDataStructure
     //             → +0x320 StdVector<InventoryArrayStruct> (stride 0x18).
     // Self-validates the two drift-prone hops (PlayerServerData vec, PlayerInventories vec) with
     // brute-scan fallbacks, exactly as the Research probe does.
@@ -1445,7 +1445,7 @@ public sealed class Poe2Live
         var result = new List<InventoryItem>();
         try
         {
-            // Step 1 — ServerData @ AreaInstance+0x580.
+            // Step 1 — ServerData @ AreaInstance+0x598.
             var serverData = Ptr(areaInstance + Poe2.AreaInstance.ServerDataPtr);
             if (serverData == 0) return result;
 
