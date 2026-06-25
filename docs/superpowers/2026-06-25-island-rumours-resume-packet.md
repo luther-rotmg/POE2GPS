@@ -66,12 +66,29 @@ just the 2–3 offered. We can't yet isolate which ones are actually OFFERED:
   update-checker aren't pointed at it). This is the build the user's user uses for the new 0.5.4 dumps.
   Download: https://github.com/luther-rotmg/POE2GPS/releases/tag/v0.5.1-rumourdiag2
 
-## What we're waiting for
+## Mine findings (2026-06-25) — 7 dumps EXHAUSTIVELY analysed: insufficient, but recipe + structure confirmed
 
-**2–3 more "Dump Rumours" captures from DIFFERENT rumour screens** (different offered sets), EACH with
-a note/screenshot of **WHICH rumours were showing** (ground truth). The offered set changes between
-screens while the catalog is constant → diffing reveals the true offered-marker + lets us decode the
-area-ID signal. (Message drafted; see the chat hand-off / below.)
+A 3-lens multi-agent mine of all 7 dumps (high confidence, exhaustive) concluded:
+- **The offered signal is NOT in these shallow dumps.** No body/deref field == offered-count in any
+  dump-correlated way. The old `+0x190` Caesar lead is DEAD — the area-IDs (FUTURE/RECORDS at body
+  `+0x1A4/+0x1B2` of the depth-3 catalog container) are STATIC across all 7 dumps (catalog, not offered).
+  The offered NAMES sit 2–3 pointer hops deeper (behind `textBuf`) than the depth-1 dump ever follows.
+- **0.5.4 read recipe CONFIRMED** (use when building Task 2): the rumour text-struct guard at struct
+  `+0x10` CHANGED on 0.5.4 to **`91 9C 9F FF 00 01 00 00`** (byte[4] flipped `01→00`). `body+0xC8` = a flat
+  inline buffer (font-name run then flavour text); `body+0x138` = the text-struct (guard at +0x10, packed
+  inline UTF-16 runs at +0x18). Skip runs that are font names ("Fontin Smallcaps", "miBold", "Bold").
+- **Offered = the panel's slot widgets** — a small set (the 2–3 visible rumour rows, depth-4 children of
+  the rumour-panel container), DISTINCT from the huge ~1088-entry catalog scroll list. Reading "offered" =
+  read those few slot widgets' names via the deep deref — NOT a flag on catalog entries.
+- **dump7 (Saga) couldn't be resolved** to either state — the text was overwritten at the dump's 0x80 boundary.
+
+## What's needed next — ONE definitive DEEP capture (not more shallow dumps)
+
+The shallow `UiDump` (depth-1, 0x80) can't reach the offered names. Need a targeted **deep-deref** capture:
+for each rumour slot widget, follow `body+0x138 → struct` (verify guard `91 9C 9F FF 00 01 00 00`) `→ struct+0x18`
+(inline string OR `textBuf` pointer `→ +0x08`) → UTF-16 name (skip Fontin runs), capturing ~0x200/0x100 bytes
+per hop. Anchor on the rumour-panel slot widgets. One small, complete capture confirms the offered names + the
+slot structure → then build Task 2 with certainty. Full deep-probe spec in the mine output (workflow `wofol5efd`).
 
 ## When the dumps arrive — analysis plan
 
