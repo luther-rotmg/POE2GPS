@@ -82,27 +82,34 @@ A 3-lens multi-agent mine of all 7 dumps (high confidence, exhaustive) concluded
   read those few slot widgets' names via the deep deref — NOT a flag on catalog entries.
 - **dump7 (Saga) couldn't be resolved** to either state — the text was overwritten at the dump's 0x80 boundary.
 
-## DONE — deep-capture build shipped (v0.5.1-rumourdiag3); awaiting ONE capture
+## DONE — v4 deep-capture build shipped (v0.5.1-rumourdiag4); awaiting ONE capture
 
-The shallow `UiDump` couldn't reach the offered names. **Shipped `v0.5.1-rumourdiag3`** (branch
-`diag/rumour-0.5.4`, commit `3a9a718`; Pre-release, v0.5.1 stays Latest) — it adds a **DEEP RUMOUR CAPTURE**
-section to the dump: for each UI element it scans body pointers for the rumour text-struct (guard
-`91 9C 9F FF ?? 01 00 00` at struct+0x10, byte[4] wildcarded — it's a state flag), then follows the chain
-**3 hops** deep (`struct → struct+0x18/+0x20 textBuf → textBuf+0x00/+0x08/+0x10 string`) emitting EVERY
-UTF-16 run with font runs tagged `(font)`. The offered names appear as the non-`(font)` runs under each
-`RUMOUR elem=…` line. Reviewed (Sonnet) + fixed (hop-2 read-bound guard, struct0-sourced hop1, +0x10
-candidate) before ship. Message to the user's user drafted (download rumourdiag3 → ONE capture + screenshot).
+**v3 (rumourdiag3) FAILED** (1 capture, analysed): it hit the 6000-element DFS cap AND only followed
+"guard-structs" which turned out to be MOD text ("Open all Strongboxes" — Bleak's mod, captured even
+though Bleak wasn't offered = catalog), not names. The offered names (Cold/Endless/Nothin) were **0 hits**
+in its dump. **v4 (`v0.5.1-rumourdiag4`, branch `diag/rumour-0.5.4`, commit `6594498`; Pre-release, v0.5.1
+stays Latest)** fixes both, built via the FULL superpowers flow (brainstorm → spec
+`specs/2026-06-25-rumour-discovery-dump-v4-design.md` → plan `plans/2026-06-25-rumour-discovery-dump-v4.md`
+→ subagent-driven-development: implementer + task review **SPEC ✅ + Quality Approved**). v4 `UiDump.cs`:
+- **BFS walk** (Queue, was DFS Stack) — covers the shallow panel (~depth 4–6) before deep subtrees.
+- **Wide bounded 3-hop text net** (`WideTextNet`, NO guard gating): for each element, follow ALL body
+  pointers 3 hops, emit EVERY UTF-16 run (font runs tagged `(font)`), deduped per element, capped at 256
+  reads/element. Emits a `TEXT elem=…` block (with `addr/depth/parent/children/vis`) for any element with
+  a non-font string. The offered names surface whatever structure holds them — no offset guessing.
+
+Approach = **wide-net DISCOVERY** (the user confirmed the panel IS the source of truth): one capture to
+learn the panel fingerprint + name chain → THEN a clean panel-anchored shipped reader (the wide net never
+ships). Message to the user's user drafted (download rumourdiag4 → ONE capture + screenshot).
 
 ## When the deep dump arrives — analysis plan
 
-1. Decompress; read the top **`=== DEEP RUMOUR CAPTURE ===`** section (grep `RUMOUR elem=`).
-2. For each `RUMOUR` block, the resolved name = the first non-`(font)` UTF-16 run. List them all + their
-   element context (`elem=/depth=/parent=/vis=/from=/struct=`).
-3. Cross-ref with the screenshot's offered set → identify which `RUMOUR` elements are the OFFERED slots →
-   their common `parent=`/depth = the **offered-slot anchor** (the panel container; its few slot widgets =
-   offered, vs the ~1088-entry catalog scroll list).
-4. Pin the 0.5.4 read path: element → `body+0x138` → struct (guard `91 9C 9F FF 00 01 00 00`) → textBuf hop →
-   name (skip Fontin runs). Update `Poe2.IslandRumour` offsets + guard bytes for Task 2.
+1. Decompress; read the top **`=== DEEP TEXT CAPTURE ===`** section. Grep for the offered names from the
+   screenshot (e.g. `cliff`, `Cold`, `drink`) — they appear as non-`(font)` runs under a `TEXT elem=` block.
+2. List the matching slot elements + their context (`elem=/depth=/parent=/children=/vis=`) and the winning
+   `hN+0xNNN` hop offset where the name was found.
+3. Cross-ref with the screenshot's offered set → the slot elements' shared `parent=` = the **offered-slot
+   anchor** (the panel container; its few slot widgets = offered, distinct from the catalog list).
+4. Pin the 0.5.4 name read path from the winning hop offsets → update `Poe2.IslandRumour` for Task 2.
 5. Update the spec (replace the wrong visible-chain filter with: **offered = the panel-slot widgets under the
    anchor parent, read via the deep deref**) + plan Task 2.
 6. Resume subagent-driven-development: fix Task 2 (re-review) → Task 3 (wiring/config) → Task 4 (display
@@ -120,7 +127,7 @@ candidate) before ship. Message to the user's user drafted (download rumourdiag3
 ## Cleanup (once the feature lands)
 
 - Drop `stash@{0}` ("rogue agent island-rumours build" — UNUSED).
-- Delete ALL throwaway diag prereleases + tags (`v0.5.1-rumourdiag`, `v0.5.1-rumourdiag2`,
-  `v0.5.1-rumourdiag3`) + BOTH branches (`feat/rumour-diag`, `diag/rumour-0.5.4`) + the `UiDump` diagnostic
+- Delete ALL throwaway diag prereleases + tags (`v0.5.1-rumourdiag`, `-rumourdiag2`, `-rumourdiag3`,
+  `-rumourdiag4`) + BOTH branches (`feat/rumour-diag`, `diag/rumour-0.5.4`) + the `UiDump` diagnostic
   (UiDump.cs, the `/api/diag/ui-dump` endpoint, the Diagnostics dashboard card, `RadarApp.UiDumpDiag`).
   Removal checklist in `.superpowers/sdd/rumour-diag-report.md`.
