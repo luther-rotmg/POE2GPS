@@ -82,24 +82,29 @@ A 3-lens multi-agent mine of all 7 dumps (high confidence, exhaustive) concluded
   read those few slot widgets' names via the deep deref — NOT a flag on catalog entries.
 - **dump7 (Saga) couldn't be resolved** to either state — the text was overwritten at the dump's 0x80 boundary.
 
-## What's needed next — ONE definitive DEEP capture (not more shallow dumps)
+## DONE — deep-capture build shipped (v0.5.1-rumourdiag3); awaiting ONE capture
 
-The shallow `UiDump` (depth-1, 0x80) can't reach the offered names. Need a targeted **deep-deref** capture:
-for each rumour slot widget, follow `body+0x138 → struct` (verify guard `91 9C 9F FF 00 01 00 00`) `→ struct+0x18`
-(inline string OR `textBuf` pointer `→ +0x08`) → UTF-16 name (skip Fontin runs), capturing ~0x200/0x100 bytes
-per hop. Anchor on the rumour-panel slot widgets. One small, complete capture confirms the offered names + the
-slot structure → then build Task 2 with certainty. Full deep-probe spec in the mine output (workflow `wofol5efd`).
+The shallow `UiDump` couldn't reach the offered names. **Shipped `v0.5.1-rumourdiag3`** (branch
+`diag/rumour-0.5.4`, commit `3a9a718`; Pre-release, v0.5.1 stays Latest) — it adds a **DEEP RUMOUR CAPTURE**
+section to the dump: for each UI element it scans body pointers for the rumour text-struct (guard
+`91 9C 9F FF ?? 01 00 00` at struct+0x10, byte[4] wildcarded — it's a state flag), then follows the chain
+**3 hops** deep (`struct → struct+0x18/+0x20 textBuf → textBuf+0x00/+0x08/+0x10 string`) emitting EVERY
+UTF-16 run with font runs tagged `(font)`. The offered names appear as the non-`(font)` runs under each
+`RUMOUR elem=…` line. Reviewed (Sonnet) + fixed (hop-2 read-bound guard, struct0-sourced hop1, +0x10
+candidate) before ship. Message to the user's user drafted (download rumourdiag3 → ONE capture + screenshot).
 
-## When the dumps arrive — analysis plan
+## When the deep dump arrives — analysis plan
 
-1. Decompress each dump; grep for the offered strings per its ground-truth note.
-2. **Re-validate the recipe on 0.5.4:** confirm `+0x138` text-struct, magic-guard bytes, str offsets
-   still hold (or re-derive). Update `Poe2.IslandRumour` if shifted.
-3. **Diff the offered sets** across screens vs the constant catalog → find the structural discriminator
-   that isolates offered (a flag, a distinct parent container, the vector the 3 offered live in — the
-   depth-3 `+0x190` 3-string lead).
-4. **Decode the area-ID signal** (Caesar−3) at depth-3 `+0x190` → area names → cross-ref the offered labels.
-5. Update the spec (replace the wrong visible-chain filter with the real discriminator) + plan Task 2.
+1. Decompress; read the top **`=== DEEP RUMOUR CAPTURE ===`** section (grep `RUMOUR elem=`).
+2. For each `RUMOUR` block, the resolved name = the first non-`(font)` UTF-16 run. List them all + their
+   element context (`elem=/depth=/parent=/vis=/from=/struct=`).
+3. Cross-ref with the screenshot's offered set → identify which `RUMOUR` elements are the OFFERED slots →
+   their common `parent=`/depth = the **offered-slot anchor** (the panel container; its few slot widgets =
+   offered, vs the ~1088-entry catalog scroll list).
+4. Pin the 0.5.4 read path: element → `body+0x138` → struct (guard `91 9C 9F FF 00 01 00 00`) → textBuf hop →
+   name (skip Fontin runs). Update `Poe2.IslandRumour` offsets + guard bytes for Task 2.
+5. Update the spec (replace the wrong visible-chain filter with: **offered = the panel-slot widgets under the
+   anchor parent, read via the deep deref**) + plan Task 2.
 6. Resume subagent-driven-development: fix Task 2 (re-review) → Task 3 (wiring/config) → Task 4 (display
    panel + dashboard) → Task 5 (integration sweep + final whole-branch review) → release.
 
@@ -115,7 +120,7 @@ slot structure → then build Task 2 with certainty. Full deep-probe spec in the
 ## Cleanup (once the feature lands)
 
 - Drop `stash@{0}` ("rogue agent island-rumours build" — UNUSED).
-- Delete BOTH throwaway diag prereleases + tags (`v0.5.1-rumourdiag`, `v0.5.1-rumourdiag2`) + BOTH
-  branches (`feat/rumour-diag`, `diag/rumour-0.5.4`) + the `UiDump` diagnostic (UiDump.cs, the
-  `/api/diag/ui-dump` endpoint, the Diagnostics dashboard card, `RadarApp.UiDumpDiag`). Removal
-  checklist in `.superpowers/sdd/rumour-diag-report.md`.
+- Delete ALL throwaway diag prereleases + tags (`v0.5.1-rumourdiag`, `v0.5.1-rumourdiag2`,
+  `v0.5.1-rumourdiag3`) + BOTH branches (`feat/rumour-diag`, `diag/rumour-0.5.4`) + the `UiDump` diagnostic
+  (UiDump.cs, the `/api/diag/ui-dump` endpoint, the Diagnostics dashboard card, `RadarApp.UiDumpDiag`).
+  Removal checklist in `.superpowers/sdd/rumour-diag-report.md`.
