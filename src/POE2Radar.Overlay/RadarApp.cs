@@ -5,6 +5,7 @@ using POE2Radar.Core;
 using POE2Radar.Core.Game;
 using POE2Radar.Core.Navigation;
 using POE2Radar.Core.Gear;
+using POE2Radar.Core.Input;
 using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Native;
@@ -226,6 +227,8 @@ public sealed class RadarApp : IDisposable
     private CycleIndicator? _cycleIndicator;  // transient overlay indicator (render thread)
     private DateTime _nextCycleAt = DateTime.MinValue;
     private readonly POE2Radar.Overlay.Input.ControllerCycler _controllerCycler = new();
+    private readonly HoldRepeat _controllerHold;
+    private readonly HoldRepeat _keyboardHold;
     private enum CycleAction { Next, Prev, Clear }
     // The ONLY state shared with the HTTP/API thread. Every read/iterate/mutate of _selectedIds is
     // done under _navLock (snapshot to a local, then work outside the lock). Trackers are reconciled
@@ -260,6 +263,10 @@ public sealed class RadarApp : IDisposable
         _process = process;
         _reader = reader;
         _settings = RadarSettings.Load();
+        _controllerHold = new HoldRepeat(TimeSpan.FromMilliseconds(_settings.CycleHoldDelayMs),
+                                         TimeSpan.FromMilliseconds(_settings.CycleHoldIntervalMs));
+        _keyboardHold   = new HoldRepeat(TimeSpan.FromMilliseconds(_settings.CycleHoldDelayMs),
+                                         TimeSpan.FromMilliseconds(_settings.CycleHoldIntervalMs));
         ConsoleTheme.Section("POE2GPS");
         ConsoleTheme.Kv("settings", RadarSettings.FilePath);
         ConsoleTheme.Kv("entity names", $"{EntityNameResolver.Shared.Count} mappings · {ZoneGuide.Shared.Count} zones");
@@ -1364,24 +1371,25 @@ public sealed class RadarApp : IDisposable
             AtlasRoutePick();
         }
 
-        // Quick-Target Cycler (keyboard): Ctrl+Alt+ ] next, [ prev, 1-9 jump-to-slot, 0 clear.
-        // Foreground-gated + debounced. Reads keys to change the overlay's active target — sends nothing
-        // to the game. Cycle keys are [ ] (0xDB/0xDD), NOT arrows (Ctrl+Alt+Arrow rotates Intel displays).
-        if (_settings.EnableTargetHotkeys && DateTime.UtcNow >= _nextCycleAt
-            && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd
-            && Down(0x11) && Down(0x12))   // Ctrl + Alt held
+        // Quick-Target Cycler (keyboard): Ctrl+Alt+ ] next / [ prev (hold-to-fast via HoldRepeat),
+        // 1-9 jump-to-slot, 0 clear (discrete, debounced). Foreground-gated. Reads keys only — sends
+        // nothing to the game. Cycle keys are [ ] (0xDB/0xDD), NOT arrows (Ctrl+Alt+Arrow rotates Intel).
+        if (_settings.EnableTargetHotkeys)
         {
-            var fired = true;
-            if (Down(0xDD)) Cycle(CycleAction.Next);          // ]
-            else if (Down(0xDB)) Cycle(CycleAction.Prev);     // [
-            else if (Down(0x30)) Cycle(CycleAction.Clear);    // 0
-            else
+            var foreground = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
+            var ctrlAlt = foreground && Down(0x11) && Down(0x12);
+            var kbDir = ctrlAlt ? (Down(0xDD) ? +1 : Down(0xDB) ? -1 : 0) : 0;   // ] = +1, [ = -1
+            var steps = _keyboardHold.Update(kbDir, DateTime.UtcNow);
+            for (var i = 0; i < steps; i++) Cycle(kbDir < 0 ? CycleAction.Prev : CycleAction.Next);
+
+            if (ctrlAlt && DateTime.UtcNow >= _nextCycleAt)
             {
-                fired = false;
-                for (var n = 1; n <= 9; n++)
+                var fired = false;
+                if (Down(0x30)) { Cycle(CycleAction.Clear); fired = true; }   // 0 = clear
+                else for (var n = 1; n <= 9; n++)
                     if (Down(0x30 + n)) { CycleToIndex(n); fired = true; break; }   // 1..9
+                if (fired) _nextCycleAt = DateTime.UtcNow.AddMilliseconds(250);
             }
-            if (fired) _nextCycleAt = DateTime.UtcNow.AddMilliseconds(250);
         }
         // Nav-menu toggle (keyboard): Ctrl+Alt+M flips the top-left nav-menu dropdown. Foreground-gated +
         // debounced. Reads keys only — sends nothing to the game.
@@ -1405,15 +1413,14 @@ public sealed class RadarApp : IDisposable
         // Quick-Target Cycler + nav-menu chord (controller): L3 = prev, R3 = next, L3+R3 = toggle the nav
         // menu. Poll every frame to keep edge state fresh; only ACT while PoE2 is foreground. The chord
         // suppresses the single-stick cycle so opening the menu never also flips the active target.
-        // Read-only XInput — sends nothing to the game.
         if (_settings.EnableControllerCycle)
         {
-            var input = _controllerCycler.Poll();
-            if (_gameHwnd != 0 && GetForegroundWindow() == _gameHwnd)
-            {
-                if (input.MenuToggle) _navMenuExpanded = !_navMenuExpanded;
-                else if (input.Cycle != 0) Cycle(input.Cycle < 0 ? CycleAction.Prev : CycleAction.Next);
-            }
+            var foreground = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
+            var (input, heldDir) = _controllerCycler.Poll();   // always poll to keep edge state fresh
+            if (foreground && input.MenuToggle) _navMenuExpanded = !_navMenuExpanded;
+            var steps = _controllerHold.Update(foreground ? heldDir : 0, DateTime.UtcNow);
+            if (foreground) for (var i = 0; i < steps; i++)
+                Cycle(heldDir < 0 ? CycleAction.Prev : CycleAction.Next);
         }
     }
 
