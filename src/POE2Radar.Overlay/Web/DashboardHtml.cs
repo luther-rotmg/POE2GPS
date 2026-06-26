@@ -538,6 +538,11 @@ internal static class DashboardHtml
       <section class="view" data-view="settings" hidden>
         <div class="panel-grid">
           <div class="card">
+            <h3>Target cycling</h3>
+            <div class="row"><div class="rl">Intelligent target cycling<small>On = smart priority/distance order &mdash; Off (default) = cycle follows the radar menu (nav dropdown order)</small></div>
+              <label class="sw"><input type="checkbox" data-set="intelligentTargetCycling"><span class="track"></span><span class="knob"></span></label></div>
+          </div>
+          <div class="card">
             <h3>Radar Display</h3>
             <div class="row"><div class="rl">Show terrain<small>walkable-terrain bitmap</small></div>
               <label class="sw"><input type="checkbox" data-set="showTerrain"><span class="track"></span><span class="knob"></span></label></div>
@@ -561,8 +566,6 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="checkForUpdates"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Gear scorer (experimental)<small>0&ndash;100 god-roll scoring of your inventory by stat weights — see the Gear &#9733; tab. Reads inventory only while on</small></div>
               <label class="sw"><input type="checkbox" data-set="enableGearScorer"><span class="track"></span><span class="knob"></span></label></div>
-            <div class="row"><div class="rl">Intelligent target cycling<small>On = smart priority/distance order &mdash; Off (default) = cycle follows the radar menu (nav dropdown order)</small></div>
-              <label class="sw"><input type="checkbox" data-set="intelligentTargetCycling"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Target hotkeys<small>Ctrl+Alt+ ] next / [ prev / 1-9 slot / 0 clear &mdash; switch the active radar target</small></div>
               <label class="sw"><input type="checkbox" data-set="enableTargetHotkeys"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Controller target cycle<small>L3 = previous target, R3 = next (combat-dead buttons in PoE2)</small></div>
