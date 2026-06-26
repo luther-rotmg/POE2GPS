@@ -654,6 +654,7 @@ public sealed class ApiServer : IDisposable
         enableGearScorer = _settings.EnableGearScorer,
         enableTargetHotkeys = _settings.EnableTargetHotkeys,
         enableControllerCycle = _settings.EnableControllerCycle,
+        intelligentTargetCycling = _settings.IntelligentTargetCycling,
         showMonolithPanel = _settings.Monoliths.ShowPanel,
         fpsCap = _settings.FpsCap,
         hpBarNormal = _settings.HpBarNormal,
@@ -711,6 +712,7 @@ public sealed class ApiServer : IDisposable
                 case "enableGearScorer" when TryBool(p.Value, out var b): _settings.EnableGearScorer = b; applied.Add(p.Name); break;
                 case "enableTargetHotkeys" when TryBool(p.Value, out var b): _settings.EnableTargetHotkeys = b; applied.Add(p.Name); break;
                 case "enableControllerCycle" when TryBool(p.Value, out var b): _settings.EnableControllerCycle = b; applied.Add(p.Name); break;
+                case "intelligentTargetCycling" when TryBool(p.Value, out var b): _settings.IntelligentTargetCycling = b; applied.Add(p.Name); break;
                 case "showMonolithPanel" when TryBool(p.Value, out var b): _settings.Monoliths.ShowPanel = b; applied.Add(p.Name); break;
                 case "contributeUrl" when TryString(p.Value, out var s): _settings.ContributeUrl = s.Trim(); applied.Add(p.Name); break;
                 case "fpsCap" when TryInt(p.Value, out var n): _settings.FpsCap = Math.Clamp(n, 15, 360); applied.Add(p.Name); break;
