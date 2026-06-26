@@ -14,6 +14,7 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?logo=discord&logoColor=white)](https://discord.gg/32qdzWRja3)
 [![Controller: fully supported](https://img.shields.io/badge/🎮%20controller-fully%20supported-8A2BE2)](#-full-controller-support--no-keyboard-needed)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-support%20the%20dev-FF5E5B?logo=kofi&logoColor=white)](https://ko-fi.com/lutherrotmg)
 <br>
 ![Input: read-only](https://img.shields.io/badge/input-read--only-2ea043)
 ![No process writes](https://img.shields.io/badge/process-never%20written-2ea043)
@@ -176,6 +177,14 @@ PoE2 offsets drift with patches — validated values live in `Game/Poe2Offsets.c
 ## 🧪 Roadmap
 
 The **Objective Director** is the headline work-in-progress. Next up: deep detection/cataloging of every relevant POI (seasonal events, passive-point upgrades, free skill/support gems), richer priority tiers, and — the dream — quest-aware cross-zone guidance that reads your quest log and points you to the right zone.
+
+## 💜 Support the dev
+
+POE2GPS is **free and open-source, and always will be** — no paywalls, no "pro" tier, nothing locked behind a donation. But keeping the offsets patched every PoE2 update, shipping features, and answering issues is real time. If it's saved you some squinting at the minimap, a tip keeps the lights on. 🙏
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/lutherrotmg)
+
+Totally optional — a ⭐ on the repo and sharing it with your party help just as much.
 
 ## 🙏 Credits
 
