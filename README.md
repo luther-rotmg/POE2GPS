@@ -126,6 +126,10 @@ The **Objective Director** is the headline work-in-progress. Next up: deep detec
 
 Forked from **[Sikaka/POE2Radar](https://github.com/Sikaka/POE2Radar)** (MIT); process-randomization adapted from **[NattKh/POE2Radar](https://github.com/NattKh/POE2Radar)** (MIT). Memory-layout research draws on **GameHelper2** (not redistributed; only re-validated offsets recorded). See [NOTICE](NOTICE).
 
+### ⭐ Special thanks
+
+Huge thanks to **torx** and **Kaonashi** for their reverse-engineering legwork, in-game testing, and tireless memory-capture work on the Expedition rumours research — going dump after dump to help crack the game's layout. This project runs on exactly that kind of community effort. 🙌
+
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE).
