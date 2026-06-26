@@ -42,6 +42,13 @@ public sealed class RadarSettings
     // Quick-Target Cycler controller support: L3 = prev target, R3 = next (both combat-dead in PoE2).
     // Read-only XInput poll. On by default; harmless when no controller is connected.
     public bool EnableControllerCycle { get; set; } = true;
+    // Quick-Target Cycler ORDER: false (default) = cycle follows the radar-menu order (the nav dropdown:
+    // landmarks/tiles, then nearest entities). true = priority-then-distance "intelligent" ranking.
+    public bool IntelligentTargetCycling { get; set; } = false;
+    // Hold-to-fast-cycle timing (controller L3/R3 + keyboard Ctrl+Alt+ [ / ]): tap = one step; hold past
+    // CycleHoldDelayMs auto-repeats one step every CycleHoldIntervalMs.
+    public int CycleHoldDelayMs { get; set; } = 400;
+    public int CycleHoldIntervalMs { get; set; } = 150;
 
     // ── Overlay render/present rate (Hz). The overlay redraws + UpdateLayeredWindow-blits at this
     //    rate; lower = less CPU/GPU tax on the game (the blit cost is proportional to resolution).

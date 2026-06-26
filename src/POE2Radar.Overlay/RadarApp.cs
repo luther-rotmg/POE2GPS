@@ -1148,7 +1148,9 @@ public sealed class RadarApp : IDisposable
         _navTargets = BuildNavTargets(player);
         // Publish the priority-then-distance ranked target list for the Quick-Target Cycler (read-only;
         // computed world-side where the catalog + entities live). Only when a cycler input is enabled.
-        _rankedTargets = (_settings.EnableTargetHotkeys || _settings.EnableControllerCycle)
+        // Priority/distance ranking is only needed for INTELLIGENT cycling; default cycling uses _navTargets.
+        _rankedTargets = (_settings.IntelligentTargetCycling
+                          && (_settings.EnableTargetHotkeys || _settings.EnableControllerCycle))
             ? BuildRankedTargets(player) : System.Array.Empty<RankedTarget>();
 
         // On a zone change: drop the (now-stale) selection, then apply the persistent
@@ -1527,6 +1529,18 @@ public sealed class RadarApp : IDisposable
         return targets;
     }
 
+    /// <summary>The id-ordered list the cycler steps through: the radar-MENU order (_navTargets) by
+    /// default, or the priority/distance ranking when IntelligentTargetCycling is on. Render thread;
+    /// reads the volatile published lists.</summary>
+    private IReadOnlyList<RankedTarget> ActiveCycleList()
+    {
+        if (_settings.IntelligentTargetCycling) return _rankedTargets;
+        var nav = _navTargets;
+        var list = new List<RankedTarget>(nav.Count);
+        foreach (var t in nav) list.Add(new RankedTarget(t.Id, t.Name, ""));
+        return list;
+    }
+
     /// <summary>Rank the current nav targets by catalog priority (desc) then distance (asc): reuse the
     /// Director's Rank for covered content, then append uncatalogued targets by distance. World-thread.</summary>
     private IReadOnlyList<RankedTarget> BuildRankedTargets(NumVec2 player)
@@ -1546,7 +1560,7 @@ public sealed class RadarApp : IDisposable
     /// <summary>Apply a cycle action (render thread): pick the new active id and route to it (single-active).</summary>
     private void Cycle(CycleAction action)
     {
-        var ranked = _rankedTargets;
+        var ranked = ActiveCycleList();
         var ids = new List<string>(ranked.Count);
         foreach (var r in ranked) ids.Add(r.Id);
         var next = action switch
@@ -1561,7 +1575,7 @@ public sealed class RadarApp : IDisposable
     /// <summary>Jump to 1-based slot N (render thread).</summary>
     private void CycleToIndex(int oneBased)
     {
-        var ranked = _rankedTargets;
+        var ranked = ActiveCycleList();
         var ids = new List<string>(ranked.Count);
         foreach (var r in ranked) ids.Add(r.Id);
         ApplyActive(TargetCycler.AtIndex(ids, oneBased), ranked);
