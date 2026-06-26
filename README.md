@@ -32,6 +32,9 @@
 
 You attach it, it reads the game's map out of memory, and it **draws a radar + a route line** to wherever you're headed. No more squinting at the minimap or alt-tabbing to a wiki — the path is on your screen. And because it's a focused, community-safe fork of [Sikaka/POE2Radar](https://github.com/Sikaka/POE2Radar), it deliberately strips everything that could get you flagged.
 
+> ### ⭐ Enjoying POE2GPS? **Smash the Star button at the top of the page.**
+> It's the single biggest way to help the project get found and keep getting built — one click, costs nothing, and genuinely means a lot. 🙏
+
 ## 🛡️ What it does — and never does
 
 POE2GPS does three things **never** — and an automated compliance gate *fails the build* if any of them sneak back in:
