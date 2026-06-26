@@ -1,3 +1,5 @@
+using POE2Radar.Core.Health;
+
 namespace POE2Radar.Core.Game;
 
 /// <summary>
@@ -13,7 +15,7 @@ namespace POE2Radar.Core.Game;
 public sealed class Poe2Live
 {
     private readonly MemoryReader _reader;
-    private readonly nint _gameStateSlot;
+    private nint _gameStateSlot;   // (was readonly) — rebindable for lazy/late resolution + re-attach
 
     // Per-entity frozen data, keyed by entity object address (stable within an area).
     private readonly Dictionary<nint, nint> _renderAddr = new();   // entity → Render component
@@ -51,6 +53,32 @@ public sealed class Poe2Live
     {
         _reader = reader;
         _gameStateSlot = gameStateSlot;
+    }
+
+    /// <summary>The GameState slot this reader is currently bound to (0 = not yet resolved).</summary>
+    public nint Slot => _gameStateSlot;
+
+    /// <summary>Late-bind (or re-bind, on re-attach) the GameState slot. Clears every per-entity/per-area
+    /// cache, whose keys (entity / AreaInstance addresses) are meaningless under a new slot or process.
+    /// Call only from the thread that owns this Poe2Live instance.</summary>
+    public void Rebind(nint gameStateSlot)
+    {
+        _gameStateSlot = gameStateSlot;
+        _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear();
+        _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _mods.Clear();
+        _itemIdent.Clear(); _idAt.Clear();
+        _entCacheKey = 0;
+        _league = ""; _leagueFor = -1;
+        _areaCode = ""; _areaCodeFor = -1;
+        _plPlayer = 0; _plPlayerFor = 0;
+        // Additional per-entity/per-area caches not in the brief's explicit list:
+        _plLife = 0; _plLifeFor = 0;
+        _vitalOffsetsResolved = false;
+        _healthOff = Poe2.Life.Health; _manaOff = Poe2.Life.Mana; _esOff = Poe2.Life.EnergyShield;
+        _esOffKnown = true;
+        _landmarksKey = -1; _landmarks = null;
+        _tilePathsKey = -1; _tilePaths = null;
+        _mapCacheKey = -1; _mapEls.Clear(); _everHidden.Clear(); _everVisible.Clear();
     }
 
     public enum EntityCategory { Player, Monster, Npc, Chest, Transition, Object, Other }
@@ -112,14 +140,19 @@ public sealed class Poe2Live
 
     public sealed record TerrainData(byte[] Walkable, int Width, int Height);
 
-    /// <summary>Resolve the in-game chain. Returns false during loading / character select.</summary>
-    public bool TryResolve(out nint inGameState, out nint areaInstance, out nint localPlayer)
+    /// <summary>Graduated resolve: report how far the GameState → InGameState → AreaInstance → LocalPlayer
+    /// chain got this tick, plus the patch-stable low fields, so the health monitor can tell "in a zone but
+    /// can't read the player" (offsets broke) from "at a menu / loading". Returns the resolved handles when
+    /// it reaches <see cref="ResolveStage.Full"/>; <paramref name="areaHash"/>/<paramref name="areaLevel"/>
+    /// are valid whenever the stage is <see cref="ResolveStage.InZone"/> or <see cref="ResolveStage.Full"/>.</summary>
+    public ResolveStage Probe(out nint inGameState, out nint areaInstance, out nint localPlayer,
+                              out uint areaHash, out int areaLevel)
     {
-        inGameState = areaInstance = localPlayer = 0;
+        inGameState = areaInstance = localPlayer = 0; areaHash = 0; areaLevel = 0;
         var gameState = Ptr(_gameStateSlot);
-        if (gameState == 0) return false;
+        if (gameState == 0) return ResolveStage.None;
 
-        // InGameState = first element of the CurrentStatePtr StdVector; fall back to States[].
+        var best = ResolveStage.GameState;
         var candidates = new List<nint>(13);
         var vecFirst = Ptr(gameState + Poe2.GameState.CurrentStatePtr);
         if (vecFirst != 0) candidates.Add(Ptr(vecFirst));
@@ -129,14 +162,45 @@ public sealed class Poe2Live
         foreach (var igs in candidates)
         {
             if (igs == 0) continue;
+            if (best < ResolveStage.InGameState) best = ResolveStage.InGameState;
             var ai = Ptr(igs + Poe2.InGameState.AreaInstanceData);
             if (ai == 0) continue;
+
+            // S4 low fields: direct scalar reads (no sub-pointer) — patch-stable, valid early in zone load.
+            _reader.TryReadStruct<uint>(ai + Poe2.AreaInstance.CurrentAreaHash, out var h);
+            _reader.TryReadStruct<int>(ai + Poe2.AreaInstance.CurrentAreaLevel, out var lvl);
+            var thisInZone = h != 0 && lvl >= 0 && lvl <= 100;
+
             var lp = Ptr(ai + Poe2.AreaInstance.LocalPlayer);
-            if (lp == 0) continue;
-            if (!ReadMetadata(lp).StartsWith("Metadata/", StringComparison.Ordinal)) continue;
-            inGameState = igs; areaInstance = ai; localPlayer = lp;
-            return true;
+            if (lp != 0 && ReadMetadata(lp).StartsWith("Metadata/", StringComparison.Ordinal))
+            {
+                inGameState = igs; areaInstance = ai; localPlayer = lp; areaHash = h; areaLevel = lvl;
+                return ResolveStage.Full;   // best possible — take the first fully-valid candidate
+            }
+            if (thisInZone)
+            {
+                if (best < ResolveStage.InZone)
+                {
+                    best = ResolveStage.InZone;
+                    inGameState = igs; areaInstance = ai; areaHash = h; areaLevel = lvl;
+                }
+            }
+            else if (best < ResolveStage.AreaInstance)
+            {
+                best = ResolveStage.AreaInstance;
+                inGameState = igs; areaInstance = ai;
+            }
         }
+        return best;
+    }
+
+    /// <summary>Resolve the in-game chain. Returns false during loading / character select / a broken patch.
+    /// (Now a thin wrapper over <see cref="Probe"/> — true iff the chain fully resolved.)</summary>
+    public bool TryResolve(out nint inGameState, out nint areaInstance, out nint localPlayer)
+    {
+        var stage = Probe(out inGameState, out areaInstance, out localPlayer, out _, out _);
+        if (stage == ResolveStage.Full) return true;
+        inGameState = areaInstance = localPlayer = 0;
         return false;
     }
 
