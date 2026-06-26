@@ -12,6 +12,7 @@
 ![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
 [![Discord](https://img.shields.io/badge/Discord-join%20us-5865F2?logo=discord&logoColor=white)](https://discord.gg/32qdzWRja3)
+[![Controller: fully supported](https://img.shields.io/badge/🎮%20controller-fully%20supported-8A2BE2)](#-full-controller-support--no-keyboard-needed)
 <br>
 ![Input: read-only](https://img.shields.io/badge/input-read--only-2ea043)
 ![No process writes](https://img.shields.io/badge/process-never%20written-2ea043)
@@ -41,12 +42,25 @@ POE2GPS does three things **never** — and an automated compliance gate *fails 
 
 > **Honest note on risk.** Reading another process's memory is a gray area — GGG has long been agnostic toward passive read-only overlays, but it's *tolerated, not blessed*. POE2GPS removes the categories GGG explicitly prohibits (input automation, process modification) to sit in the lowest-risk bucket. It's a personal/educational tool; you're responsible for how you use it. SmartScreen/AV may warn on an unsigned memory-reading exe — expected.
 
+## 🎮 Full controller support — no keyboard needed
+
+**Run the entire radar from your controller.** POE2GPS maps navigation onto the two stick-clicks that do **nothing** in PoE2 combat — so you steer the GPS without ever lifting your thumbs off the sticks:
+
+| Button | What it does |
+|---|---|
+| **R3** *(click right stick)* | **next** target — step *down* the radar menu |
+| **L3** *(click left stick)* | **previous** target — step *up* the menu |
+| **hold R3 / L3** | **fast-cycle** — rip through the whole list |
+| **L3 + R3** *(together)* | open / close the nav-menu list |
+
+Pick your next objective, fast-cycle to the boss across the zone, pop the menu open — **all from the pad.** Built for **couch & handheld** play (Steam Deck, big-screen, lounge setups). And like everything here it's **100% read-only**: the controller is *read*, never driven — POE2GPS sends nothing to the game, ever.
+
 ## 🗺️ Features
 
 - 🛰️ **Entity radar** — enemies, NPCs, chests, transitions, players, and POIs; optional world-space HP bars; dangerous rare/magic mods flagged.
 - 🧱 **Terrain + map overlay** — the walkable-terrain mask and entity dots, projected onto the in-game map.
 - 📍 **Tile landmarks** — boss arenas, transitions, reward rooms, surfaced the moment you enter a zone, with community-curated names.
-- 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Cycle** the active target hands-free — keyboard (`Ctrl+Alt+]`/`[`) or controller (**R3 / L3**). **Draw-only — never sends input to the game.**
+- 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Cycle** the active target hands-free — keyboard (`Ctrl+Alt+]`/`[`) or **[fully from your controller](#-full-controller-support--no-keyboard-needed)** (R3/L3 to step, hold to fast-cycle). **Draw-only — never sends input to the game.**
 - 🌌 **Atlas overlay + route planning** — labels nodes by content, off-screen arrows to tracked maps, shortest-hop auto-routes.
 - 💎 **Dynasty-support maps** *(opt-in)* — highlight the endgame maps whose Anomaly bosses drop Lineage/Dynasty support gems (Sealed Vault, Sacred Reservoir, Derelict Mansion, The Jade Isles), each labeled with the gems it drops — full Citadel-style ring + arrow + track. Toggle in Settings; a dashboard reference card lists every map · boss · gems.
 - 🏷️ **Reward/name labels** — names of ground drops and Ritual / Runeforge / monolith rewards (no economy values).
@@ -66,8 +80,9 @@ Grab the latest **`POE2GPS-vX.Y.Z-win-x64.zip`** from the [**Releases**](https:/
 | Key | Action |
 |---|---|
 | **F12** | open the web dashboard |
-| **L3 + R3** / **Ctrl + Alt + M** | toggle the top-left nav-menu list |
-| **Ctrl + Alt + ] / [** *(or **R3 / L3**)* | cycle active nav target next / prev |
+| 🎮 **L3 + R3** / **Ctrl + Alt + M** | toggle the top-left nav-menu list |
+| 🎮 **R3 / L3** *(or **Ctrl + Alt + ] / [**)* | cycle active nav target next / prev |
+| 🎮 **hold R3 / L3** | **fast-cycle** through targets (auto-repeat) |
 | **Ctrl + Alt + 1–9 / 0** | jump to nav target slot / clear |
 | **F6 / F7** | route to nearest landmark/POI / clear routes |
 | **F10** | (Atlas open) inspect hovered tile, set route start/end |
