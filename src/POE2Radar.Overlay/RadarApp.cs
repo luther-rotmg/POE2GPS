@@ -196,7 +196,6 @@ public sealed class RadarApp : IDisposable
     private volatile nint _resolvedSlot;     // 0 until an in-zone slot is validated this attach
     private volatile bool _attached = true;  // PoE2 process is alive
 #pragma warning disable CS0414 // assigned but never read — consumed by the health monitor (later task)
-    private volatile bool _slotResolved;     // an in-zone slot has been published this attach
     private volatile bool _aobScanned;       // the resolver completed at least one scan
 #pragma warning restore CS0414
     private volatile int  _aobCandidates;    // candidate count from the last scan (0 = pattern matched nothing)
@@ -721,7 +720,6 @@ public sealed class RadarApp : IDisposable
                 if (slot != 0)
                 {
                     _resolvedSlot = slot;
-                    _slotResolved = true;
                     ConsoleTheme.Ok($"GameState slot resolved: 0x{slot:X16}");
                 }
                 else
