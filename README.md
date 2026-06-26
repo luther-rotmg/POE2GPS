@@ -69,7 +69,14 @@ icacls "C:\Games\POE2GPS" /deny "PoEPlayer:(OI)(CI)F"
   C:\Windows\System32\runas.exe /user:PoEPlayer /savecred "C:\Path\To\PathOfExile.exe"
   ```
   `/savecred` caches the password after the **first** launch so it won't ask again. Prefer to type it every time? Just drop `/savecred`.
-- **Steam** — Steam itself must run as the limited user (the game inherits Steam's account): Shift + Right-click `Steam.exe` → **Run as different user** → enter `PoEPlayer`, then launch PoE2 from that Steam window. *(The standalone client is far simpler to isolate than Steam.)*
+- **Steam** — Steam runs only **one instance per PC**, so you must **fully exit your own Steam first** (right-click the tray icon → **Exit**), then start it as the limited user with a shortcut. Set the shortcut **Target** to the line matching your Steam drive:
+  ```
+  C:\Windows\System32\runas.exe /user:PoEPlayer /savecred "C:\Program Files (x86)\Steam\steam.exe"
+  ```
+  ```
+  C:\Windows\System32\runas.exe /user:PoEPlayer /savecred "D:\Steam\steam.exe"
+  ```
+  The **first** run does two one-time things: Windows asks for `PoEPlayer`'s password (`/savecred` remembers it afterward), and **Steam makes you log in again** — it's a brand-new Steam profile under the limited user (your Steam password + Steam Guard; tick "remember me" so it sticks). After that it's **one click**: the shortcut opens Steam as `PoEPlayer`, and you launch PoE2 from there. *(Heads-up: only the POE2GPS folder gets the Deny — `PoEPlayer` still needs to read the Steam/game files, which it can by default. If Steam sits in `Program Files` and won't update as a standard user, install it to a plain folder like `D:\Steam`, or grant `PoEPlayer` **Modify** on the Steam folder. The standalone client avoids all of this.)*
 
 **4. Run POE2GPS as your normal account** — `Overlay.exe` **as Administrator**, exactly as [Download](#-download-no-build-required) says. Admin reads the game fine; the game can't read back.
 
