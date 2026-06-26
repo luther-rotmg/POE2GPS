@@ -2,6 +2,24 @@
 
 Single source of truth to resume the **Expedition "Island Rumours"** feature. Read this first.
 
+## ⏸ STATUS: SHELVED (2026-06-25, Ryan's call)
+
+Parked after the v4 discovery dumps. **What's CONFIRMED:** the offered rumour names are plain UTF-16
+text on **depth-4 slot widgets** in the panel; v4's wide net reached some of them (e.g. "Wild roaming
+free" reliably at a slot's `body→ptr→+0xF0`). **Why shelved:** across 7 v4 dumps the bounded net captured
+each screen's offered names only **~1 in 3 times**, scattered at inconsistent depths/offsets, often clipped
+by the 0x100 sample window or masked by font runs — and the dump format doesn't record which body pointer
+feeds each name. So **no dependable all-names read recipe** came out of offline captures, and more dumps
+wouldn't change that (same gaps every time). It's a QoL extra that cost far more than its worth; the real
+win this session was the v0.5.1 0.5.4 offset hotfix.
+
+**To resume (only if a faster way in appears):** do NOT mail more dumps. Either (a) **live interactive RE**
+— someone at an Island Rumours screen while I iterate a Research probe in real time (fast convergence), or
+(b) build a best-effort reader on the depth-4-slot pattern and test it live in the overlay (fast yes/no,
+low-med confidence). Dumps are saved at `C:\Users\minec\rumourdumps2\v4-dump1..7-*.txt` + the `xref.py`
+cross-reference. Tier table reconciliation (the user's current Dracorath sheet vs our embedded one) is a
+separate, still-valid Task 1 correction if resumed.
+
 ## What the feature is
 
 Read the PoE2 Expedition "Island Rumours" the game is offering, rank them by a desirability
