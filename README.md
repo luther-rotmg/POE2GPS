@@ -41,7 +41,39 @@ POE2GPS does three things **never** — and an automated compliance gate *fails 
 | Writes to / injects into the game (no `WriteProcessMemory`, no byte-patching) | Opens the game **read-only** (`PROCESS_VM_READ`) |
 | Phones home (no poe.ninja pricing, no telemetry) | Everything is **local** |
 
-> **Honest note on risk.** Reading another process's memory is a gray area — GGG has long been agnostic toward passive read-only overlays, but it's *tolerated, not blessed*. POE2GPS removes the categories GGG explicitly prohibits (input automation, process modification) to sit in the lowest-risk bucket. It's a personal/educational tool; you're responsible for how you use it. SmartScreen/AV may warn on an unsigned memory-reading exe — expected.
+> **Honest note on risk.** Reading another process's memory is a gray area — GGG has long been agnostic toward passive read-only overlays, but it's *tolerated, not blessed*. POE2GPS removes the categories GGG explicitly prohibits (input automation, process modification) to sit in the lowest-risk bucket. It's a personal/educational tool; you're responsible for how you use it. SmartScreen/AV may warn on an unsigned memory-reading exe — expected. **For the strongest setup, run PoE2 as a *limited Windows user* that's denied access to the POE2GPS folder — [step-by-step below](#-recommended-the-limited-user-setup).**
+
+## 🔒 Recommended: the limited-user setup
+
+The single best thing you can do for safety: run **PoE2 under a separate, limited (Standard) Windows user** that is **denied all access to the POE2GPS folder**. The game — and anything running inside it — then *literally cannot read your overlay's files or memory*, while POE2GPS (running as your normal admin account) can still read the game. Pure Windows account isolation; it touches nothing in the game.
+
+> **Why it works:** a process can only read what its user account is allowed to. The game runs as a low-privilege account that's (a) blocked from the tool folder by an explicit Deny, and (b) too low-privilege to read your admin-level overlay's memory. Your overlay runs as *you* (admin), which can still read the game. A one-way mirror.
+
+**One-time setup** — open **Command Prompt as Administrator**, then:
+
+**1. Create a limited user for the game** (it's a Standard, non-admin user by default — choose any password, you'll use it to launch):
+```bat
+net user PoEPlayer * /add
+```
+The `*` makes it prompt for a password (typed hidden, twice). *GUI alternative: Settings → Accounts → Other users → Add account → "I don't have this person's sign-in info" → "Add a user without a Microsoft account".*
+
+**2. Deny that user every permission on the POE2GPS folder** (use your real unzip path):
+```bat
+icacls "C:\Games\POE2GPS" /deny "PoEPlayer:(OI)(CI)F"
+```
+`(OI)(CI)` applies it to all files + subfolders, `F` is Full control, and `/deny` is an **explicit block that overrides any inherited "allow."** Verify it stuck: run `icacls "C:\Games\POE2GPS"` and look for a `(DENY)` line for `PoEPlayer`.
+
+**3. Launch PoE2 as that limited user:**
+- **Standalone client** — make a shortcut whose **Target** is (the full `runas.exe` path is the reliable form inside a shortcut):
+  ```
+  C:\Windows\System32\runas.exe /user:PoEPlayer /savecred "C:\Path\To\PathOfExile.exe"
+  ```
+  `/savecred` caches the password after the **first** launch so it won't ask again. Prefer to type it every time? Just drop `/savecred`.
+- **Steam** — Steam itself must run as the limited user (the game inherits Steam's account): Shift + Right-click `Steam.exe` → **Run as different user** → enter `PoEPlayer`, then launch PoE2 from that Steam window. *(The standalone client is far simpler to isolate than Steam.)*
+
+**4. Run POE2GPS as your normal account** — `Overlay.exe` **as Administrator**, exactly as [Download](#-download-no-build-required) says. Admin reads the game fine; the game can't read back.
+
+Pair this with POE2GPS's built-in stealth (random process name, hidden from screen capture) and you're in the lowest-risk bucket a read-only overlay can sit in. *(Summarized + syntax-verified from the community [Run PoE as Limited User](https://www.ownedcore.com/forums/mmo/path-of-exile/poe-bots-programs/676345-run-poe-limited-user.html) guide.)*
 
 ## 🎮 Full controller support — no keyboard needed
 
