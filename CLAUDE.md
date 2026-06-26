@@ -18,7 +18,9 @@ in-game-gated, per-action cooldowns, master kill-switch hotkey (F8). Keep automa
 clearly gated — a personal QoL tool, not a headless bot.
 
 **Offset discovery lives in Research.** The overlay just reads; reverse-engineering/probes live in
-`POE2Radar.Research`. When a patch breaks reads, run the Research probes, re-validate, commit.
+`POE2Radar.Research`. When a patch breaks reads, run the Research probes, re-validate, commit — and
+**bump the `supports PoE2 X.Y.Z` badge in `README.md`** to the patch you just validated, so the
+at-a-glance currency signal stays accurate (if it lags the live patch, users see we're behind).
 
 **Three-pillar layout.** Exactly three projects:
 - `src/POE2Radar.Core` — memory plumbing + the PoE2 offset table + the live read layer. Read-side.

@@ -8,6 +8,7 @@
 
 [![CI](https://github.com/luther-rotmg/POE2GPS/actions/workflows/ci.yml/badge.svg)](https://github.com/luther-rotmg/POE2GPS/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/luther-rotmg/POE2GPS?sort=semver&label=release)](https://github.com/luther-rotmg/POE2GPS/releases)
+![Supports PoE2 patch 0.5.4](https://img.shields.io/badge/supports%20PoE2-0.5.4-2ea043)
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4)
 ![Windows x64](https://img.shields.io/badge/Windows-x64-0078D6)
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue)
