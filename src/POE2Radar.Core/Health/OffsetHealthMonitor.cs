@@ -73,6 +73,7 @@ public sealed class OffsetHealthMonitor
         {
             _s4Stable = 0; _okEmptyTicks = 0;
             _loadingSince = null; _notInGameSince = null; _searchingSince = null;
+            _everResolved = false;  // process exited → fresh session: clear the Ok latch too
             return new HealthVerdict(HealthState.Waiting, "Path of Exile 2 is not running.");
         }
 

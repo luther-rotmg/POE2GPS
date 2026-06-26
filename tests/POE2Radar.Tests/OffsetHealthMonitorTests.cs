@@ -19,7 +19,9 @@ public class OffsetHealthMonitorTests
 
     [Fact] public void Not_attached_is_Waiting()
     {
-        Assert.Equal(HealthState.Waiting, New().Evaluate(P(false, false, ResolveStage.None), At(0)).State);
+        var v = New().Evaluate(P(false, false, ResolveStage.None), At(0));
+        Assert.Equal(HealthState.Waiting, v.State);
+        Assert.NotNull(v.Message);  // Waiting intentionally carries a dashboard message ("…is not running.")
     }
 
     [Fact] public void Attached_no_slot_is_Searching_connecting()
@@ -71,6 +73,9 @@ public class OffsetHealthMonitorTests
 
     [Fact] public void Single_InZone_tick_not_trusted_stays_Searching()
     {
+        // Relies on _everResolved == false: no Full tick precedes this, so a single InZone tick
+        // falls through to Searching (not NotInGame). A future edit adding a Full tick first would
+        // silently change the intent.
         var v = New().Evaluate(P(true, true, ResolveStage.InZone), At(0));
         Assert.Equal(HealthState.Searching, v.State);
     }
@@ -111,6 +116,7 @@ public class OffsetHealthMonitorTests
         var v = m.Evaluate(P(true, true, ResolveStage.InGameState), At(302));      // > 5 min
         Assert.Equal(HealthState.NotInGame, v.State);
         Assert.NotNull(v.Message);
+        Assert.Contains("offline", v.Message);  // pin the specific offline-warning branch
     }
 
     [Fact] public void Broken_message_is_update_aware_when_update_available()
