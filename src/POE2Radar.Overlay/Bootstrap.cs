@@ -1,39 +1,37 @@
 using POE2Radar.Core;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Health;
 
 namespace POE2Radar.Overlay;
 
 /// <summary>
-/// Resolves the PoE2 GameState global-pointer slot via the "Game States" AOB pattern, validated
-/// by confirming the full chain resolves to a real local player. Returns the slot address (the
-/// thing the RIP-relative instruction points at); deref it each tick to get the live GameState.
+/// Scans for the PoE2 GameState global-pointer slot via the "Game States" AOB pattern, accepting the slot
+/// whose chain resolves at least to a real in-zone AreaInstance (the patch-stable low fields). Stateless +
+/// re-runnable — the lazy SlotResolver in RadarApp calls it on a cadence until it returns non-zero.
 /// </summary>
 internal static class Bootstrap
 {
-    public static nint ResolveGameStateSlot(ProcessHandle process, MemoryReader reader)
+    /// <summary>Scan + validate. Returns the best slot whose chain reaches at least
+    /// <see cref="ResolveStage.InZone"/> (preferring <see cref="ResolveStage.Full"/>), else 0. Sets
+    /// <paramref name="candidateCount"/> to the raw number of AOB hits (0 = the pattern matched nothing).</summary>
+    public static nint ScanForSlot(ProcessHandle process, MemoryReader reader, out int candidateCount)
     {
-        if (AobPatterns.GameStateRefs.Length == 0)
-        {
-            Console.Error.WriteLine("No GameState AOB patterns committed.");
-            return 0;
-        }
+        candidateCount = 0;
+        nint bestSlot = 0;
+        var bestStage = ResolveStage.None;
+        var probe = new Poe2Live(reader, 0);
 
-        Console.WriteLine("Scanning for GameState via 'Game States' AOB pattern...");
         foreach (var pattern in AobPatterns.GameStateRefs)
         {
             foreach (var slot in AobScanner.ScanForResolvedAddresses(process, reader, pattern).Distinct())
             {
-                var live = new Poe2Live(reader, slot);
-                if (live.TryResolve(out _, out _, out var localPlayer))
-                {
-                    Console.WriteLine($"  GameState slot: 0x{slot:X16}  (LocalPlayer 0x{localPlayer:X16})");
-                    return slot;
-                }
+                candidateCount++;
+                probe.Rebind(slot);
+                var stage = probe.Probe(out _, out _, out _, out _, out _);
+                if (stage > bestStage) { bestStage = stage; bestSlot = slot; }
+                if (stage == ResolveStage.Full) return slot;   // best possible — stop early
             }
         }
-
-        Console.Error.WriteLine("Pattern matched but no slot resolved to an in-game chain.");
-        Console.Error.WriteLine("Make sure you're loaded into a zone (not at login / character select).");
-        return 0;
+        return bestStage >= ResolveStage.InZone ? bestSlot : 0;
     }
 }

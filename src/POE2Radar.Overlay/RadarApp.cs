@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using NumVec2 = System.Numerics.Vector2;
 using POE2Radar.Core;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Health;
 using POE2Radar.Core.Navigation;
 using POE2Radar.Core.Gear;
 using POE2Radar.Core.Input;
@@ -188,6 +189,18 @@ public sealed class RadarApp : IDisposable
     private nint _gameHwnd;
     private volatile bool _shutdown;
 
+    // ── Lazy GameState-slot resolver (Task: patch-resilience). The overlay starts before the slot is
+    // known; this background thread scans until a chain validates, then publishes the slot for the three
+    // reader threads to rebind. Volatile so the world/render/API threads + monitor see fresh values. ──
+    private Thread? _resolverThread;
+    private volatile nint _resolvedSlot;     // 0 until an in-zone slot is validated this attach
+    private volatile bool _attached = true;  // PoE2 process is alive
+#pragma warning disable CS0414 // assigned but never read — consumed by the health monitor (later task)
+    private volatile bool _slotResolved;     // an in-zone slot has been published this attach
+    private volatile bool _aobScanned;       // the resolver completed at least one scan
+#pragma warning restore CS0414
+    private volatile int  _aobCandidates;    // candidate count from the last scan (0 = pattern matched nothing)
+
     // ── Read-only player vitals readout (HP/Mana/ES) for the HUD + dashboard. ──
     private DateTime _nextPathKeyAt = DateTime.MinValue;
     private DateTime _nextBrowserAt = DateTime.MinValue;
@@ -258,7 +271,7 @@ public sealed class RadarApp : IDisposable
 
     public void RequestShutdown() => _shutdown = true;
 
-    public RadarApp(ProcessHandle process, MemoryReader reader, nint gameStateSlot)
+    public RadarApp(ProcessHandle process, MemoryReader reader)
     {
         _process = process;
         _reader = reader;
@@ -270,14 +283,14 @@ public sealed class RadarApp : IDisposable
         ConsoleTheme.Section("POE2GPS");
         ConsoleTheme.Kv("settings", RadarSettings.FilePath);
         ConsoleTheme.Kv("entity names", $"{EntityNameResolver.Shared.Count} mappings · {ZoneGuide.Shared.Count} zones");
-        _live = new Poe2Live(reader, gameStateSlot);
+        _live = new Poe2Live(reader, 0);
         // Independent reader stacks for the render + API threads (see the field declarations): each owns
         // its own MemoryReader/Poe2Live so the world walk, the render-frame reads, and the API tile scan
         // never share the non-thread-safe per-instance buffers/caches. All read the one shared handle.
         _readerRender = new MemoryReader(process);
-        _liveRender = new Poe2Live(_readerRender, gameStateSlot);
+        _liveRender = new Poe2Live(_readerRender, 0);
         _readerApi = new MemoryReader(process);
-        _liveApi = new Poe2Live(_readerApi, gameStateSlot);
+        _liveApi = new Poe2Live(_readerApi, 0);
         _atlas = new Poe2Atlas(reader);
         _runeforge = new Poe2Runeforge(reader);   // world-thread reader stack
         _window = OverlayWindow.Create();
@@ -602,6 +615,8 @@ public sealed class RadarApp : IDisposable
         // fast per-frame reads + draw, so a slow world pass (big pack, zone load) never hitches frames.
         _worldThread = new Thread(WorldLoop) { IsBackground = true, Name = "POE2Radar.World" };
         _worldThread.Start();
+        _resolverThread = new Thread(ResolverLoop) { IsBackground = true, Name = "POE2Radar.Resolver" };
+        _resolverThread.Start();
         timeBeginPeriod(1);   // 1 ms timer resolution → the frame pacer below can actually hit FpsCap
         try
         {
@@ -672,6 +687,7 @@ public sealed class RadarApp : IDisposable
             sw.Restart();
             try
             {
+                if (_live.Slot != _resolvedSlot) _live.Rebind(_resolvedSlot);
                 if (_live.TryResolve(out var inGameState, out var areaInstance, out var localPlayer))
                     WorldTick(inGameState, areaInstance, localPlayer);
                 else
@@ -680,6 +696,42 @@ public sealed class RadarApp : IDisposable
             catch (Exception ex) { Console.Error.WriteLine($"World tick error: {ex.Message}"); }
             _worldMs = (float)sw.Elapsed.TotalMilliseconds;
             Thread.Sleep(Math.Max(1, budgetMs - (int)sw.ElapsedMilliseconds));
+        }
+    }
+
+    /// <summary>Background slot resolver (1.5 s cadence): on its OWN reader stack, scan for the GameState
+    /// slot until a chain validates in a zone, then publish it for the consumer threads to rebind. Tracks
+    /// attach state + AOB candidate count for the health monitor. Re-attach (game restart) lands in a later
+    /// task; for now a dead process just flips _attached = false.</summary>
+    private void ResolverLoop()
+    {
+        var resolverReader = new MemoryReader(_process);   // isolated reader — never shares buffers with a thread
+        while (!_shutdown)
+        {
+            bool alive;
+            try { using var p = System.Diagnostics.Process.GetProcessById(_process.ProcessId); alive = !p.HasExited; }
+            catch { alive = false; }
+            _attached = alive;
+
+            if (alive && _resolvedSlot == 0)
+            {
+                var slot = Bootstrap.ScanForSlot(_process, resolverReader, out var candidates);
+                _aobCandidates = candidates;
+                _aobScanned = true;
+                if (slot != 0)
+                {
+                    _resolvedSlot = slot;
+                    _slotResolved = true;
+                    ConsoleTheme.Ok($"GameState slot resolved: 0x{slot:X16}");
+                }
+                else
+                {
+                    ConsoleTheme.WarnLine(candidates == 0
+                        ? "  Waiting — game-state pattern not found yet (load into a zone; if this persists POE2GPS may need an update)."
+                        : "  Waiting for in-game state — load into a zone.");
+                }
+            }
+            Thread.Sleep(1500);
         }
     }
 
@@ -800,6 +852,7 @@ public sealed class RadarApp : IDisposable
             _window.SetCaptureExclusion(_appliedExcludeFromCapture);
         }
 
+        if (_liveRender.Slot != _resolvedSlot) _liveRender.Rebind(_resolvedSlot);
         var inGame = _liveRender.TryResolve(out var inGameState, out var areaInstance, out var localPlayer);
         var player = NumVec2.Zero;
         POE2Radar.Core.Game.Vector3? playerWorld = null;   // live player feet (incl. Z) for the world-ground route anchor
@@ -1734,7 +1787,10 @@ public sealed class RadarApp : IDisposable
     /// picker). Empty when not in game. Cached per area inside Poe2Live. Runs on the HTTP thread, so it
     /// uses the API's OWN reader stack (_liveApi) — never the world thread's _live.</summary>
     private IReadOnlyList<string> CurrentTilePaths()
-        => _areaInstanceForApi != 0 ? _liveApi.TilePaths(_areaInstanceForApi) : Array.Empty<string>();
+    {
+        if (_liveApi.Slot != _resolvedSlot) _liveApi.Rebind(_resolvedSlot);
+        return _areaInstanceForApi != 0 ? _liveApi.TilePaths(_areaInstanceForApi) : Array.Empty<string>();
+    }
 
 
     /// <summary>F6 (render thread): add the nearest navigation target not already selected into the
@@ -2447,6 +2503,7 @@ public sealed class RadarApp : IDisposable
     {
         _shutdown = true;
         _worldThread?.Join(1000);   // let the background world loop observe _shutdown and exit
+        _resolverThread?.Join(1000);
         _modCatalog.Flush(); // persist any mods seen since the last debounced write
         _seenPoiLog.Flush();
         _entityAtlas.Flush();

@@ -42,14 +42,11 @@ if (process is null)
 POE2Radar.Overlay.Overlay.ConsoleTheme.Ok($"Attached to {process.ProcessName} (PID {process.ProcessId})");
 
 var reader = new MemoryReader(process);
-var slot = Bootstrap.ResolveGameStateSlot(process, reader);
-if (slot == 0)
-    return 2;
 
 Console.WriteLine();
-POE2Radar.Overlay.Overlay.ConsoleTheme.Accent("Running. Open the in-game map to see terrain + entities. Ctrl+C to exit.");
+POE2Radar.Overlay.Overlay.ConsoleTheme.Accent("Running. The overlay connects automatically once you're in a zone. Ctrl+C to exit.");
 
-using var app = new RadarApp(process, reader, slot);
+using var app = new RadarApp(process, reader);
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; app.RequestShutdown(); };
 app.Run();
 
