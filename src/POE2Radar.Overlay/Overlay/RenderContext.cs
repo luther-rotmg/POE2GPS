@@ -196,4 +196,8 @@ public sealed record RenderContext(
     // RenderContext carries Styles/HpBars/TerrainStyle/NavMenuCorner — there is no whole-RadarSettings
     // member. Session is null when the snapshot has not been published yet. ──
     POE2Radar.Core.Session.SessionStats?  Session            = null,
-    Config.SessionHudSettings             SessionHudSettings = null!);
+    Config.SessionHudSettings             SessionHudSettings = null!,
+    // ── Patch-resilience health banner. Health picks the banner color; HealthMessage is the text
+    // (null → no banner). Drawn whenever the overlay is Active and HealthMessage != null. ──
+    POE2Radar.Core.Health.HealthState     Health             = POE2Radar.Core.Health.HealthState.Ok,
+    string?                               HealthMessage      = null);

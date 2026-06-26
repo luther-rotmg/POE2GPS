@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Health;
 using POE2Radar.Core.Pathfinding;
 using POE2Radar.Overlay.Config;
 using Vortice.Direct2D1;
@@ -134,6 +135,11 @@ public sealed class OverlayRenderer : IDisposable
                 DrawMonolithPanel(rt, ctx);            // nearby-monolith reward list (screen-space)
                 DrawSessionHud(rt, ctx);               // session pace/zone/death HUD (screen-space)
             }
+
+            // Patch-resilience banner: top strip drawn on top of everything whenever the overlay is active
+            // and the health monitor has something to say (connecting / out-of-date / stale reads).
+            if (ctx.Active && ctx.HealthMessage != null)
+                DrawHealthBanner(rt, ctx);
         }
         finally { rt.EndDraw(); }
         _window.Present();
@@ -352,6 +358,18 @@ public sealed class OverlayRenderer : IDisposable
             ? $"▸ {ci.Pos}/{ci.Total}  {ci.Name}  ({ci.Category})"
             : $"▸ {ci.Pos}/{ci.Total}  {ci.Name}";
         rt.DrawText(text, _tf!, new Rect(12f, 12f, ctx.WindowWidth - 12f, 34f), _bText!, DrawTextOptions.Clip);
+    }
+
+    /// <summary>Top-strip status/health banner — drawn whenever the overlay is active and the health monitor
+    /// has a message. Red for a confirmed can't-read-the-game; amber for connecting / soft warnings.</summary>
+    private void DrawHealthBanner(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (ctx.HealthMessage is not { Length: > 0 } msg) return;
+        rt.FillRectangle(new Vortice.RawRectF(0f, 0f, ctx.WindowWidth, 30f), _bPanel!);
+        _bStyle!.Color = ctx.Health == HealthState.Broken
+            ? new Color4(1f, 0.20f, 0.20f, 0.95f)   // red — confirmed break
+            : new Color4(1f, 0.85f, 0.20f, 1f);     // amber — connecting / soft warning
+        rt.DrawText("⚠ " + msg, _tf!, new Rect(12f, 7f, ctx.WindowWidth - 12f, 30f), _bStyle!, DrawTextOptions.Clip);
     }
 
     /// <summary>

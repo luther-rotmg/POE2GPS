@@ -1082,7 +1082,9 @@ public sealed class RadarApp : IDisposable
             Monoliths: monoliths,
             ShowMonolithPanel: _settings.Monoliths.ShowPanel,
             Session: _sessionSnapshot,
-            SessionHudSettings: _settings.SessionHud);
+            SessionHudSettings: _settings.SessionHud,
+            Health: _healthState,
+            HealthMessage: _healthMessage);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
