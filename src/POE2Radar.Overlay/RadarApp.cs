@@ -195,10 +195,12 @@ public sealed class RadarApp : IDisposable
     private Thread? _resolverThread;
     private volatile nint _resolvedSlot;     // 0 until an in-zone slot is validated this attach
     private volatile bool _attached = true;  // PoE2 process is alive
-#pragma warning disable CS0414 // assigned but never read — consumed by the health monitor (later task)
     private volatile bool _aobScanned;       // the resolver completed at least one scan
-#pragma warning restore CS0414
     private volatile int  _aobCandidates;    // candidate count from the last scan (0 = pattern matched nothing)
+    private readonly POE2Radar.Core.Health.OffsetHealthMonitor _health =
+        POE2Radar.Core.Health.OffsetHealthMonitor.CreateDefault();
+    private volatile POE2Radar.Core.Health.HealthState _healthState = POE2Radar.Core.Health.HealthState.Searching;
+    private volatile string? _healthMessage;
 
     // ── Read-only player vitals readout (HP/Mana/ES) for the HUD + dashboard. ──
     private DateTime _nextPathKeyAt = DateTime.MinValue;
@@ -687,15 +689,38 @@ public sealed class RadarApp : IDisposable
             try
             {
                 if (_live.Slot != _resolvedSlot) _live.Rebind(_resolvedSlot);
-                if (_live.TryResolve(out var inGameState, out var areaInstance, out var localPlayer))
+                var stage = _live.Probe(out var inGameState, out var areaInstance, out var localPlayer, out _, out _);
+                if (stage == POE2Radar.Core.Health.ResolveStage.Full)
                     WorldTick(inGameState, areaInstance, localPlayer);
                 else
                     PublishEmptyWorld();
+                EvaluateHealth(stage);
             }
             catch (Exception ex) { Console.Error.WriteLine($"World tick error: {ex.Message}"); }
             _worldMs = (float)sw.Elapsed.TotalMilliseconds;
             Thread.Sleep(Math.Max(1, budgetMs - (int)sw.ElapsedMilliseconds));
         }
+    }
+
+    /// <summary>Build the health observation for this world tick and publish the monitor's verdict. World
+    /// thread only (reads _terrain, written by WorldTick). _terrain != null only at Full, which is exactly
+    /// when TerrainPresent matters (the radar-empty soft warning).</summary>
+    private void EvaluateHealth(POE2Radar.Core.Health.ResolveStage stage)
+    {
+        var u = _update;
+        var probe = new POE2Radar.Core.Health.ChainProbe(
+            Attached:           _attached,
+            SlotResolved:       _resolvedSlot != 0,
+            AobCandidateCount:  _aobCandidates,
+            AobScanned:         _aobScanned,
+            Stage:              stage,
+            TerrainPresent:     _terrain != null,
+            UpdateAvailable:    u?.UpdateAvailable ?? false,
+            UpdateChecked:      u?.Latest != null,
+            UpdateUrl:          u?.Url ?? UpdateChecker.ReleasesPage);
+        var v = _health.Evaluate(probe, DateTime.UtcNow);
+        _healthState = v.State;
+        _healthMessage = v.Message;
     }
 
     /// <summary>Background slot resolver (1.5 s cadence): on its OWN reader stack, scan for the GameState
@@ -979,7 +1004,7 @@ public sealed class RadarApp : IDisposable
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
             snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
-            Session: _sessionSnapshot);
+            Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).

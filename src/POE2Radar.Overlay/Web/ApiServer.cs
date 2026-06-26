@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using POE2Radar.Core.Campaign;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Health;
 using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
 
@@ -183,6 +184,8 @@ public sealed class ApiServer : IDisposable
                     landmarkCount = s.Landmarks.Count,
                     counts,
                     worldMs = s.WorldMs, renderMs = s.RenderMs, fps = s.Fps,
+                    healthState = s.Health.ToString().ToLowerInvariant(),
+                    healthMessage = s.HealthMessage,
                     // Runeshape monoliths in the area (slot count + anchor + priced reward set) for the
                     // dashboard's Monolith Rewards card. Rewards are pre-sorted by value, server-side.
                     monoliths = (s.Monoliths ?? Array.Empty<MonolithMarker>()).Select(m => new
@@ -1278,7 +1281,11 @@ public sealed record RadarState(
     // Measured effective render FPS (rolling window) — for verifying the overlay actually hits FpsCap.
     float Fps = 0,
     // Session HUD data: elapsed times, pace, zone context, deaths. Null when tracker not running.
-    SessionStats? Session = null)
+    SessionStats? Session = null,
+    // Patch-resilience health: State drives the dashboard Status ticks; Message is the banner/Status text
+    // (null when healthy / benign). Optional + trailing so RadarState.Empty (positional) is unaffected.
+    HealthState Health = HealthState.Searching,
+    string? HealthMessage = null)
 {
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,
