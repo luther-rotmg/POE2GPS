@@ -257,7 +257,7 @@ public sealed class RadarApp : IDisposable
         Array.Empty<POE2Radar.Core.Campaign.RankedObjective>();
     private readonly POE2Radar.Core.Campaign.ZoneOrderProgress _questProgress =
         new(POE2Radar.Core.Game.CampaignRoute.Shared);
-    private volatile string? _campaignGps;   // current cross-zone instruction (null when off / none)
+    private volatile string? _campaignGps;   // null = Campaign GPS off; when on, the engine's instruction text is always non-null.
     private nint _navTargetsArea = -1;                                   // AreaInstance the auto-nav was applied for
     // Per-instance nav memory: the nav selection for each AreaInstance hash, so returning to a zone
     // (e.g. after a town trip, which re-resolves a fresh AreaInstance) RESTORES what was selected

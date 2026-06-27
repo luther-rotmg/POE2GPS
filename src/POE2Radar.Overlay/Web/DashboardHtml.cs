@@ -565,7 +565,7 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="showPath"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Objective Director (experimental)<small>WIP &mdash; only routes content the radar already detects. Order: event &rarr; bosses &rarr; side zones &rarr; exit</small></div>
               <label class="sw"><input type="checkbox" data-set="enableDirector"><span class="track"></span><span class="knob"></span></label></div>
-            <div class="row"><div class="rl">Campaign GPS (experimental)<small>cross-zone &mdash; routes you toward the next campaign zone's exit. Off by default.</small></div>
+            <div class="row"><div class="rl">Campaign GPS (experimental)<small>cross-zone &mdash; routes you toward the next campaign zone&rsquo;s exit. Off by default.</small></div>
               <label class="sw"><input type="checkbox" data-set="enableCampaignGps"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Quest-memory precision<small>only effective once quest offsets are validated in-game; refines Campaign GPS.</small></div>
               <label class="sw"><input type="checkbox" data-set="enableQuestMemory"><span class="track"></span><span class="knob"></span></label></div>

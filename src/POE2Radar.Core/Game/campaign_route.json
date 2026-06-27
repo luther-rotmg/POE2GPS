@@ -12,7 +12,7 @@
   { "zone": "G1_12",  "act": 1, "name": "Freythorn",               "next": "G1_13_1","exitHint": null },
   { "zone": "G1_13_1","act": 1, "name": "Ogham Farmlands",         "next": "G1_13_2","exitHint": "Ogham Village" },
   { "zone": "G1_13_2","act": 1, "name": "Ogham Village",           "next": "G1_14",  "exitHint": null },
-  { "zone": "G1_14",  "act": 1, "name": "The Manor Ramparts",      "next": "G1_15",  "exitHint": "Oghams Manor" },
+  { "zone": "G1_14",  "act": 1, "name": "The Manor Ramparts",      "next": "G1_15",  "exitHint": "Ogham Manor" },
   { "zone": "G1_15",  "act": 1, "name": "Ogham Manor",             "next": "G2_1",   "exitHint": null },
 
   { "zone": "G2_1",   "act": 2, "name": "Vastiri Outskirts",       "next": "G2_10_1","exitHint": null },
@@ -51,11 +51,11 @@
   { "zone": "G3_16",  "act": 3, "name": "Aggorat",                 "next": "G3_17",  "exitHint": "The Black Chambers" },
   { "zone": "G3_17",  "act": 3, "name": "The Black Chambers",      "next": null,      "exitHint": null },
 
-  { "zone": "G4_2_1", "act": 4, "name": "Kedge Bay",               "next": "G4_2_2", "exitHint": "Journey's end" },
+  { "zone": "G4_2_1", "act": 4, "name": "Kedge Bay",               "next": "G4_2_2", "exitHint": "Journey's End" },
   { "zone": "G4_2_2", "act": 4, "name": "Journey's End",           "next": "G4_3_1", "exitHint": null },
   { "zone": "G4_3_1", "act": 4, "name": "Whakapanu Island",        "next": "G4_3_2", "exitHint": "Singing Caverns" },
   { "zone": "G4_3_2", "act": 4, "name": "Singing Caverns",         "next": "G4_5_1", "exitHint": null },
-  { "zone": "G4_4_1", "act": 4, "name": "Eye of Hinekora",         "next": "G4_4_2", "exitHint": "Hall of the dead" },
+  { "zone": "G4_4_1", "act": 4, "name": "Eye of Hinekora",         "next": "G4_4_2", "exitHint": "Halls of the Dead" },
   { "zone": "G4_4_2", "act": 4, "name": "Halls of the Dead",       "next": "G4_4_3", "exitHint": null },
   { "zone": "G4_4_3", "act": 4, "name": "Trial of the Ancestors",  "next": null,      "exitHint": null },
   { "zone": "G4_5_1", "act": 4, "name": "Abandoned Prison",        "next": "G4_5_2", "exitHint": null },
