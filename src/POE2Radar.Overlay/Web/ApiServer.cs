@@ -72,6 +72,7 @@ public sealed class ApiServer : IDisposable
     private readonly Action<IReadOnlyList<(string tag, string color, bool track, bool nav, bool arrow)>>? _atlasHighlight;
     // Version/update info provider ({current, latest, updateAvailable, url}) for the dashboard banner.
     private readonly Func<object>? _version;
+    private readonly Action? _rescan;
     private volatile bool _running;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -98,6 +99,7 @@ public sealed class ApiServer : IDisposable
         Action<IReadOnlyList<long>>? atlasSelect = null,
         Action<IReadOnlyList<(string tag, string color, bool track, bool nav, bool arrow)>>? atlasHighlight = null,
         Func<object>? versionProvider = null,
+        Action? rescan = null,
         int port = 7777)
     {
         _state = state;
@@ -105,6 +107,7 @@ public sealed class ApiServer : IDisposable
         _atlasSelect = atlasSelect;
         _atlasHighlight = atlasHighlight;
         _version = versionProvider;
+        _rescan = rescan;
         _settings = settings;
         _navGet = navGet;
         _navToggle = navToggle;
@@ -316,6 +319,23 @@ public sealed class ApiServer : IDisposable
                 {
                     Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
                 }
+                break;
+            }
+
+            case "/api/rescan":
+            {
+                if (ctx.Request.HttpMethod != "POST")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                    break;
+                }
+                _rescan?.Invoke();
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
                 break;
             }
 

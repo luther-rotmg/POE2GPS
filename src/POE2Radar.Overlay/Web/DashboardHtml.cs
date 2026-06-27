@@ -543,6 +543,7 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">In a zone</div><div class="ro" id="stZone">&mdash;</div></div>
             <div class="row"><div class="rl">Reading your character</div><div class="ro" id="stPlayer">&mdash;</div></div>
             <div class="row" id="stMsgRow" hidden><div class="rl" id="stMsg" style="font-style:italic"></div></div>
+            <div class="row" id="stRescanRow" hidden><button id="stRescanBtn" type="button" style="font:inherit;font-size:12px;color:var(--gold-bright);background:#0c0a07;border:1px solid var(--line);border-radius:3px;padding:6px 12px;cursor:pointer">Force re-scan</button><small style="opacity:.55;margin-left:8px">re-detect the game after a patch</small></div>
           </div>
           <div class="card">
             <h3>Target cycling</h3>
@@ -1761,6 +1762,8 @@ function renderState(){
     stMsgEl.textContent = '⚠ ' + s.healthMessage;
     stMsgEl.style.color = (hsName === 'broken') ? 'var(--blood)' : 'var(--gold)';
   } else { stRow.hidden = true; stMsgEl.textContent = ''; }
+  const rsRow = $('#stRescanRow');
+  if (rsRow) rsRow.hidden = (hsName === 'ok');
   const hp=Math.max(0,Math.min(100,s.hpPct||0)), mp=Math.max(0,Math.min(100,s.manaPct||0)), es=Math.max(0,Math.min(100,s.esPct||0));
   $('#hpBar').style.width=hp+'%'; $('#mpBar').style.width=mp+'%'; $('#esBar').style.width=es+'%';
   $('#hpNum').textContent=hp.toFixed(0)+'%'; $('#mpNum').textContent=mp.toFixed(0)+'%'; $('#esNum').textContent=es.toFixed(0)+'%';
@@ -1832,6 +1835,12 @@ loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 checkVersion();
+$('#stRescanBtn')?.addEventListener('click', async () => {
+  const b = $('#stRescanBtn'), t = b.textContent;
+  b.textContent = 're-scanning…'; b.disabled = true;
+  try { await fetch('/api/rescan', { method: 'POST' }); } catch (e) {}
+  setTimeout(() => { b.textContent = t; b.disabled = false; }, 2000);
+});
 </script>
 </body>
 </html>

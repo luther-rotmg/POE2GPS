@@ -275,6 +275,10 @@ public sealed class RadarApp : IDisposable
 
     public void RequestShutdown() => _shutdown = true;
 
+    /// <summary>Force the slot resolver to re-scan now (resets the resolved slot; the ResolverLoop picks it
+    /// up within its ~1.5 s cadence). The user's escape hatch when stuck on the health banner after a patch.</summary>
+    public void RequestRescan() => _resolvedSlot = 0;
+
     public RadarApp(ProcessHandle process, MemoryReader reader)
     {
         _process = process;
@@ -545,7 +549,7 @@ public sealed class RadarApp : IDisposable
                              _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
                              GearJson, _gearWeights,
                              AtlasJson, SetAtlasSelection,
-                             SetAtlasHighlight, VersionJson, _settings.ApiPort);
+                             SetAtlasHighlight, VersionJson, RequestRescan, _settings.ApiPort);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
