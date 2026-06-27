@@ -565,6 +565,10 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="showPath"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Objective Director (experimental)<small>WIP &mdash; only routes content the radar already detects. Order: event &rarr; bosses &rarr; side zones &rarr; exit</small></div>
               <label class="sw"><input type="checkbox" data-set="enableDirector"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Campaign GPS (experimental)<small>cross-zone &mdash; routes you toward the next campaign zone's exit. Off by default.</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableCampaignGps"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Quest-memory precision<small>only effective once quest offsets are validated in-game; refines Campaign GPS.</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableQuestMemory"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Curated landmark names<small>community labels (boss / reward / exits)</small></div>
               <label class="sw"><input type="checkbox" data-set="useCuratedLandmarks"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Hide from screen capture<small>stealth: keep the overlay out of screenshots / OBS / share-screen. Turn off to capture the overlay itself</small></div>
@@ -705,6 +709,7 @@ internal static class DashboardHtml
         <section class="view" data-view="director" hidden>
           <div class="card" id="dirQueueCard">
             <h3>Zone Plan <small>live ranked queue for this area</small></h3>
+            <div id="gpsBanner" hidden style="padding:8px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--gold-bright);font-size:13px"></div>
             <div id="dirQueue"></div>
           </div>
           <div class="card">
@@ -1300,6 +1305,12 @@ $('#lmImport')?.addEventListener('click',()=>{
 function renderDirectorQueue(){
   const dq = document.getElementById('dirQueue');
   if (!dq) return;
+  const gb = document.getElementById('gpsBanner');
+  if (gb) {
+    const g = state && state.campaignGps;
+    if (g) { gb.hidden = false; gb.textContent = '🧭 ' + g; }   // 🧭
+    else { gb.hidden = true; gb.textContent = ''; }
+  }
   const dir = (state && state.director) || [];
   if (dir.length === 0){
     dq.innerHTML = '<div style="opacity:.5;padding:4px 0">No active objectives in this zone</div>';
