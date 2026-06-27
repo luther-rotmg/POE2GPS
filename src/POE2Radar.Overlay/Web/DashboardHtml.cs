@@ -699,6 +699,19 @@ internal static class DashboardHtml
             <div class="row"><div class="rl hint-row">Adjust here &mdash; changes apply live (no in-game hotkeys).</div></div>
           </div>
           <div class="card">
+            <h3>Presets <small>share your radar look</small></h3>
+            <div class="row">
+              <button class="addbtn" id="presetCopy">Copy share-code</button>
+              <button class="addbtn" id="presetDownload">Download .poe2preset</button>
+            </div>
+            <div class="row"><textarea id="presetCode" rows="2" placeholder="paste a POE2GPS- share-code&hellip;" style="width:100%"></textarea></div>
+            <div class="row">
+              <button class="addbtn" id="presetApplyCode">Apply code</button>
+              <label class="addbtn" style="cursor:pointer">Import file&hellip;<input id="presetFile" type="file" accept=".poe2preset,application/json" style="display:none"></label>
+            </div>
+            <div style="height:14px"><span class="saved" id="savedMsgPreset">&#10003; preset applied</span></div>
+          </div>
+          <div class="card">
             <h3>Ground Item Labels</h3>
             <div class="row"><div class="rl">Enabled<small>draw name labels</small></div>
               <label class="sw"><input type="checkbox" data-gi="enabled"><span class="track"></span><span class="knob"></span></label></div>
@@ -1862,6 +1875,15 @@ loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 checkVersion();
+/* ── presets card (export copy/download + import paste/file) ── */
+function flashPreset(msg){ const m=$('#savedMsgPreset'); if(!m) return; m.textContent=msg||'✓ preset applied'; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1800); }
+async function presetExport(){ return await (await fetch('/api/preset/export',{cache:'no-store'})).json(); }
+$('#presetCopy')?.addEventListener('click',async()=>{ try{ const p=await presetExport(); await navigator.clipboard.writeText(p.code); flashPreset('✓ share-code copied'); }catch(e){ flashPreset('copy failed'); } });
+$('#presetDownload')?.addEventListener('click',async()=>{ try{ const p=await presetExport(); const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([p.json],{type:'application/json'})); a.download='radar-preset.poe2preset'; a.click(); URL.revokeObjectURL(a.href); }catch(e){} });
+async function presetImport(body){ if(!confirm('Applying a preset replaces your display rules and visual styles. A backup is saved first. Continue?')) return; try{ const r=await fetch('/api/preset/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(r.ok){ await loadSettings(); flashPreset('✓ preset applied'); } else flashPreset('import rejected'); }catch(e){ flashPreset('import failed'); } }
+$('#presetApplyCode')?.addEventListener('click',()=>{ const c=$('#presetCode').value.trim(); if(c) presetImport({code:c}); });
+$('#presetFile')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ try{ presetImport(JSON.parse(rd.result)); }catch(_){ flashPreset('invalid preset file'); } }; rd.readAsText(f); e.target.value=''; });
+
 $('#stRescanBtn')?.addEventListener('click', async () => {
   const b = $('#stRescanBtn'), t = b.textContent;
   b.textContent = 're-scanning…'; b.disabled = true;
