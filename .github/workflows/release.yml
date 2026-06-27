@@ -50,8 +50,29 @@ jobs:
           Copy-Item README.md, LICENSE publish/
           Compress-Archive -Path publish/* -DestinationPath "POE2GPS-$tag-win-x64.zip" -Force
 
+      - name: Extract changelog notes for this tag
+        shell: pwsh
+        run: |
+          # Pull the matching "## [X.Y.Z]" section out of CHANGELOG.md so the GitHub Release body
+          # carries real patch notes (the auto-generated compare link is still appended below).
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $out = New-Object System.Collections.Generic.List[string]
+          $capture = $false
+          foreach ($l in (Get-Content CHANGELOG.md)) {
+            if ($l -match '^##\s+\[') {
+              if ($capture) { break }                                  # next release section -> stop
+              if ($l -match "^##\s+\[$([regex]::Escape($ver))\]") { $capture = $true; continue }  # skip the heading itself
+            }
+            if ($capture) { $out.Add($l) }
+          }
+          $body = ($out -join "`n").Trim()
+          if ([string]::IsNullOrWhiteSpace($body)) { $body = "Release $ver" }
+          $body | Set-Content -Path RELEASE_NOTES.md -Encoding utf8
+          Write-Host "Release notes ($($out.Count) lines) for $ver written to RELEASE_NOTES.md"
+
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: POE2GPS-*-win-x64.zip
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
