@@ -134,6 +134,7 @@ public sealed class OverlayRenderer : IDisposable
                 DrawRitualRewards(rt, ctx);            // name labels on the ritual tribute-shop tiles (screen-space)
                 DrawMonolithPanel(rt, ctx);            // nearby-monolith reward list (screen-space)
                 DrawSessionHud(rt, ctx);               // session pace/zone/death HUD (screen-space)
+                DrawCampaignGps(rt, ctx);              // compact campaign GPS instruction line (top strip)
             }
 
             // Patch-resilience banner: top strip drawn on top of everything whenever the overlay is active
@@ -370,6 +371,16 @@ public sealed class OverlayRenderer : IDisposable
             ? new Color4(1f, 0.20f, 0.20f, 0.95f)   // red — confirmed break
             : new Color4(1f, 0.85f, 0.20f, 1f);     // amber — connecting / soft warning
         rt.DrawText("⚠ " + msg, _tf!, new Rect(12f, 7f, ctx.WindowWidth - 12f, 30f), _bStyle!, DrawTextOptions.Clip);
+    }
+
+    /// <summary>Compact Campaign GPS instruction line — a second top strip (below the health banner when
+    /// both are visible) drawn whenever a non-empty instruction is published by the GPS engine.</summary>
+    private void DrawCampaignGps(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (ctx.CampaignGps is not { Length: > 0 } msg) return;
+        rt.FillRectangle(new Vortice.RawRectF(0f, 34f, ctx.WindowWidth, 58f), _bPanel!);
+        _bStyle!.Color = new Color4(0.85f, 0.72f, 0.30f, 1f);   // campaign gold
+        rt.DrawText("🧭 " + msg, _tf!, new Rect(12f, 38f, ctx.WindowWidth - 12f, 58f), _bStyle!, DrawTextOptions.Clip);
     }
 
     /// <summary>

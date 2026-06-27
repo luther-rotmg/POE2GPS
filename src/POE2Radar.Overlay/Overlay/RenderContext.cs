@@ -200,4 +200,6 @@ public sealed record RenderContext(
     // ── Patch-resilience health banner. Health picks the banner color; HealthMessage is the text
     // (null → no banner). Drawn whenever the overlay is Active and HealthMessage != null. ──
     POE2Radar.Core.Health.HealthState     Health             = POE2Radar.Core.Health.HealthState.Ok,
-    string?                               HealthMessage      = null);
+    string?                               HealthMessage      = null,
+    // ── Campaign GPS: compact top-strip instruction line (null → no line drawn). ──
+    string?                               CampaignGps        = null);
