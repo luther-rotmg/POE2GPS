@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using POE2Radar.Core.Campaign;
+using POE2Radar.Core.Config;
 using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Session;
@@ -686,6 +687,24 @@ public sealed class ApiServer : IDisposable
                 Write(ctx, 200, JsonSerializer.Serialize(LabelVocabulary.Shared.Groups, Json));
                 break;
 
+            case "/api/preset/export":
+                // Read-only: build the live PresetBundle (visual config + display rules) and return it
+                // as both a human-readable JSON blob and a compact share-code. No identity/operational
+                // fields — only what PresetBundle captures (Styles/HpBars/Terrain/GroundItems/bools/rules).
+                Write(ctx, 200, JsonSerializer.Serialize(BuildPresetExport(), Json));
+                break;
+
+            case "/api/preset/import":
+            {
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                // 2 MB cap before reading (untrusted community share-code).
+                if (ctx.Request.ContentLength64 > 2_000_000) { Write(ctx, 413, JsonSerializer.Serialize(new { error = "request too large" }, Json)); break; }
+                ApplyPresetImport(ReadBody(ctx));
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, rules = _displayRules.All.Count }, Json));
+                break;
+            }
+
             default:
                 Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found", path }, Json));
                 break;
@@ -1135,6 +1154,174 @@ public sealed class ApiServer : IDisposable
             }
         }
     }
+
+    /// <summary>Build the current look as a <see cref="PresetBundle"/>, serialize it, and return
+    /// <c>{ name, json, code }</c> — ready to copy-paste or save as a .poe2preset file.</summary>
+    private object BuildPresetExport()
+    {
+        var bundle = new PresetBundle
+        {
+            Schema       = 1,
+            Name         = "exported",
+            Author       = "",
+            AppVersion   = UpdateChecker.Current,
+            CreatedAtUtc = DateTime.UtcNow.ToString("o"),
+            Styles       = _settings.Styles,
+            HpBars       = _settings.HpBars,
+            Terrain      = _settings.Terrain,
+            GroundItems  = _settings.GroundItems,
+            ShowMonsters  = _settings.ShowMonsters,
+            ShowTerrain   = _settings.ShowTerrain,
+            ShowPlayerBlip = _settings.ShowPlayerBlip,
+            HpBarNormal  = _settings.HpBarNormal,
+            HpBarMagic   = _settings.HpBarMagic,
+            HpBarRare    = _settings.HpBarRare,
+            HpBarUnique  = _settings.HpBarUnique,
+            DisplayRules = _displayRules.All.ToList(),
+        };
+        var json = JsonSerializer.Serialize(bundle, JsonWhenWritingNull);
+        var code = PresetCodec.Encode(json);
+        return new { name = bundle.Name, json, code };
+    }
+
+    /// <summary>Apply an imported preset: accepts <c>{"code":"POE2GPS-..."}</c> or a raw
+    /// <see cref="PresetBundle"/> JSON body. Sanitizes ALL fields through the existing validators;
+    /// auto-backs up the current look before applying; then saves settings atomically.</summary>
+    private void ApplyPresetImport(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return;
+
+        // ── 1. Resolve body → bundle JSON (unwrap code-envelope if present) ──
+        string bundleJson;
+        try
+        {
+            using var probe = JsonDocument.Parse(body);
+            var root = probe.RootElement;
+            if (root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("code", out var codeProp)
+                && codeProp.ValueKind == JsonValueKind.String
+                && codeProp.GetString() is { Length: > 0 } code)
+            {
+                if (!PresetCodec.TryDecode(code, out bundleJson))
+                {
+                    Console.Error.WriteLine("Preset import: invalid share-code (TryDecode failed).");
+                    return;
+                }
+            }
+            else
+            {
+                bundleJson = body; // body IS the bundle JSON
+            }
+        }
+        catch (JsonException ex)
+        {
+            Console.Error.WriteLine($"Preset import: malformed JSON envelope — {ex.Message}");
+            return;
+        }
+
+        // ── 2. Deserialize PresetBundle; reject unknown schema versions ──
+        PresetBundle bundle;
+        try
+        {
+            bundle = JsonSerializer.Deserialize<PresetBundle>(bundleJson, JsonWhenWritingNull)
+                     ?? throw new InvalidOperationException("null bundle");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Preset import: bundle parse failed — {ex.Message}");
+            return;
+        }
+        if (bundle.Schema > 1)
+        {
+            Console.Error.WriteLine($"Preset import: unsupported schema {bundle.Schema} (max 1).");
+            return;
+        }
+
+        // ── 3. Auto-backup current look before we touch anything ──
+        try
+        {
+            var backupPath = Path.Combine(AppContext.BaseDirectory, "config", "presets",
+                                          "backup-before-import.poe2preset");
+            var current = new PresetBundle
+            {
+                Schema       = 1,
+                Name         = "backup",
+                AppVersion   = UpdateChecker.Current,
+                CreatedAtUtc = DateTime.UtcNow.ToString("o"),
+                Styles       = _settings.Styles,
+                HpBars       = _settings.HpBars,
+                Terrain      = _settings.Terrain,
+                GroundItems  = _settings.GroundItems,
+                ShowMonsters  = _settings.ShowMonsters,
+                ShowTerrain   = _settings.ShowTerrain,
+                ShowPlayerBlip = _settings.ShowPlayerBlip,
+                HpBarNormal  = _settings.HpBarNormal,
+                HpBarMagic   = _settings.HpBarMagic,
+                HpBarRare    = _settings.HpBarRare,
+                HpBarUnique  = _settings.HpBarUnique,
+                DisplayRules = _displayRules.All.ToList(),
+            };
+            JsonStore.AtomicWrite(backupPath, current, JsonWhenWritingNull);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Preset import: backup failed — {ex.Message}");
+            // Do NOT abort — the backup failure is logged but import continues.
+        }
+
+        // ── 4. Sanitize + apply only present (non-null) fields ──
+        // Styles/HpBars/Terrain/GroundItems go through the existing TryParse* validators.
+        // Nullable bools applied directly when non-null.
+        if (bundle.Styles != null)
+        {
+            var raw = JsonSerializer.Serialize(bundle.Styles, JsonWhenWritingNull);
+            using var el = JsonDocument.Parse(raw);
+            if (TryParseStyles(el.RootElement, out var sanitized)) _settings.Styles = sanitized;
+        }
+        if (bundle.HpBars != null)
+        {
+            var raw = JsonSerializer.Serialize(bundle.HpBars, JsonWhenWritingNull);
+            using var el = JsonDocument.Parse(raw);
+            if (TryParseHpBars(el.RootElement, out var sanitized)) _settings.HpBars = sanitized;
+        }
+        if (bundle.Terrain != null)
+        {
+            var raw = JsonSerializer.Serialize(bundle.Terrain, JsonWhenWritingNull);
+            using var el = JsonDocument.Parse(raw);
+            if (TryParseTerrain(el.RootElement, out var sanitized)) _settings.Terrain = sanitized;
+        }
+        if (bundle.GroundItems != null)
+        {
+            var raw = JsonSerializer.Serialize(bundle.GroundItems, JsonWhenWritingNull);
+            using var el = JsonDocument.Parse(raw);
+            if (TryParseGroundItems(el.RootElement, out var sanitized)) _settings.GroundItems = sanitized;
+        }
+        if (bundle.ShowMonsters.HasValue)   _settings.ShowMonsters   = bundle.ShowMonsters.Value;
+        if (bundle.ShowTerrain.HasValue)    _settings.ShowTerrain    = bundle.ShowTerrain.Value;
+        if (bundle.ShowPlayerBlip.HasValue) _settings.ShowPlayerBlip = bundle.ShowPlayerBlip.Value;
+        if (bundle.HpBarNormal.HasValue)    _settings.HpBarNormal    = bundle.HpBarNormal.Value;
+        if (bundle.HpBarMagic.HasValue)     _settings.HpBarMagic     = bundle.HpBarMagic.Value;
+        if (bundle.HpBarRare.HasValue)      _settings.HpBarRare      = bundle.HpBarRare.Value;
+        if (bundle.HpBarUnique.HasValue)    _settings.HpBarUnique    = bundle.HpBarUnique.Value;
+
+        // DisplayRules: every rule goes through SanitizeRule before Replace.
+        if (bundle.DisplayRules is { Count: > 0 } importedRules)
+        {
+            var list = importedRules.Take(300).ToList(); // sanity cap (matches ApplyDisplayRules)
+            foreach (var r in list) SanitizeRule(r);
+            _displayRules.Replace(list); // Generation bump auto-propagates to both threads
+        }
+
+        // ── 5. Persist settings atomically ──
+        _settings.Save();
+    }
+
+    // camelCase + WhenWritingNull — used for PresetBundle serialization (export payload + backup).
+    private static readonly JsonSerializerOptions JsonWhenWritingNull = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
 
     /// <summary>Forward the non-identifying export pack to the configured Worker URL. Returns (ok, HTTP status).</summary>
     private static async Task<(bool ok, int status)> ContributeForward(string url, string jsonPack)

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using POE2Radar.Overlay.Web;
 
 namespace POE2Radar.Overlay.Config;
 
@@ -315,14 +316,13 @@ public sealed class RadarSettings
         return changed;
     }
 
-    /// <summary>Persist current settings to disk. Never throws on IO error — logs and continues.</summary>
+    /// <summary>Persist current settings to disk atomically (write-to-tmp then replace — crash-safe).
+    /// Never throws on IO error — logs and continues.</summary>
     public void Save()
     {
         try
         {
-            var dir = Path.GetDirectoryName(FilePath);
-            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, Json));
+            JsonStore.AtomicWrite(FilePath, this, Json);
         }
         catch (Exception ex)
         {
