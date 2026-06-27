@@ -43,7 +43,7 @@ internal static class ConsoleTheme
         Init();
         Console.WriteLine();
         foreach (var line in Art) Console.WriteLine(Gold + line + R);
-        Console.WriteLine($"  {Cyan}read-only PoE2 GPS overlay{R}   {Dim}v{UpdateChecker.Current}{R}");
+        Console.WriteLine($"  {Cyan}read-only PoE2 GPS overlay{R}   {Gold}v{UpdateChecker.Current}{R}");
         Console.WriteLine($"  {Dim}community + support:{R} {Cyan}https://discord.gg/32qdzWRja3{R}");
         Console.WriteLine();
     }
@@ -72,6 +72,7 @@ internal static class ConsoleTheme
         ("Ctrl+Alt+ ] / [", "cycle active nav target"),
         ("Ctrl+Alt+ 1-9 / 0", "jump to target slot / clear"),
         ("Ctrl+Alt+M / L3+R3", "toggle the nav-menu list"),
+        ("R3 / L3 (controller)", "next / prev nav target · hold = fast-cycle"),
         ("F9", "quit (or tray → Exit)"),
     };
 

@@ -359,7 +359,7 @@ internal static class DashboardHtml
 <div class="shell">
   <header>
     <div class="mark">
-      <h1>OVERLAY</h1>
+      <h1>POE2GPS</h1>
     </div>
     <div class="hgap"></div>
     <div class="area-chip" id="areaChip">— <b>·</b></div>
