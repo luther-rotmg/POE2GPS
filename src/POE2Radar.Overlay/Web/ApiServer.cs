@@ -198,6 +198,7 @@ public sealed class ApiServer : IDisposable
                     director = (s.Director ?? Array.Empty<POE2Radar.Core.Campaign.RankedObjective>())
                         .Select(o => new { id = o.Id, label = o.Label, category = o.Category,
                                            priority = o.Priority, tier = o.Tier.ToString() }),
+                    campaignGps = s.CampaignGps,
                     // Session HUD: elapsed times, zone pace, deaths. Null when tracker not running.
                     session = s.Session == null ? (object?)null : new {
                         sessionElapsed    = FormatTimeSpan(s.Session.SessionElapsed),
@@ -1289,7 +1290,9 @@ public sealed record RadarState(
     // Patch-resilience health: State drives the dashboard Status ticks; Message is the banner/Status text
     // (null when healthy / benign). Optional + trailing so RadarState.Empty (positional) is unaffected.
     HealthState Health = HealthState.Searching,
-    string? HealthMessage = null)
+    string? HealthMessage = null,
+    // Campaign GPS cross-zone instruction for the dashboard banner; null when off / no instruction.
+    string? CampaignGps = null)
 {
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,

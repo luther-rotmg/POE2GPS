@@ -255,6 +255,9 @@ public sealed class RadarApp : IDisposable
     private readonly POE2Radar.Core.Campaign.ObjectiveDirector _director = new();
     private volatile IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective> _directorQueue =
         Array.Empty<POE2Radar.Core.Campaign.RankedObjective>();
+    private readonly POE2Radar.Core.Campaign.ZoneOrderProgress _questProgress =
+        new(POE2Radar.Core.Game.CampaignRoute.Shared);
+    private volatile string? _campaignGps;   // current cross-zone instruction (null when off / none)
     private nint _navTargetsArea = -1;                                   // AreaInstance the auto-nav was applied for
     // Per-instance nav memory: the nav selection for each AreaInstance hash, so returning to a zone
     // (e.g. after a town trip, which re-resolves a fresh AreaInstance) RESTORES what was selected
@@ -1016,7 +1019,7 @@ public sealed class RadarApp : IDisposable
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
             snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
-            Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage);
+            Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
@@ -1264,9 +1267,12 @@ public sealed class RadarApp : IDisposable
         // entity would otherwise keep resolving, so the route would keep pathing to it.
         PruneCompletedTargets();
 
-        // Objective Director: when enabled, rank the zone's catalog objectives and (if the director
-        // owns the selection) route to the top one. Read-only — only edits _selectedIds.
-        if (_settings.EnableDirector) DirectorReconcile(player);
+        // Campaign GPS (cross-zone) takes precedence when it actively owns the selection; otherwise the
+        // in-zone Objective Director runs. Both read-only — only edit _selectedIds.
+        var gpsOwned = false;
+        if (_settings.EnableCampaignGps) gpsOwned = CampaignReconcile(areaCode, player);
+        else _campaignGps = null;
+        if (!gpsOwned && _settings.EnableDirector) DirectorReconcile(player);
 
         // Per-tick route maintenance (draw-only, NO A* on this thread). For each selected
         // target: cheaply advance its cursor; fire a BACKGROUND replan only on a real trigger.
@@ -1747,6 +1753,19 @@ public sealed class RadarApp : IDisposable
 
         if (count > 0)
             Console.WriteLine($"\nNav: {(restored ? "restored" : "auto-selected")} {count} target(s) on zone change.");
+    }
+
+    /// <summary>Campaign GPS reconcile (world thread, gated on EnableCampaignGps). Decides the campaign-
+    /// forward exit for this zone and, when one is visible, sets it as the active nav target (the existing
+    /// A* pipeline draws the route). Publishes the instruction string. Returns true when it owns the
+    /// selection this tick (so the in-zone Director stands down).</summary>
+    private bool CampaignReconcile(string areaCode, NumVec2 player)
+    {
+        var ins = POE2Radar.Core.Campaign.CampaignGps.Decide(
+            areaCode, _questProgress, POE2Radar.Core.Game.CampaignRoute.Shared, _landmarks, _entities, player);
+        _campaignGps = ins.Text;
+        if (ins.ExitObjectiveId != null) { SetActiveTarget(ins.ExitObjectiveId); return true; }
+        return false;
     }
 
     /// <summary>
