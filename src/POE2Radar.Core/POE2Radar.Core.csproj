@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Game\campaign_route.json" />
     <EmbeddedResource Include="Game\CustomLandmarks.json" />
     <EmbeddedResource Include="Game\entity_names.json" />
     <EmbeddedResource Include="Game\world_areas.json" />
