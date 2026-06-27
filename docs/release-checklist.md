@@ -3,6 +3,11 @@
 The automated layer (CI) covers the gate, the build, the tests, and the scrub self-test. The items
 below require a **live PoE2 client** and cannot be automated — run them before tagging a release.
 
+## Pre-release docs
+
+- [ ] Add the release to `CHANGELOG.md` (one section, headline features).
+- [ ] Bump the `supports PoE2 X.Y.Z` badge in `README.md` if offsets were re-validated this release.
+
 ## Automated (also run by CI — confirm green locally)
 
 ```
