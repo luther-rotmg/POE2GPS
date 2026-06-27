@@ -42,6 +42,22 @@ public class CampaignGpsTests
         Assert.Contains("Zone Two", ins.Text);
     }
 
+    [Fact] public void In_target_zone_uses_CodeForName_when_exitHint_does_not_match_a_label()
+    {
+        // Z2.exitHint "Detour" matches no landmark label, so the engine must fall to precedence 2:
+        // a landmark whose CuratedName resolves via CodeForName to the NEXT zone's code (Z3 = "Zone Three").
+        const string json = """
+        [
+          { "zone": "Z2", "act": 1, "name": "Zone Two",   "next": "Z3", "exitHint": "Detour" },
+          { "zone": "Z3", "act": 2, "name": "Zone Three", "next": null, "exitHint": null }
+        ]
+        """;
+        var route = CampaignRoute.FromJson(json);
+        var lms = new List<Poe2Live.Landmark> { Lm("z3exit.tdt", "Zone Three", 7, 8) };
+        var ins = CampaignGps.Decide("Z2", new ZoneOrderProgress(route), route, lms, NoEntities, new V2(0, 0));
+        Assert.Equal("t:z3exit.tdt@7,8", ins.ExitObjectiveId);
+    }
+
     [Fact] public void No_matching_label_falls_back_to_nearest_transition_entity()
     {
         var entities = new List<Poe2Live.EntityDot> {
