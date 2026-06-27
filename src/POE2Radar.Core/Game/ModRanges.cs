@@ -14,7 +14,8 @@ public sealed class ModRanges
     private readonly Dictionary<string, ModRangeInfo> _byMod;
     private ModRanges(Dictionary<string, ModRangeInfo> byMod) => _byMod = byMod;
 
-    public static ModRanges Shared { get; } = Load();
+    public static ModRanges Shared => _sharedLazy.Value;
+    private static readonly Lazy<ModRanges> _sharedLazy = new(Load, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
     public int Count => _byMod.Count;
     public bool TryGet(string modId, out ModRangeInfo info) => _byMod.TryGetValue(modId, out info!);
 

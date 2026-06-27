@@ -32,8 +32,9 @@ public sealed class ItemModTranslator
         _byStat = byStat;
     }
 
-    /// <summary>The shared translator, loaded once from the embedded tables.</summary>
-    public static ItemModTranslator Shared { get; } = LoadEmbedded();
+    /// <summary>The shared translator, loaded on first use from the embedded tables.</summary>
+    public static ItemModTranslator Shared => _sharedLazy.Value;
+    private static readonly Lazy<ItemModTranslator> _sharedLazy = new(LoadEmbedded, System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
 
     /// <summary>True when both tables loaded (non-empty).</summary>
     public bool IsLoaded => _modStats.Count > 0 && _byStat.Count > 0;
