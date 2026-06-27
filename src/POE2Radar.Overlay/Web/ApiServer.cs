@@ -652,6 +652,8 @@ public sealed class ApiServer : IDisposable
         showTerrain = _settings.ShowTerrain,
         showPlayerBlip = _settings.ShowPlayerBlip,
         enableDirector = _settings.EnableDirector,
+        enableCampaignGps = _settings.EnableCampaignGps,
+        enableQuestMemory = _settings.EnableQuestMemory,
         excludeFromCapture = _settings.ExcludeFromCapture,
         checkForUpdates = _settings.CheckForUpdates,
         enableGearScorer = _settings.EnableGearScorer,
@@ -710,6 +712,8 @@ public sealed class ApiServer : IDisposable
                 case "showTerrain" when TryBool(p.Value, out var b): _settings.ShowTerrain = b; applied.Add(p.Name); break;
                 case "showPlayerBlip" when TryBool(p.Value, out var b): _settings.ShowPlayerBlip = b; applied.Add(p.Name); break;
                 case "enableDirector" when TryBool(p.Value, out var b): _settings.EnableDirector = b; applied.Add(p.Name); break;
+                case "enableCampaignGps" when TryBool(p.Value, out var b): _settings.EnableCampaignGps = b; applied.Add(p.Name); break;
+                case "enableQuestMemory" when TryBool(p.Value, out var b): _settings.EnableQuestMemory = b; applied.Add(p.Name); break;
                 case "excludeFromCapture" when TryBool(p.Value, out var b): _settings.ExcludeFromCapture = b; applied.Add(p.Name); break;
                 case "checkForUpdates" when TryBool(p.Value, out var b): _settings.CheckForUpdates = b; applied.Add(p.Name); break;
                 case "enableGearScorer" when TryBool(p.Value, out var b): _settings.EnableGearScorer = b; applied.Add(p.Name); break;

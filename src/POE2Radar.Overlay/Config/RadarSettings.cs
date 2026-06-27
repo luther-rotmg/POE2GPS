@@ -33,6 +33,12 @@ public sealed class RadarSettings
     // Objective Director: when on, auto-select + route to the highest-priority in-zone objective
     // (catalog-ranked), advancing as objectives complete. Read-only — only changes the nav selection.
     public bool EnableDirector { get; set; } = false;
+    // Campaign GPS (Quest-aware Director, Part B): when on, route cross-zone toward the next campaign
+    // critical-path zone (current-zone + the embedded route table). Read-only — only changes nav selection.
+    public bool EnableCampaignGps { get; set; } = false;
+    // Quest-memory precision layer for Campaign GPS: only meaningful once the quest-completion offsets
+    // are validated in-game; reads quest flags to refine the inferred step. Off until validated.
+    public bool EnableQuestMemory { get; set; } = false;
 
     // ── Quick-Target Cycler (Task 2/3/4). When either input driver is enabled, a ranked target list
     //    is computed each world tick and the cycler can step through it (single-active selection). ──
