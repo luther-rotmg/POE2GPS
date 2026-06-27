@@ -54,7 +54,7 @@ public sealed class CampaignRoute
                 ExitHint: NullableStr(e, "exitHint"));
             route._index[zone] = route._steps.Count;
             route._steps.Add(step);
-            if (step.Name.Length > 0) route._nameToCode[step.Name] = zone;   // first wins on dup names
+            if (step.Name.Length > 0) route._nameToCode.TryAdd(step.Name, zone);   // first wins on dup names
         }
         return route;
     }
