@@ -3,6 +3,13 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.9.0] — 2026-06-27
+### Added
+- **Audio alerts** *(off by default)* — short, distinct procedurally-generated tones for three high-signal events, each toggleable from a card at the top of Settings: a **rare/unique monster** comes into range, a **unique item** drops, or you **reach your active objective**. A "Test" button auditions each tone. Output only — no input is ever sent to the game.
+- **Community presets** — share your radar's *look* (display rules + icon / HP-bar / terrain styles) as a copy-paste **share-code** or a `.poe2preset` file, and import one to adopt someone else's setup instantly. Imports are sanitized + size-bounded, only touch visual config (never operational/anti-detection settings), and auto-save a backup of your current look first.
+### Changed
+- GitHub Release notes now populate automatically from this changelog.
+
 ## [0.8.0] — 2026-06-27
 ### Changed
 - **Performance & footprint pass** — a head-to-toe optimization sweep, with **no change to what the overlay reads** (still strictly read-only):
