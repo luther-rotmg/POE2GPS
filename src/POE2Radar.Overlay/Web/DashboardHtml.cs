@@ -537,6 +537,13 @@ internal static class DashboardHtml
 
       <section class="view" data-view="settings" hidden>
         <div class="panel-grid">
+          <div class="card" id="statusCard" style="grid-column:1/-1">
+            <h3>Status</h3>
+            <div class="row"><div class="rl">Attached to Path of Exile 2</div><div class="ro" id="stAttach">&mdash;</div></div>
+            <div class="row"><div class="rl">In a zone</div><div class="ro" id="stZone">&mdash;</div></div>
+            <div class="row"><div class="rl">Reading your character</div><div class="ro" id="stPlayer">&mdash;</div></div>
+            <div class="row" id="stMsgRow" hidden><div class="rl" id="stMsg" style="font-style:italic"></div></div>
+          </div>
           <div class="card">
             <h3>Target cycling</h3>
             <div class="row"><div class="rl">Intelligent target cycling<small>On = smart priority/distance order &mdash; Off (default) = cycle follows the radar menu (nav dropdown order)</small></div>
@@ -1729,6 +1736,20 @@ function renderSessionPanel() {
 /* ── left rail ── */
 function renderState(){
   const s=state; if(!s) return;
+  // Patch-resilience Status panel: derive the three ticks from healthState (see OffsetHealthMonitor).
+  const hsName = s.healthState || 'searching';
+  const stTick = ok => ok
+    ? '<span style="color:var(--good)">&#10003;</span>'
+    : '<span style="color:var(--ink-faint)">&#9675;</span>';
+  $('#stAttach').innerHTML = stTick(hsName !== 'waiting');
+  $('#stZone').innerHTML   = stTick(hsName === 'ok' || hsName === 'loading');
+  $('#stPlayer').innerHTML = stTick(hsName === 'ok');
+  const stRow = $('#stMsgRow'), stMsg = $('#stMsg');
+  if (s.healthMessage) {
+    stRow.hidden = false;
+    stMsg.textContent = '⚠ ' + s.healthMessage;
+    stMsg.style.color = (hsName === 'broken') ? 'var(--blood)' : 'var(--gold)';
+  } else { stRow.hidden = true; stMsg.textContent = ''; }
   const hp=Math.max(0,Math.min(100,s.hpPct||0)), mp=Math.max(0,Math.min(100,s.manaPct||0)), es=Math.max(0,Math.min(100,s.esPct||0));
   $('#hpBar').style.width=hp+'%'; $('#mpBar').style.width=mp+'%'; $('#esBar').style.width=es+'%';
   $('#hpNum').textContent=hp.toFixed(0)+'%'; $('#mpNum').textContent=mp.toFixed(0)+'%'; $('#esNum').textContent=es.toFixed(0)+'%';
