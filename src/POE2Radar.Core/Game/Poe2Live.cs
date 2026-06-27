@@ -51,7 +51,13 @@ public sealed class Poe2Live
     // Reused camera-matrix buffers (read every render frame).
     private readonly byte[] _camBytes = new byte[64];
     private readonly float[] _camMatrix = new float[16];
+    // Reused BFS buffers for DiscoverMapElements (render-thread-owned, used via _liveRender.ReadMap).
+    private readonly Queue<nint> _mapQueue = new();
+    private readonly HashSet<nint> _mapVisited = new();
+    private readonly byte[] _mapBody = new byte[Poe2.MapUiElement.Zoom + 8];
     private readonly List<nint> _probeCandidates = new(13);   // reused per Probe() call; owned by this instance's thread
+    private int _vitalBadReadCount;   // owned by this instance's thread
+    private const int VitalBadReadThreshold = 3;
 
     public Poe2Live(MemoryReader reader, nint gameStateSlot)
     {
@@ -78,6 +84,7 @@ public sealed class Poe2Live
         // Additional per-entity/per-area caches not in the brief's explicit list:
         _plLife = 0; _plLifeFor = 0;
         _vitalOffsetsResolved = false;
+        _vitalBadReadCount = 0;
         _healthOff = Poe2.Life.Health; _manaOff = Poe2.Life.Mana; _esOff = Poe2.Life.EnergyShield;
         _esOffKnown = true;
         _landmarksKey = -1; _landmarks = null;
@@ -139,7 +146,7 @@ public sealed class Poe2Live
         /// landmarks (one per spatial cluster — e.g. each stair-up section of a multi-level dungeon),
         /// so the path alone is ambiguous; qualify it with the integer centroid, which is stable per
         /// area (tiles are static terrain).</summary>
-        public string Key => $"{Path}@{(int)Center.X},{(int)Center.Y}";
+        public string Key { get; } = $"{Path}@{(int)Center.X},{(int)Center.Y}";
     }
 
     public sealed record TerrainData(byte[] Walkable, int Width, int Height);
@@ -389,7 +396,13 @@ public sealed class Poe2Live
         if (localPlayer != _plLifeFor) { _plLifeFor = localPlayer; _plLife = ResolveComponent(localPlayer, "Life"); }
         if (_plLife == 0) return null;
         EnsureVitalOffsets(_plLife);
-        if (!_reader.TryReadStruct<VitalStruct>(_plLife + _healthOff, out var hp) || hp.Max <= 0) return null;
+        if (!_reader.TryReadStruct<VitalStruct>(_plLife + _healthOff, out var hp) ||
+            hp.Max <= 0 || hp.Current > hp.Max)
+        {
+            if (++_vitalBadReadCount >= VitalBadReadThreshold) _vitalOffsetsResolved = false;
+            return null;
+        }
+        _vitalBadReadCount = 0;
         _reader.TryReadStruct<VitalStruct>(_plLife + _manaOff, out var mana);
         VitalStruct es = default; // suppressed (stays 0 → ES% 100) when the offset isn't confirmed
         if (_esOffKnown) _reader.TryReadStruct<VitalStruct>(_plLife + _esOff, out es);
@@ -1034,26 +1047,25 @@ public sealed class Poe2Live
     {
         var uiRoot = Ptr(inGameState + Poe2.InGameState.UiRoot);
         if (uiRoot == 0) return;
-        var queue = new Queue<nint>(); queue.Enqueue(uiRoot);
-        var visited = new HashSet<nint>();
-        var body = new byte[Poe2.MapUiElement.Zoom + 8];
-        while (queue.Count > 0 && visited.Count < 30000)
+        _mapQueue.Clear(); _mapQueue.Enqueue(uiRoot);
+        _mapVisited.Clear();
+        while (_mapQueue.Count > 0 && _mapVisited.Count < 30000)
         {
-            var el = queue.Dequeue();
-            if (el == 0 || !visited.Add(el)) continue;
+            var el = _mapQueue.Dequeue();
+            if (el == 0 || !_mapVisited.Add(el)) continue;
 
             var first = Ptr(el + Poe2.UiElement.Children);
             if (first != 0 && _reader.TryReadStruct<nint>(el + Poe2.UiElement.Children + 8, out var lastC))
             {
                 var n = ((long)lastC - (long)first) / 8;
                 if (n is > 0 and <= 8192)
-                    for (long k = 0; k < n; k++) queue.Enqueue(Ptr(first + (nint)(k * 8)));
+                    for (long k = 0; k < n; k++) _mapQueue.Enqueue(Ptr(first + (nint)(k * 8)));
             }
 
-            if (_reader.TryReadBytes(el, body) < body.Length) continue;
-            if (BitConverter.ToSingle(body, Poe2.MapUiElement.DefaultShift) != 0f) continue;
-            if (BitConverter.ToSingle(body, Poe2.MapUiElement.DefaultShift + 4) != -20f) continue;
-            var zoom = BitConverter.ToSingle(body, Poe2.MapUiElement.Zoom);
+            if (_reader.TryReadBytes(el, _mapBody) < _mapBody.Length) continue;
+            if (BitConverter.ToSingle(_mapBody, Poe2.MapUiElement.DefaultShift) != 0f) continue;
+            if (BitConverter.ToSingle(_mapBody, Poe2.MapUiElement.DefaultShift + 4) != -20f) continue;
+            var zoom = BitConverter.ToSingle(_mapBody, Poe2.MapUiElement.Zoom);
             if (zoom is <= 0.05f or >= 8f) continue;
             _mapEls.Add(el);
         }

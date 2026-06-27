@@ -27,6 +27,7 @@ public sealed class Poe2Atlas
     private int _catalogCount;
     private volatile bool _scanning;     // a background locate is in flight
     private nint _scanLo, _scanHi;       // game-heap slab to scan (derived from the live chain anchor)
+    private readonly byte[] _scanChunk = new byte[1 << 20];   // background Task.Run scan thread only
 
     private nint CatalogBase
     {
@@ -130,7 +131,6 @@ public sealed class Poe2Atlas
     /// the (syscall) idStr deref.</summary>
     private bool ScanForCatalog(nint lo, nint hi)
     {
-        var chunk = new byte[1 << 20];
         var overlap = Stride * 9;
         foreach (var (regionBase, regionSize) in _reader.Process.EnumerateReadableRegions(privateOnly: false))
         {
@@ -138,17 +138,17 @@ public sealed class Poe2Atlas
             long off = 0;
             while (off < regionSize)
             {
-                var toRead = (int)Math.Min(chunk.Length, regionSize - off);
-                var read = _reader.TryReadBytes(regionBase + (nint)off, chunk.AsSpan(0, toRead));
+                var toRead = (int)Math.Min(_scanChunk.Length, regionSize - off);
+                var read = _reader.TryReadBytes(regionBase + (nint)off, _scanChunk.AsSpan(0, toRead));
                 if (read <= 0) break;
                 for (var i = 0; i + Stride * 8 <= read; i += 8)
                 {
                     // Cheap prune (no syscall — all from the buffer): a catalog entry starts with a small
                     // int32 id, then two canonical heap pointers. Random data rarely matches all three.
-                    var id = BitConverter.ToInt32(chunk, i);
+                    var id = BitConverter.ToInt32(_scanChunk, i);
                     if (id is < 0 or > 4096) continue;
-                    if (!IsCanon((nint)BitConverter.ToInt64(chunk, i + 0x08))) continue;
-                    if (!IsCanon((nint)BitConverter.ToInt64(chunk, i + 0x10))) continue;
+                    if (!IsCanon((nint)BitConverter.ToInt64(_scanChunk, i + 0x08))) continue;
+                    if (!IsCanon((nint)BitConverter.ToInt64(_scanChunk, i + 0x10))) continue;
                     var baseAddr = regionBase + (nint)(off + i);
                     if (!IsCatalogEntry(baseAddr)) continue;
                     // Confirm a run (≥6 more) before committing.
@@ -164,8 +164,8 @@ public sealed class Poe2Atlas
                     return true;
                 }
                 if (read != toRead) break;
-                if (toRead < chunk.Length) break;
-                off += chunk.Length - overlap;
+                if (toRead < _scanChunk.Length) break;
+                off += _scanChunk.Length - overlap;
             }
         }
         return false;

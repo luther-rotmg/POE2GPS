@@ -247,6 +247,7 @@ public sealed class RadarApp : IDisposable
     // _selectedPaths from the trackers; the worker owns all A*. See BackgroundReplanner / RouteTracker.
     private readonly BackgroundReplanner _replanner = new();
     private readonly Dictionary<string, RouteTracker> _trackers = new(); // one per selected id; OWNED by the world thread
+    private readonly List<string> _reconcileScratch = new();             // world thread; scratch for ReconcileTrackers two-pass
     // Built wholesale by the world tick; read by reference from the render thread (F6 add-nearest) and the
     // API thread (TargetLabel). volatile so those readers always see a fully-built list, never a torn one.
     private volatile List<NavTarget> _navTargets = new();                // unified targets, rebuilt each world tick
@@ -954,7 +955,7 @@ public sealed class RadarApp : IDisposable
             playerWorld = _liveRender.PlayerWorld(localPlayer);   // same Render read PlayerGrid uses; live each frame
             map = _liveRender.ReadMap(inGameState, areaInstance);
             _cameraMatrix = _liveRender.CameraMatrix(inGameState);
-            if (_live.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }
+            if (_liveRender.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }
 
             // Refresh each HP-bar mob's live position + HP from the world tick's spec (which captured the
             // mob's Render/Life component addresses) using the RENDER reader — so bars track moving mobs
@@ -1963,7 +1964,7 @@ public sealed class RadarApp : IDisposable
         if (string.IsNullOrEmpty(id)) return;
 
         bool changed;
-        string labels;
+        string[]? snapshot = null;
         lock (_navLock)
         {
             if (_selectedIds.Remove(id))
@@ -1986,10 +1987,14 @@ public sealed class RadarApp : IDisposable
                 changed = true;
             }
 
-            labels = _selectedIds.Count == 0 ? "none" : string.Join(", ", _selectedIds.Select(TargetLabel));
+            if (changed) snapshot = _selectedIds.Count == 0 ? null : _selectedIds.ToArray();
         }
 
-        if (changed) Console.WriteLine($"\nPath targets: {labels}");
+        if (changed)
+        {
+            var labels = snapshot is null ? "none" : string.Join(", ", snapshot.Select(TargetLabel));
+            Console.WriteLine($"\nPath targets: {labels}");
+        }
     }
 
     /// <summary>Snapshot the current selection ids (under the lock) into a fresh list — the standard
@@ -2011,9 +2016,9 @@ public sealed class RadarApp : IDisposable
         // Remove trackers no longer selected.
         if (_trackers.Count > 0)
         {
-            var live = new HashSet<string>(selected);
-            var stale = _trackers.Keys.Where(k => !live.Contains(k)).ToList();
-            foreach (var id in stale) _trackers.Remove(id);
+            _reconcileScratch.Clear();
+            foreach (var k in _trackers.Keys) if (!selected.Contains(k)) _reconcileScratch.Add(k);
+            foreach (var id in _reconcileScratch) _trackers.Remove(id);
         }
 
         // Create trackers for newly-selected ids and kick off their first plan.
