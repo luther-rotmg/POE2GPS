@@ -3,6 +3,16 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.8.0] — 2026-06-27
+### Changed
+- **Performance & footprint pass** — a head-to-toe optimization sweep, with **no change to what the overlay reads** (still strictly read-only):
+  - **~15–20 MB lower idle RAM** — the mod-translation tables now load only when the (default-off) gear scorer actually needs them, instead of eagerly at startup.
+  - **Fewer per-frame allocations at high refresh rates** — atlas projection/route geometry, session-HUD text, entity/landmark colors, and the monolith panel are now cached/reused per frame instead of rebuilt every frame.
+  - **Lighter world tick** — objective ranking is computed once per tick, the Objective Director reconciles at ~4 Hz (forced on zone change), nav-target building is single-pass, and area hash/level are cached per zone.
+  - **Capped session logs** — the seen-POI, entity-atlas, and mod catalogs no longer grow unbounded over a long session.
+### Fixed
+- A latent data race where the render thread read player vitals through the world thread's memory reader — vitals now use the render thread's own reader. Vital-offset detection also re-validates if it ever latches onto a bad read (e.g. a torn loading-screen frame).
+
 ## [0.7.1] — 2026-06-27
 ### Added
 - **Force re-scan** button (Status card) + `POST /api/rescan` — re-detect the game after a patch without restarting.
