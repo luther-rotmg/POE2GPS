@@ -725,8 +725,9 @@ public sealed class RadarApp : IDisposable
 
     /// <summary>Background slot resolver (1.5 s cadence): on its OWN reader stack, scan for the GameState
     /// slot until a chain validates in a zone, then publish it for the consumer threads to rebind. Tracks
-    /// attach state + AOB candidate count for the health monitor. Re-attach (game restart) lands in a later
-    /// task; for now a dead process just flips _attached = false.</summary>
+    /// attach state + AOB candidate count for the health monitor. On process-death, calls TryReattach to
+    /// re-open a freshly-launched client in place, then resets the resolved slot so the chain is re-resolved
+    /// from scratch against the new process.</summary>
     private void ResolverLoop()
     {
         var resolverReader = new MemoryReader(_process);   // isolated reader — never shares buffers with a thread
@@ -735,6 +736,17 @@ public sealed class RadarApp : IDisposable
             bool alive;
             try { using var p = System.Diagnostics.Process.GetProcessById(_process.ProcessId); alive = !p.HasExited; }
             catch { alive = false; }
+
+            if (!alive)
+            {
+                // Game closed/restarted: try to re-attach to a fresh client and re-resolve from scratch.
+                if (_process.TryReattach())
+                {
+                    alive = true;
+                    _resolvedSlot = 0; _aobScanned = false;
+                    ConsoleTheme.Accent("Re-attached to a new Path of Exile 2 client — re-resolving…");
+                }
+            }
             _attached = alive;
 
             if (alive && _resolvedSlot == 0)

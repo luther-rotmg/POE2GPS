@@ -11,11 +11,11 @@ namespace POE2Radar.Core;
 /// </summary>
 public sealed class ProcessHandle : IDisposable
 {
-    public int ProcessId { get; }
-    public string ProcessName { get; }
+    public int ProcessId { get; private set; }
+    public string ProcessName { get; private set; }
     public string ModulePath { get; }
-    public nint MainModuleBase { get; }
-    public uint MainModuleSize { get; }
+    public nint MainModuleBase { get; private set; }
+    public uint MainModuleSize { get; private set; }
     internal nint Handle { get; private set; }
 
     private ProcessHandle(int processId, string processName, string modulePath, nint mainModuleBase, uint mainModuleSize, nint handle)
@@ -83,6 +83,37 @@ public sealed class ProcessHandle : IDisposable
         {
             if (handle != 0) NativeMethods.CloseHandle(handle);
         }
+    }
+
+    /// <summary>Re-open a freshly-launched PoE2 client in place (after the previous one exited), refreshing
+    /// this handle + module base/size so the existing MemoryReaders keep working against the new process.
+    /// Returns true if a client was found and opened. Read-only access mask, same as AttachToProcess.
+    /// Called only from the slot resolver thread, and only after the old process has died (so no read is in
+    /// flight against the handle being swapped).</summary>
+    public bool TryReattach(IReadOnlyList<string>? candidateNames = null)
+    {
+        candidateNames ??= ["PathOfExile", "PathOfExileSteam", "PathOfExile_x64", "PathOfExile_KG", "PathOfExileEGS"];
+        foreach (var name in candidateNames)
+        {
+            var procs = System.Diagnostics.Process.GetProcessesByName(name);
+            try
+            {
+                if (procs.Length == 0) continue;
+                var fresh = AttachToProcess(procs[0].Id, name);
+                var old = Handle;
+                Handle = fresh.Handle;
+                MainModuleBase = fresh.MainModuleBase;
+                MainModuleSize = fresh.MainModuleSize;
+                ProcessId = fresh.ProcessId;
+                ProcessName = fresh.ProcessName;
+                fresh.Handle = 0;   // we took ownership of the handle — stop fresh from closing it
+                if (old != 0) NativeMethods.CloseHandle(old);
+                return true;
+            }
+            catch { /* try the next candidate name */ }
+            finally { foreach (var p in procs) p.Dispose(); }
+        }
+        return false;
     }
 
     private static (string ModulePath, nint BaseAddress, uint Size) ResolveMainModule(nint handle, string? expectedName)
