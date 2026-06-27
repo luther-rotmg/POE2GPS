@@ -19,6 +19,7 @@ public sealed class SeenPoiLog
     private bool _dirty;        // a NEW candidate signature arrived → arm the periodic debounced flush
     private bool _countsDirty;  // only repeat-sighting count/timestamp drift → persisted at shutdown, never on the 4s loop
     private const long FlushAfterMs = 4000;
+    private const int MaxEntries = 5000;
     private static readonly JsonSerializerOptions Json =
         new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -65,6 +66,7 @@ public sealed class SeenPoiLog
         }
         else
         {
+            if (_seen.Count >= MaxEntries) return; // cap reached — no new keys
             _seen[sig] = new SeenPoi(sig, metadata, landmarkPath, category, poi, rarity,
                 friendlyName(), ZoneGuide.Shared.FriendlyName(areaCode), 1, DateTime.UtcNow);
             if (!_dirty) { _dirty = true; _sinceDirty.Restart(); }

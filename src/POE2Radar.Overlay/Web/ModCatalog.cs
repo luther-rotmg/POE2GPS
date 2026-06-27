@@ -19,10 +19,11 @@ public sealed class ModCatalog
 {
     private readonly string _filePath;
     private readonly object _gate = new();
-    private readonly SortedSet<string> _mods = new(StringComparer.Ordinal); // ordinal-sorted for stable output
+    private readonly HashSet<string> _mods = new(StringComparer.Ordinal); // sorted only at Save()
     private readonly Stopwatch _sinceDirty = Stopwatch.StartNew();
     private bool _dirty;
     private const long FlushAfterMs = 4000; // debounce: coalesce a burst of new mods into one write
+    private const int MaxEntries = 2000;
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -33,7 +34,7 @@ public sealed class ModCatalog
     }
 
     /// <summary>Snapshot of every known mod id, ordinal-sorted (safe to serialize off-thread).</summary>
-    public IReadOnlyList<string> All { get { lock (_gate) return _mods.ToList(); } }
+    public IReadOnlyList<string> All { get { lock (_gate) { var list = new List<string>(_mods); list.Sort(StringComparer.Ordinal); return list; } } }
 
     public int Count { get { lock (_gate) return _mods.Count; } }
 
@@ -46,7 +47,10 @@ public sealed class ModCatalog
         {
             var added = false;
             for (var i = 0; i < mods.Count; i++)
+            {
+                if (_mods.Count >= MaxEntries) break;
                 if (_mods.Add(mods[i])) added = true;
+            }
             if (!added) return;
             if (!_dirty) { _dirty = true; _sinceDirty.Restart(); }
         }
@@ -94,7 +98,8 @@ public sealed class ModCatalog
     {
         try
         {
-            JsonStore.AtomicWrite(_filePath, _mods.ToList(), Json);
+            var sorted = new List<string>(_mods); sorted.Sort(StringComparer.Ordinal);
+            JsonStore.AtomicWrite(_filePath, sorted, Json);
         }
         catch (Exception ex) { Console.Error.WriteLine($"Mod catalog save failed: {ex.Message}"); }
     }

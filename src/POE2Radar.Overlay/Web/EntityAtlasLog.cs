@@ -20,6 +20,7 @@ public sealed class EntityAtlasLog
     private bool _dirty;        // a NEW census signature arrived → arm the periodic debounced flush
     private bool _countsDirty;  // only repeat-sighting drift → persisted at shutdown, never on the loop
     private const long FlushAfterMs = 4000;
+    private const int MaxEntries = 10000;
     private static readonly JsonSerializerOptions Json =
         new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -48,6 +49,7 @@ public sealed class EntityAtlasLog
                 }
                 else
                 {
+                    if (_seen.Count >= MaxEntries) continue; // cap reached — no new keys
                     var now = DateTime.UtcNow;
                     _seen[sig] = new AtlasEntry(sig, e.Category.ToString(), e.Rarity.ToString(), e.Poi,
                         ZoneGuide.Shared.FriendlyName(areaCode), 1, now, now);
