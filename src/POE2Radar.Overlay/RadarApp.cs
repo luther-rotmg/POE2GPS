@@ -575,12 +575,20 @@ public sealed class RadarApp : IDisposable
         _entityNameStore = new EntityNameStore(Path.Combine(ConfigDir, "entity_names_user.json"));
         _gearWeights = new GearWeightStore(Path.Combine(ConfigDir, "stat_weights.json"));
         ConsoleTheme.Kv("rules", $"{_hidden.Count} hidden · {_displayRules.Count} display · {_modCatalog.Count} mods");
+        // Audio cues: pre-load PCM tones into SoundPlayer so Play() is fire-and-forget with no disk I/O.
+        // Master gate (EnableAudioAlerts) defaults false — nothing plays until the user opts in.
+        // Initialized before ApiServer so the audioTest lambda can capture non-null references.
+        _cueMonster   = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(660, 120));
+        _cueItem      = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(880, 150));
+        _cueObjective = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(520, 180));
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
                              _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
                              GearJson, _gearWeights,
                              AtlasJson, SetAtlasSelection,
-                             SetAtlasHighlight, VersionJson, RequestRescan, _settings.ApiPort);
+                             SetAtlasHighlight, VersionJson, RequestRescan,
+                             audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; } },
+                             port: _settings.ApiPort);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
@@ -598,11 +606,6 @@ public sealed class RadarApp : IDisposable
                     ConsoleTheme.Accent($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
             });
         }
-        // Audio cues: pre-load PCM tones into SoundPlayer so Play() is fire-and-forget with no disk I/O.
-        // Master gate (EnableAudioAlerts) defaults false — nothing plays until the user opts in.
-        _cueMonster   = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(660, 120));
-        _cueItem      = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(880, 150));
-        _cueObjective = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(520, 180));
     }
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.

@@ -547,6 +547,22 @@ internal static class DashboardHtml
             <div class="row" id="stRescanRow" hidden><button id="stRescanBtn" type="button" style="font:inherit;font-size:12px;color:var(--gold-bright);background:#0c0a07;border:1px solid var(--line);border-radius:3px;padding:6px 12px;cursor:pointer">Force re-scan</button><small style="opacity:.55;margin-left:8px">re-detect the game after a patch</small></div>
           </div>
           <div class="card">
+            <h3>Audio alerts</h3>
+            <div class="row"><div class="rl">Enable audio alerts<small>short tones for key events &mdash; off by default</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableAudioAlerts"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Rare / Unique monster nearby</div>
+              <label class="sw"><input type="checkbox" data-set="audioAlertRareUnique"><span class="track"></span><span class="knob"></span></label>
+              <button class="numin" data-audiotest="monster">Test</button></div>
+            <div class="row"><div class="rl">Unique item drop</div>
+              <label class="sw"><input type="checkbox" data-set="audioAlertUniqueDrop"><span class="track"></span><span class="knob"></span></label>
+              <button class="numin" data-audiotest="item">Test</button></div>
+            <div class="row"><div class="rl">Objective reached</div>
+              <label class="sw"><input type="checkbox" data-set="audioAlertObjective"><span class="track"></span><span class="knob"></span></label>
+              <button class="numin" data-audiotest="objective">Test</button></div>
+            <div class="row"><div class="rl">Monster alert radius (cells)</div>
+              <input class="numin" type="number" min="10" max="200" data-set="audioAlertRadiusCells"></div>
+          </div>
+          <div class="card">
             <h3>Target cycling</h3>
             <div class="row"><div class="rl">Intelligent target cycling<small>On = smart priority/distance order &mdash; Off (default) = cycle follows the radar menu (nav dropdown order)</small></div>
               <label class="sw"><input type="checkbox" data-set="intelligentTargetCycling"><span class="track"></span><span class="knob"></span></label></div>
@@ -1841,6 +1857,7 @@ async function checkVersion(){
 }
 
 wireSettings(); wireHpBars(); wireTerrain(); wireGround();
+document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);

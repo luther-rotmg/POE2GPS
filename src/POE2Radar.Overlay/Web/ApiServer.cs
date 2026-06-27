@@ -73,6 +73,9 @@ public sealed class ApiServer : IDisposable
     // Version/update info provider ({current, latest, updateAvailable, url}) for the dashboard banner.
     private readonly Func<object>? _version;
     private readonly Action? _rescan;
+    // Delegate wired from RadarApp to play a named audio cue ("monster"|"item"|"objective").
+    // POST /api/audio-test invokes it for dashboard test buttons — loopback-gated.
+    private readonly Action<string>? _audioTest;
     private volatile bool _running;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -100,6 +103,7 @@ public sealed class ApiServer : IDisposable
         Action<IReadOnlyList<(string tag, string color, bool track, bool nav, bool arrow)>>? atlasHighlight = null,
         Func<object>? versionProvider = null,
         Action? rescan = null,
+        Action<string>? audioTest = null,
         int port = 7777)
     {
         _state = state;
@@ -108,6 +112,7 @@ public sealed class ApiServer : IDisposable
         _atlasHighlight = atlasHighlight;
         _version = versionProvider;
         _rescan = rescan;
+        _audioTest = audioTest;
         _settings = settings;
         _navGet = navGet;
         _navToggle = navToggle;
@@ -335,6 +340,37 @@ public sealed class ApiServer : IDisposable
                     break;
                 }
                 _rescan?.Invoke();
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
+                break;
+            }
+
+            case "/api/audio-test":
+            {
+                // POST-only, loopback-gated. Triggers a local audio cue for dashboard test buttons.
+                // Only plays output sound — no game input, no injection.
+                if (ctx.Request.HttpMethod != "POST")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                    break;
+                }
+                var audioBody = ReadBody(ctx);
+                string cue = "";
+                if (!string.IsNullOrWhiteSpace(audioBody))
+                {
+                    try
+                    {
+                        using var audioDoc = JsonDocument.Parse(audioBody);
+                        if (audioDoc.RootElement.TryGetProperty("cue", out var cueEl))
+                            cue = cueEl.GetString() ?? "";
+                    }
+                    catch { /* malformed body — cue stays empty */ }
+                }
+                _audioTest?.Invoke(cue);
                 Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
                 break;
             }
@@ -705,6 +741,12 @@ public sealed class ApiServer : IDisposable
         sessionHudOffsetX        = _settings.SessionHud.OffsetX,
         sessionHudOffsetY        = _settings.SessionHud.OffsetY,
         sessionHudExcludeTowns   = _settings.SessionHud.ExcludeTownsFromPace,
+        // Audio alert settings (5 fields; master gate defaults OFF)
+        enableAudioAlerts        = _settings.EnableAudioAlerts,
+        audioAlertRareUnique     = _settings.AudioAlertRareUnique,
+        audioAlertUniqueDrop     = _settings.AudioAlertUniqueDrop,
+        audioAlertObjective      = _settings.AudioAlertObjective,
+        audioAlertRadiusCells    = _settings.AudioAlertRadiusCells,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -771,6 +813,12 @@ public sealed class ApiServer : IDisposable
                 case "sessionHudAnchor" when TryString(p.Value, out var s): _settings.SessionHud.Anchor = s.Trim(); applied.Add(p.Name); break;
                 case "sessionHudOffsetX" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetX = n; applied.Add(p.Name); break;
                 case "sessionHudOffsetY" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetY = n; applied.Add(p.Name); break;
+                // Audio alert settings
+                case "enableAudioAlerts" when TryBool(p.Value, out var b): _settings.EnableAudioAlerts = b; applied.Add(p.Name); break;
+                case "audioAlertRareUnique" when TryBool(p.Value, out var b): _settings.AudioAlertRareUnique = b; applied.Add(p.Name); break;
+                case "audioAlertUniqueDrop" when TryBool(p.Value, out var b): _settings.AudioAlertUniqueDrop = b; applied.Add(p.Name); break;
+                case "audioAlertObjective" when TryBool(p.Value, out var b): _settings.AudioAlertObjective = b; applied.Add(p.Name); break;
+                case "audioAlertRadiusCells" when TryInt(p.Value, out var n): _settings.AudioAlertRadiusCells = Math.Clamp(n, 10, 200); applied.Add(p.Name); break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }
