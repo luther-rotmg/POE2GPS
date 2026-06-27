@@ -698,9 +698,13 @@ public sealed class ApiServer : IDisposable
             {
                 if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
                 if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
-                // 2 MB cap before reading (untrusted community share-code).
+                // 2 MB cap on the untrusted community share-code. Check the declared length first, then
+                // the actual body length — ContentLength64 is -1 for chunked requests, so the post-read
+                // guard is what actually enforces the cap regardless of transfer encoding.
                 if (ctx.Request.ContentLength64 > 2_000_000) { Write(ctx, 413, JsonSerializer.Serialize(new { error = "request too large" }, Json)); break; }
-                ApplyPresetImport(ReadBody(ctx));
+                var presetBody = ReadBody(ctx);
+                if (presetBody.Length > 2_000_000) { Write(ctx, 413, JsonSerializer.Serialize(new { error = "request too large" }, Json)); break; }
+                ApplyPresetImport(presetBody);
                 Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, rules = _displayRules.All.Count }, Json));
                 break;
             }
