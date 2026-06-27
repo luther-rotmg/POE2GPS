@@ -380,7 +380,7 @@ public sealed class OverlayRenderer : IDisposable
         if (ctx.CampaignGps is not { Length: > 0 } msg) return;
         rt.FillRectangle(new Vortice.RawRectF(0f, 34f, ctx.WindowWidth, 58f), _bPanel!);
         _bStyle!.Color = new Color4(0.85f, 0.72f, 0.30f, 1f);   // campaign gold
-        rt.DrawText("🧭 " + msg, _tf!, new Rect(12f, 38f, ctx.WindowWidth - 12f, 58f), _bStyle!, DrawTextOptions.Clip);
+        rt.DrawText(msg, _tf!, new Rect(12f, 38f, ctx.WindowWidth - 12f, 58f), _bStyle!, DrawTextOptions.Clip);
     }
 
     /// <summary>
