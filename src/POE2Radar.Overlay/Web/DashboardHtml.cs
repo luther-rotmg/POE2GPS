@@ -364,6 +364,7 @@ internal static class DashboardHtml
     <div class="hgap"></div>
     <div class="area-chip" id="areaChip">— <b>·</b></div>
     <div class="conn" id="conn"><span class="dot"></span><span id="connTxt">offline</span></div>
+    <div class="conn" id="health" title=""><span class="dot" id="healthDot"></span><span id="healthTxt">&mdash;</span></div>
   </header>
 
   <div class="body">
@@ -1764,6 +1765,15 @@ function renderState(){
   } else { stRow.hidden = true; stMsgEl.textContent = ''; }
   const rsRow = $('#stRescanRow');
   if (rsRow) rsRow.hidden = (hsName === 'ok');
+  // Masthead game-health pill (visible on every tab): green ok / amber connecting / red broken / grey benign.
+  const hd = $('#healthDot'), ht = $('#healthTxt'), hc = $('#health');
+  if (hd) {
+    const map = { ok: ['var(--good)', 'in game'], searching: ['var(--gold)', 'connecting'],
+      loading: ['var(--gold)', 'loading'], broken: ['var(--blood)', 'out of date?'],
+      notingame: ['var(--ink-faint)', 'menu'], waiting: ['var(--ink-faint)', 'no game'] };
+    const [col, lbl] = map[hsName] || map.searching;
+    hd.style.background = col; ht.textContent = lbl; hc.title = s.healthMessage || '';
+  }
   const hp=Math.max(0,Math.min(100,s.hpPct||0)), mp=Math.max(0,Math.min(100,s.manaPct||0)), es=Math.max(0,Math.min(100,s.esPct||0));
   $('#hpBar').style.width=hp+'%'; $('#mpBar').style.width=mp+'%'; $('#esBar').style.width=es+'%';
   $('#hpNum').textContent=hp.toFixed(0)+'%'; $('#mpNum').textContent=mp.toFixed(0)+'%'; $('#esNum').textContent=es.toFixed(0)+'%';
