@@ -202,6 +202,8 @@ public sealed class RadarApp : IDisposable
     private volatile POE2Radar.Core.Health.HealthState _healthState = POE2Radar.Core.Health.HealthState.Searching;
     private volatile string? _healthMessage;
 
+    private DateTime _lastWorldErrLog = DateTime.MinValue;   // rate-limit the WorldTick error log (once/5 s)
+
     // ── Read-only player vitals readout (HP/Mana/ES) for the HUD + dashboard. ──
     private DateTime _nextPathKeyAt = DateTime.MinValue;
     private DateTime _nextBrowserAt = DateTime.MinValue;
@@ -703,7 +705,17 @@ public sealed class RadarApp : IDisposable
                     PublishEmptyWorld();
                 EvaluateHealth(stage);
             }
-            catch (Exception ex) { Console.Error.WriteLine($"World tick error: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                // A persistently-throwing tick must not freeze stale world data on screen or flood stderr.
+                PublishEmptyWorld();
+                var nowErr = DateTime.UtcNow;
+                if (nowErr - _lastWorldErrLog >= TimeSpan.FromSeconds(5))
+                {
+                    _lastWorldErrLog = nowErr;
+                    Console.Error.WriteLine($"World tick error: {ex.Message}");
+                }
+            }
             _worldMs = (float)sw.Elapsed.TotalMilliseconds;
             Thread.Sleep(Math.Max(1, budgetMs - (int)sw.ElapsedMilliseconds));
         }
