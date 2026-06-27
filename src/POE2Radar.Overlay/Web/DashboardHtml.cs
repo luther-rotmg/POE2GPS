@@ -1744,12 +1744,12 @@ function renderState(){
   $('#stAttach').innerHTML = stTick(hsName !== 'waiting');
   $('#stZone').innerHTML   = stTick(hsName === 'ok' || hsName === 'loading');
   $('#stPlayer').innerHTML = stTick(hsName === 'ok');
-  const stRow = $('#stMsgRow'), stMsg = $('#stMsg');
+  const stRow = $('#stMsgRow'), stMsgEl = $('#stMsg');
   if (s.healthMessage) {
     stRow.hidden = false;
-    stMsg.textContent = '⚠ ' + s.healthMessage;
-    stMsg.style.color = (hsName === 'broken') ? 'var(--blood)' : 'var(--gold)';
-  } else { stRow.hidden = true; stMsg.textContent = ''; }
+    stMsgEl.textContent = '⚠ ' + s.healthMessage;
+    stMsgEl.style.color = (hsName === 'broken') ? 'var(--blood)' : 'var(--gold)';
+  } else { stRow.hidden = true; stMsgEl.textContent = ''; }
   const hp=Math.max(0,Math.min(100,s.hpPct||0)), mp=Math.max(0,Math.min(100,s.manaPct||0)), es=Math.max(0,Math.min(100,s.esPct||0));
   $('#hpBar').style.width=hp+'%'; $('#mpBar').style.width=mp+'%'; $('#esBar').style.width=es+'%';
   $('#hpNum').textContent=hp.toFixed(0)+'%'; $('#mpNum').textContent=mp.toFixed(0)+'%'; $('#esNum').textContent=es.toFixed(0)+'%';

@@ -714,7 +714,7 @@ public sealed class RadarApp : IDisposable
             AobCandidateCount:  _aobCandidates,
             AobScanned:         _aobScanned,
             Stage:              stage,
-            TerrainPresent:     _terrain != null,
+            TerrainPresent:     _terrain != null,     // world-thread-local: set by WorldTick on this thread
             UpdateAvailable:    u?.UpdateAvailable ?? false,
             UpdateChecked:      u?.Latest != null,
             UpdateUrl:          u?.Url ?? UpdateChecker.ReleasesPage);
@@ -743,7 +743,7 @@ public sealed class RadarApp : IDisposable
                 if (_process.TryReattach())
                 {
                     alive = true;
-                    _resolvedSlot = 0; _aobScanned = false;
+                    _resolvedSlot = 0; _aobScanned = false; _aobCandidates = 0;
                     ConsoleTheme.Accent("Re-attached to a new Path of Exile 2 client — re-resolving…");
                 }
             }

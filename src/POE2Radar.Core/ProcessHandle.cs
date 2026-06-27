@@ -103,6 +103,11 @@ public sealed class ProcessHandle : IDisposable
                 // exit, so the compiler-enforced Dispose at the end of this block closes nothing (no double-close).
                 using var fresh = AttachToProcess(procs[0].Id, name);
                 var old = Handle;
+                // Handle is read non-atomically by the world/render/API reader threads, but this swap is safe:
+                // TryReattach runs only on the resolver thread and only after the old process is confirmed dead,
+                // and ReadProcessMemory against a dead handle is a benign no-op failure (never a use-after-free).
+                // The "only after process death" precondition is therefore load-bearing — do not call TryReattach
+                // while the process is alive.
                 Handle = fresh.Handle;
                 MainModuleBase = fresh.MainModuleBase;
                 MainModuleSize = fresh.MainModuleSize;

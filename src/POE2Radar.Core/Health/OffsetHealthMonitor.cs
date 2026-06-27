@@ -138,7 +138,7 @@ public sealed class OffsetHealthMonitor
 
     private string SearchingMessage(ChainProbe p, DateTime now)
     {
-        var age = _searchingSince is { } s ? now - s : TimeSpan.Zero;
+        var age = now - _searchingSince!.Value;   // callers guarantee _searchingSince is set (??= now) before this call
         var patternBroke = p.AobScanned && p.AobCandidateCount == 0;
         if ((patternBroke && age >= PatternBrokeHint) || age >= _searchHint)
         {
