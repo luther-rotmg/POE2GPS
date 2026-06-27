@@ -16,7 +16,7 @@ Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares 
 ### Added
 - **Campaign GPS** (experimental, off by default) — cross-zone campaign navigation: routes you toward the next critical-path zone's exit, shown on the dashboard Zone Plan + overlay.
 
-## [0.6.0] — 2026-06-27
+## [0.6.0] — 2026-06-26
 ### Added
 - **Patch-resilience & health/status** — the overlay self-detects when a PoE2 patch breaks the offsets, starts non-fatally and self-connects (works when launched at login), re-attaches after a game restart, and shows a clear update-aware banner + dashboard Status panel instead of failing silently.
 
@@ -32,7 +32,7 @@ Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares 
 ### Added
 - Objective Director v2: tier-aware ranking + Zone Plan + a suggest-only classifier. Plus stealth `.exe` cleanup and atlas node-centering fixes.
 
-## [0.4.0] — 2026-06-24
+## [0.4.0] — 2026-06-23
 ### Added
 - Session HUD (opt-in, off by default): pace / zone context / deaths, on the overlay + dashboard.
 
