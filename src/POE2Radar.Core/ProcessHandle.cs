@@ -13,7 +13,7 @@ public sealed class ProcessHandle : IDisposable
 {
     public int ProcessId { get; private set; }
     public string ProcessName { get; private set; }
-    public string ModulePath { get; }
+    public string ModulePath { get; private set; }
     public nint MainModuleBase { get; private set; }
     public uint MainModuleSize { get; private set; }
     internal nint Handle { get; private set; }
@@ -99,14 +99,17 @@ public sealed class ProcessHandle : IDisposable
             try
             {
                 if (procs.Length == 0) continue;
-                var fresh = AttachToProcess(procs[0].Id, name);
+                // using-scope documents the ownership transfer: we set fresh.Handle = 0 below before scope
+                // exit, so the compiler-enforced Dispose at the end of this block closes nothing (no double-close).
+                using var fresh = AttachToProcess(procs[0].Id, name);
                 var old = Handle;
                 Handle = fresh.Handle;
                 MainModuleBase = fresh.MainModuleBase;
                 MainModuleSize = fresh.MainModuleSize;
+                ModulePath = fresh.ModulePath;
                 ProcessId = fresh.ProcessId;
                 ProcessName = fresh.ProcessName;
-                fresh.Handle = 0;   // we took ownership of the handle — stop fresh from closing it
+                fresh.Handle = 0;   // we took ownership of the handle — stop fresh (using-dispose) from closing it
                 if (old != 0) NativeMethods.CloseHandle(old);
                 return true;
             }
