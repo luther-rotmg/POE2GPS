@@ -88,6 +88,11 @@ public sealed class RadarApp : IDisposable
     }
     private volatile AtlasRender _atlasRender = AtlasRender.Closed;
     private readonly List<AtlasMark> _atlasMarkFrame = new();   // render-thread scratch: marks with per-frame-fresh relPos
+    private readonly List<NumVec2> _atlasRouteFrame = new();               // render-thread scratch (rebuilt per frame)
+    private readonly List<AtlasRouteInfo> _atlasAutoRoutesFrame = new();   // render-thread scratch (rebuilt per frame)
+    private readonly List<NumVec2> _atlasAutoRoutePointsFrame = new();     // render-thread inner scratch
+    // Render-thread scratch for AtlasProjection() — avoids a new double[8] every call.
+    private readonly double[] _atlasProj = new double[8];   // owned by render thread; filled+read synchronously in Tick()
 
     // ── Runeforge ("Runeshape Combinations") priced-reward labels: same lock-free published-record idiom.
     //    Built on the world thread (panel read + price lookup), read by the render thread. ──
@@ -239,6 +244,7 @@ public sealed class RadarApp : IDisposable
     // API thread (TargetLabel). volatile so those readers always see a fully-built list, never a torn one.
     private volatile List<NavTarget> _navTargets = new();                // unified targets, rebuilt each world tick
     private volatile IReadOnlyList<RankedTarget> _rankedTargets = System.Array.Empty<RankedTarget>();
+    private volatile IReadOnlyList<RankedTarget> _defaultCycleTargets = System.Array.Empty<RankedTarget>();  // world publishes; render reads
     private string? _activeTargetId;          // the cycler's current single active target (render thread)
     private CycleIndicator? _cycleIndicator;  // transient overlay indicator (render thread)
     private DateTime _nextCycleAt = DateTime.MinValue;
@@ -913,8 +919,8 @@ public sealed class RadarApp : IDisposable
         var map = default(Poe2Live.MapUi);
         // Atlas routes/markers re-read per frame (positions from node elements) so they track pan at full FPS.
         NumVec2? atlasStart = null, atlasEnd = null, atlasCurrent = null;
-        List<NumVec2>? atlasRoute = null;
-        List<AtlasRouteInfo>? atlasAutoRoutes = null;
+        IReadOnlyList<NumVec2>? atlasRoute = null;
+        IReadOnlyList<AtlasRouteInfo>? atlasAutoRoutes = null;
 
         // One lock-free read each of the two published snapshots — everything drawn this frame comes from
         // these two + the live render-rate reads below.
@@ -980,23 +986,25 @@ public sealed class RadarApp : IDisposable
                 atlasCurrent = ar.Current is { } cp ? Pt(cp) : (NumVec2?)null;
                 if (ar.Route is { Count: >= 2 })
                 {
-                    var rl = new List<NumVec2>(ar.Route.Count);
-                    foreach (var p in ar.Route) rl.Add(Pt(p));
-                    atlasRoute = rl;
+                    _atlasRouteFrame.Clear();
+                    foreach (var p in ar.Route) _atlasRouteFrame.Add(Pt(p));
+                    atlasRoute = _atlasRouteFrame;
                 }
                 if (ar.AutoRoutes is { Count: > 0 })
                 {
-                    atlasAutoRoutes = new List<AtlasRouteInfo>(ar.AutoRoutes.Count);
+                    _atlasAutoRoutesFrame.Clear();
                     foreach (var spec in ar.AutoRoutes)
                     {
-                        var pl = new List<NumVec2>(spec.Points.Count);
-                        foreach (var p in spec.Points) pl.Add(Pt(p));
-                        if (pl.Count >= 2) atlasAutoRoutes.Add(new AtlasRouteInfo(pl, spec.Color, spec.Hops));
+                        _atlasAutoRoutePointsFrame.Clear();
+                        foreach (var p in spec.Points) _atlasAutoRoutePointsFrame.Add(Pt(p));
+                        if (_atlasAutoRoutePointsFrame.Count >= 2)
+                            _atlasAutoRoutesFrame.Add(new AtlasRouteInfo(_atlasAutoRoutePointsFrame.ToList(), spec.Color, spec.Hops));
                     }
+                    atlasAutoRoutes = _atlasAutoRoutesFrame;
                 }
             }
         }
-        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); }
+        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); if (_atlasRouteFrame.Count > 0) _atlasRouteFrame.Clear(); if (_atlasAutoRoutesFrame.Count > 0) _atlasAutoRoutesFrame.Clear(); }
 
         // Zone-load guard: the world snapshot lags the live chain by up to one world pass, so right after a
         // zone change its entities/terrain/route still belong to the PREVIOUS area. Only draw them once the
@@ -1269,6 +1277,11 @@ public sealed class RadarApp : IDisposable
         _rankedTargets = (_settings.IntelligentTargetCycling
                           && (_settings.EnableTargetHotkeys || _settings.EnableControllerCycle))
             ? BuildRankedTargets(player) : System.Array.Empty<RankedTarget>();
+        // Default cycle list (radar-menu order) built once per world tick so ActiveCycleList() never allocs on the render thread.
+        var nav = _navTargets;
+        var defList = new List<RankedTarget>(nav.Count);
+        foreach (var t in nav) defList.Add(new RankedTarget(t.Id, t.Name, ""));
+        _defaultCycleTargets = defList;
 
         // On a zone change: drop the (now-stale) selection, then apply the persistent
         // auto-nav patterns against the new zone's targets. Keyed off the AreaInstance
@@ -1596,7 +1609,9 @@ public sealed class RadarApp : IDisposable
     {
         float uiScale = _window.Height > 0 ? _window.Height / 1600f : 1080f / 1600f;
         float scale = uiScale * (_atlasZoom > 0.01f ? _atlasZoom : 0.85f);
-        return new double[] { scale, 0, 0, 0, scale, 0, 0, 0 };
+        _atlasProj[0] = scale; _atlasProj[1] = 0; _atlasProj[2] = 0; _atlasProj[3] = 0;
+        _atlasProj[4] = scale; _atlasProj[5] = 0; _atlasProj[6] = 0; _atlasProj[7] = 0;
+        return _atlasProj;
     }
 
     // ── Unified navigation-target selection (draw-only guidance, multi-select). ──────────────
@@ -1653,13 +1668,7 @@ public sealed class RadarApp : IDisposable
     /// default, or the priority/distance ranking when IntelligentTargetCycling is on. Render thread;
     /// reads the volatile published lists.</summary>
     private IReadOnlyList<RankedTarget> ActiveCycleList()
-    {
-        if (_settings.IntelligentTargetCycling) return _rankedTargets;
-        var nav = _navTargets;
-        var list = new List<RankedTarget>(nav.Count);
-        foreach (var t in nav) list.Add(new RankedTarget(t.Id, t.Name, ""));
-        return list;
-    }
+        => _settings.IntelligentTargetCycling ? _rankedTargets : _defaultCycleTargets;
 
     /// <summary>Rank the current nav targets by catalog priority (desc) then distance (asc): reuse the
     /// Director's Rank for covered content, then append uncatalogued targets by distance. World-thread.</summary>

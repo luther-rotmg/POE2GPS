@@ -48,6 +48,7 @@ public sealed class Poe2Live
     // Reused camera-matrix buffers (read every render frame).
     private readonly byte[] _camBytes = new byte[64];
     private readonly float[] _camMatrix = new float[16];
+    private readonly List<nint> _probeCandidates = new(13);   // reused per Probe() call; owned by this instance's thread
 
     public Poe2Live(MemoryReader reader, nint gameStateSlot)
     {
@@ -153,13 +154,13 @@ public sealed class Poe2Live
         if (gameState == 0) return ResolveStage.None;
 
         var best = ResolveStage.GameState;
-        var candidates = new List<nint>(13);
+        _probeCandidates.Clear();
         var vecFirst = Ptr(gameState + Poe2.GameState.CurrentStatePtr);
-        if (vecFirst != 0) candidates.Add(Ptr(vecFirst));
+        if (vecFirst != 0) _probeCandidates.Add(Ptr(vecFirst));
         for (var i = 0; i < Poe2.GameState.StateSlotCount; i++)
-            candidates.Add(Ptr(gameState + Poe2.GameState.States + (nint)(i * Poe2.GameState.StateSlotStride)));
+            _probeCandidates.Add(Ptr(gameState + Poe2.GameState.States + (nint)(i * Poe2.GameState.StateSlotStride)));
 
-        foreach (var igs in candidates)
+        foreach (var igs in _probeCandidates)
         {
             if (igs == 0) continue;
             if (best < ResolveStage.InGameState) best = ResolveStage.InGameState;
