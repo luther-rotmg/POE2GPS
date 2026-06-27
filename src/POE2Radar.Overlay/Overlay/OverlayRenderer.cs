@@ -70,6 +70,20 @@ public sealed class OverlayRenderer : IDisposable
     private IDWriteTextFormat? _tf;
     private bool _ready;
 
+    // ── D1: Session-HUD line cache (render-thread-owned). Rebuilt only when any input changes. ──
+    private (string text, bool isDeath)[]? _hudLines;
+    private int _hudCacheSessionSec, _hudCacheZoneSec, _hudCacheZones, _hudCacheAreaLevel, _hudCacheDeaths, _hudCacheDeathsHere;
+    private float _hudCacheZonesPerHr;
+    private string? _hudCacheZoneName;
+    private bool _hudCacheShowPace, _hudCacheShowZone, _hudCacheShowDeaths;
+
+    // ── D2: Terrain color cache + per-rule color memo (render-thread-owned). ──
+    private string _terrainCacheIntHex = "", _terrainCacheEdgeHex = "";
+    private float  _terrainCacheIntOp = -1f, _terrainCacheEdgeOp = -1f;
+    private Color4 _terrainColorInterior, _terrainColorEdge;
+    private readonly Dictionary<Web.DisplayRule, Color4> _ruleColorMemo = new(ReferenceEqualityComparer.Instance);
+    private int _ruleColorGen = -1;
+
     public OverlayRenderer(OverlayWindow window) { _window = window; }
 
     private void EnsureResources()
@@ -549,7 +563,8 @@ public sealed class OverlayRenderer : IDisposable
     private void DrawMonolithPanel(ID2D1RenderTarget rt, RenderContext ctx)
     {
         if (!ctx.ShowMonolithPanel || ctx.Monoliths is not { Count: > 0 } monos) return;
-        var list = monos.OrderByDescending(m => m.BestEx).Take(6).ToList();
+        // D3: use the pre-sorted, capped-to-6 Top list instead of per-frame OrderByDescending+Take+ToList.
+        var list = ctx.MonolithsTop ?? (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>();
         const float w = 248f, pad = 6f, lineH = 15f, headH = 17f, titleH = 18f;
 
         float h = pad * 2f + titleH;
@@ -587,25 +602,56 @@ public sealed class OverlayRenderer : IDisposable
         var sess = ctx.Session;
         if (sess == null) return;
 
-        // Build only the enabled rows (pre-formatted strings). Line count drives the panel height.
-        var lines = new List<(string text, bool isDeath)>(6);
-        if (hud.ShowPace)
+        // D1: cache-key comparands — rebuild the line array only when something actually changed.
+        var sessionSec  = (int)sess.SessionElapsed.TotalSeconds;
+        var zoneSec     = (int)sess.ZoneElapsed.TotalSeconds;
+        if (_hudLines == null
+            || sessionSec          != _hudCacheSessionSec
+            || zoneSec             != _hudCacheZoneSec
+            || sess.ZonesEntered   != _hudCacheZones
+            || sess.ZonesPerHour   != _hudCacheZonesPerHr
+            || sess.CurrentZoneName != _hudCacheZoneName
+            || sess.CurrentAreaLevel != _hudCacheAreaLevel
+            || sess.Deaths         != _hudCacheDeaths
+            || sess.DeathsThisZone != _hudCacheDeathsHere
+            || hud.ShowPace        != _hudCacheShowPace
+            || hud.ShowZoneContext != _hudCacheShowZone
+            || hud.ShowDeaths      != _hudCacheShowDeaths)
         {
-            lines.Add(($"Session  {(int)sess.SessionElapsed.TotalHours:D2}:{sess.SessionElapsed.Minutes:D2}:{sess.SessionElapsed.Seconds:D2}", false));
-            lines.Add(($"Zone     {(int)sess.ZoneElapsed.TotalHours:D2}:{sess.ZoneElapsed.Minutes:D2}:{sess.ZoneElapsed.Seconds:D2}", false));
-            lines.Add(($"Zones    {sess.ZonesEntered}   {sess.ZonesPerHour:F1}/hr", false));
-        }
-        if (hud.ShowZoneContext)
-        {
-            lines.Add(($"Area     {sess.CurrentZoneName}", false));
-            lines.Add(($"Level    {sess.CurrentAreaLevel}", false));
-        }
-        if (hud.ShowDeaths)
-        {
-            lines.Add(($"Deaths   {sess.Deaths} ({sess.DeathsThisZone} here)", sess.Deaths > 0));
+            _hudCacheSessionSec   = sessionSec;
+            _hudCacheZoneSec      = zoneSec;
+            _hudCacheZones        = sess.ZonesEntered;
+            _hudCacheZonesPerHr   = sess.ZonesPerHour;
+            _hudCacheZoneName     = sess.CurrentZoneName;
+            _hudCacheAreaLevel    = sess.CurrentAreaLevel;
+            _hudCacheDeaths       = sess.Deaths;
+            _hudCacheDeathsHere   = sess.DeathsThisZone;
+            _hudCacheShowPace     = hud.ShowPace;
+            _hudCacheShowZone     = hud.ShowZoneContext;
+            _hudCacheShowDeaths   = hud.ShowDeaths;
+
+            // Build only the enabled rows (pre-formatted strings). Line count drives the panel height.
+            var lines = new List<(string text, bool isDeath)>(6);
+            if (hud.ShowPace)
+            {
+                lines.Add(($"Session  {(int)sess.SessionElapsed.TotalHours:D2}:{sess.SessionElapsed.Minutes:D2}:{sess.SessionElapsed.Seconds:D2}", false));
+                lines.Add(($"Zone     {(int)sess.ZoneElapsed.TotalHours:D2}:{sess.ZoneElapsed.Minutes:D2}:{sess.ZoneElapsed.Seconds:D2}", false));
+                lines.Add(($"Zones    {sess.ZonesEntered}   {sess.ZonesPerHour:F1}/hr", false));
+            }
+            if (hud.ShowZoneContext)
+            {
+                lines.Add(($"Area     {sess.CurrentZoneName}", false));
+                lines.Add(($"Level    {sess.CurrentAreaLevel}", false));
+            }
+            if (hud.ShowDeaths)
+            {
+                lines.Add(($"Deaths   {sess.Deaths} ({sess.DeathsThisZone} here)", sess.Deaths > 0));
+            }
+            _hudLines = lines.ToArray();
         }
 
-        int enabledRowCount = lines.Count;
+        var cachedLines = _hudLines;
+        int enabledRowCount = cachedLines.Length;
         if (enabledRowCount == 0) return;   // nothing enabled — touch nothing
 
         const float panelW = 240f;          // narrower than the 248f monolith panel
@@ -631,7 +677,7 @@ public sealed class OverlayRenderer : IDisposable
         rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
 
         float cy = top + pad;
-        foreach (var (text, isDeath) in lines)
+        foreach (var (text, isDeath) in cachedLines)
         {
             var rowRect = new Rect(left + pad, cy, left + panelW - pad, cy + lineH);
             if (isDeath)
@@ -778,8 +824,30 @@ public sealed class OverlayRenderer : IDisposable
     /// <summary>Clamp a 0..1 channel to a 0..255 byte (rounded).</summary>
     private static byte ToByte(float f) => (byte)Math.Clamp((int)MathF.Round(f * 255f), 0, 255);
 
+    /// <summary>D2: Ensure the cached terrain Color4 values are up-to-date. No-op when style is unchanged.</summary>
+    private void EnsureTerrainColors(RenderContext ctx)
+    {
+        var ts = ctx.TerrainStyle;
+        if (ts.InteriorColor == _terrainCacheIntHex && ts.InteriorOpacity == _terrainCacheIntOp
+            && ts.EdgeColor == _terrainCacheEdgeHex && ts.EdgeOpacity == _terrainCacheEdgeOp) return;
+        _terrainCacheIntHex = ts.InteriorColor; _terrainCacheIntOp = ts.InteriorOpacity;
+        _terrainCacheEdgeHex = ts.EdgeColor;    _terrainCacheEdgeOp = ts.EdgeOpacity;
+        _terrainColorInterior = ParseColor(ts.InteriorColor, ts.InteriorOpacity);
+        _terrainColorEdge     = ParseColor(ts.EdgeColor,     ts.EdgeOpacity);
+    }
+
+    /// <summary>D2: Return a cached Color4 for a display rule, parsing only on first use (or after ruleset change).</summary>
+    private Color4 GetRuleColor(Web.DisplayRule rule)
+    {
+        if (!_ruleColorMemo.TryGetValue(rule, out var c)) { c = ParseColor(rule.Color, rule.Opacity); _ruleColorMemo[rule] = c; }
+        return c;
+    }
+
     private void DrawMap(ID2D1RenderTarget rt, RenderContext ctx)
     {
+        // D2: invalidate the per-rule color memo when the display ruleset has changed.
+        if (ctx.DisplayRulesGen != _ruleColorGen) { _ruleColorMemo.Clear(); _ruleColorGen = ctx.DisplayRulesGen; }
+
         // MapCenter = window center + DefaultShift(0,-20) + Shift + manual offset.
         var center = new NumVec2(
             ctx.WindowWidth  * 0.5f + ctx.Map.ShiftX + ctx.OffsetX,
@@ -791,11 +859,10 @@ public sealed class OverlayRenderer : IDisposable
         if (ctx.ShowTerrain && ctx.Terrain is { } t)
         {
             _terrain ??= new TerrainBitmap(rt);
-            var ci = ParseColor(ctx.TerrainStyle.InteriorColor, ctx.TerrainStyle.InteriorOpacity);
-            var ce = ParseColor(ctx.TerrainStyle.EdgeColor, ctx.TerrainStyle.EdgeOpacity);
+            EnsureTerrainColors(ctx);   // D2: parse only when style changes
             var terrainStyle = new TerrainBitmap.TerrainStyle(
-                ToByte(ci.B), ToByte(ci.G), ToByte(ci.R), ToByte(ci.A),
-                ToByte(ce.B), ToByte(ce.G), ToByte(ce.R), ToByte(ce.A));
+                ToByte(_terrainColorInterior.B), ToByte(_terrainColorInterior.G), ToByte(_terrainColorInterior.R), ToByte(_terrainColorInterior.A),
+                ToByte(_terrainColorEdge.B),     ToByte(_terrainColorEdge.G),     ToByte(_terrainColorEdge.R),     ToByte(_terrainColorEdge.A));
             _terrain.EnsureBuiltRaw(t.Walkable, t.Width, t.Height, ctx.AreaHash, inTransition: false, terrainStyle);
             if (_terrain.Bitmap is { } bmp)
             {
@@ -823,7 +890,7 @@ public sealed class OverlayRenderer : IDisposable
             if (rule is null || rule.Hide) continue;
 
             var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale);
-            _bStyle!.Color = ParseColor(rule.Color, rule.Opacity);
+            _bStyle!.Color = GetRuleColor(rule);   // D2: memoized
             DrawIcon(rt, rule.Shape, p, rule.Size, _bStyle, filled: true);
             if (!string.IsNullOrEmpty(rule.Label))
                 rt.DrawText(rule.Label, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
@@ -844,7 +911,7 @@ public sealed class OverlayRenderer : IDisposable
                 if (tr is { Hide: true }) continue;                 // a tile rule hides this landmark
                 if (tr is null && !lmStyle.Enabled) continue;       // no rule + default layer off → skip
                 var shape = tr?.Shape ?? lmStyle.Shape;
-                var color = tr != null ? ParseColor(tr.Color, tr.Opacity) : defColor;
+                var color = tr != null ? GetRuleColor(tr) : defColor;   // D2: memoized for tile rules
                 var size  = tr?.Size ?? lmStyle.Size;
                 var p = Project(new NumVec2(lm.Center.X, lm.Center.Y), player, center, scale);
                 _bStyle!.Color = color;

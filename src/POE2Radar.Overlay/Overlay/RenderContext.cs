@@ -192,6 +192,11 @@ public sealed record RenderContext(
     // list in the nearby-monolith panel. World-space (grid). Null/empty → none.
     IReadOnlyList<MonolithMarker>? Monoliths = null,
     bool ShowMonolithPanel = true,
+    // Pre-sorted (desc BestEx), capped-to-6 slice of Monoliths for the panel rows — avoids per-frame
+    // OrderByDescending(...).Take(6).ToList() in the renderer. Null/empty → none.
+    IReadOnlyList<MonolithMarker>? MonolithsTop = null,
+    // Display-rules generation counter — renderer clears its rule-color memo when this changes.
+    int DisplayRulesGen = 0,
     // ── Session HUD (read-only pace/zone/death overlay). Both discrete fields, mirroring how
     // RenderContext carries Styles/HpBars/TerrainStyle/NavMenuCorner — there is no whole-RadarSettings
     // member. Session is null when the snapshot has not been published yet. ──

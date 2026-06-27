@@ -115,9 +115,9 @@ public sealed class RadarApp : IDisposable
     // ── Runeshape monoliths (priced offered rewards, read off the in-world device — works area-wide,
     //    before the panel is opened). World-space markers; published per area-hash for the zone-load guard. ──
     private readonly RuneMonolithCatalog _monoCatalog = RuneMonolithCatalog.Instance;
-    private sealed record MonolithRender(uint AreaHash, IReadOnlyList<MonolithMarker> Markers)
+    private sealed record MonolithRender(uint AreaHash, IReadOnlyList<MonolithMarker> Markers, IReadOnlyList<MonolithMarker> Top)
     {
-        public static readonly MonolithRender Empty = new(0, Array.Empty<MonolithMarker>());
+        public static readonly MonolithRender Empty = new(0, Array.Empty<MonolithMarker>(), Array.Empty<MonolithMarker>());
     }
     private volatile MonolithRender _monoRender = MonolithRender.Empty;
 
@@ -894,7 +894,10 @@ public sealed class RadarApp : IDisposable
             markers.Add(new MonolithMarker(
                 e.Grid, m.HoleCount, m.IsUnique, m.Collected, anchor, 0, headline, 0xFFE6C84Du, rewards));
         }
-        _monoRender = new MonolithRender(areaHash, markers);
+        var top = new List<MonolithMarker>(markers);
+        top.Sort(static (a, b) => b.BestEx.CompareTo(a.BestEx));
+        if (top.Count > 6) top.RemoveRange(6, top.Count - 6);
+        _monoRender = new MonolithRender(areaHash, markers, top);
     }
 
     /// <summary>One RENDER frame (render thread): fast per-frame reads on the render reader stack
@@ -1120,6 +1123,8 @@ public sealed class RadarApp : IDisposable
             // Runeshape monoliths: value-coloured map markers + nearby reward panel (world-space).
             Monoliths: monoliths,
             ShowMonolithPanel: _settings.Monoliths.ShowPanel,
+            MonolithsTop: worldFresh && mr.AreaHash == _areaHash ? mr.Top : (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>(),
+            DisplayRulesGen: _displayRules.Generation,
             Session: _sessionSnapshot,
             SessionHudSettings: _settings.SessionHud,
             Health: _healthState,
