@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <PackageReference Include="Vortice.Direct2D1" Version="3.*" />
+    <PackageReference Include="System.Windows.Extensions" Version="10.*" />
   </ItemGroup>
 
   <ItemGroup>

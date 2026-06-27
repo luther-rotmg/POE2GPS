@@ -184,6 +184,14 @@ public sealed class RadarSettings
     // default; when off, no inventory is read at all. See the dashboard "Gear ⭐" tab.
     public bool EnableGearScorer { get; set; } = false;
 
+    // ── Audio alerts. Master gate defaults OFF — nothing plays out of the box. Individual sub-toggles
+    //    are pre-enabled so turning on EnableAudioAlerts immediately activates all three cue types. ──
+    public bool EnableAudioAlerts { get; set; } = false;     // master gate — default OFF
+    public bool AudioAlertRareUnique { get; set; } = true;
+    public bool AudioAlertUniqueDrop { get; set; } = true;
+    public bool AudioAlertObjective { get; set; } = true;
+    public int  AudioAlertRadiusCells { get; set; } = 60;
+
     // ── Per-item icon styling (shape / color / opacity / size) + metadata-matched "mechanic"
     //    overrides. Defaults reproduce the original hardcoded look exactly. ──
     public RadarStyles Styles { get; set; } = new();

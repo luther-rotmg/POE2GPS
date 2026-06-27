@@ -8,6 +8,7 @@ using POE2Radar.Core.Navigation;
 using POE2Radar.Core.Gear;
 using POE2Radar.Core.Input;
 using POE2Radar.Core.Session;
+using POE2Radar.Overlay.Audio;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Native;
 using POE2Radar.Overlay.Navigation;
@@ -144,6 +145,16 @@ public sealed class RadarApp : IDisposable
 
     /// <summary>Directory holding the user config files (shared with <see cref="RadarSettings"/>).</summary>
     private static string ConfigDir => Path.Combine(AppContext.BaseDirectory, "config");
+
+    // ── Audio cues (world-thread-owned; built in ctor; Play() fire-and-forget). ──
+    private readonly AudioCue _cueMonster;
+    private readonly AudioCue _cueItem;
+    private readonly AudioCue _cueObjective;
+    private readonly HashSet<uint> _alertedMonsters = new();
+    private readonly HashSet<uint> _alertedItems = new();
+    private readonly HashSet<string> _alertedTargets = new();
+    private long _lastMonsterCueTs;
+    private static readonly long _monsterCueCooldownTicks = System.Diagnostics.Stopwatch.Frequency * 3; // 3 s
 
     // ── World-thread working fields (written ONLY by the world tick; never read by the render thread —
     //    the render thread reads the published _world snapshot instead). ──
@@ -587,6 +598,11 @@ public sealed class RadarApp : IDisposable
                     ConsoleTheme.Accent($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
             });
         }
+        // Audio cues: pre-load PCM tones into SoundPlayer so Play() is fire-and-forget with no disk I/O.
+        // Master gate (EnableAudioAlerts) defaults false — nothing plays until the user opts in.
+        _cueMonster   = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(660, 120));
+        _cueItem      = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(880, 150));
+        _cueObjective = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(520, 180));
     }
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.
@@ -1346,6 +1362,7 @@ public sealed class RadarApp : IDisposable
         // Then drain finished routes and rebuild _selectedPaths from the trackers' cursors.
         _selectedSnapshot = MaintainRoutes(player);   // E8: returns the snapshot; no second SnapshotSelection() call
         _legend = BuildLegend(_selectedSnapshot);
+        CheckAudioEvents(player);
 
         // Publish the whole immutable world snapshot atomically for the render thread.
         _world = new WorldSnapshot(true, areaHash, areaLevel, areaCode, _charLevel,
@@ -1814,6 +1831,7 @@ public sealed class RadarApp : IDisposable
         }
         _director.ResetZone();
         _selectedPaths = new List<SelectedPath>();
+        _alertedMonsters.Clear(); _alertedItems.Clear(); _alertedTargets.Clear();
 
         if (count > 0)
             Console.WriteLine($"\nNav: {(restored ? "restored" : "auto-selected")} {count} target(s) on zone change.");
@@ -2107,6 +2125,51 @@ public sealed class RadarApp : IDisposable
         // (d) Cheap rebuild of the draw list from each tracker's current (cursor-advanced) points.
         RebuildSelectedPaths(selected);
         return selected;   // E8: caller uses this as _selectedSnapshot; no second SnapshotSelection()
+    }
+
+    /// <summary>
+    /// World-tick audio event detection (called after MaintainRoutes). Master-gated by
+    /// <see cref="RadarSettings.EnableAudioAlerts"/> — nothing fires when the master is off.
+    /// Three independent sub-events, each edge-triggered per entity/target id via its own dedup set:
+    /// (1) rare/unique monster entering radius — edge-triggered per id + 3 s inter-cue cooldown;
+    /// (2) unique ground item appearing anywhere in the area — edge-triggered per id;
+    /// (3) selected nav target reached (within 8 cells) — edge-triggered per id.
+    /// Dedup sets are cleared on area change (OnAreaChanged) so the first tick in a new zone fires fresh.
+    /// </summary>
+    private void CheckAudioEvents(NumVec2 player)
+    {
+        if (!_settings.EnableAudioAlerts) return;
+        // (1) rare/unique monster entering radius — edge-triggered per id, 3 s cue cooldown
+        if (_settings.AudioAlertRareUnique)
+        {
+            float r = _settings.AudioAlertRadiusCells;
+            foreach (var e in _entities)
+            {
+                bool inRange = e.Category == Poe2Live.EntityCategory.Monster
+                    && e.Rarity >= Poe2Live.Rarity.Rare && e.IsAlive && !e.IsFriendly
+                    && NumVec2.Distance(e.Grid, player) < r;
+                if (inRange)
+                {
+                    if (_alertedMonsters.Add(e.Id))
+                    {
+                        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+                        if (now - _lastMonsterCueTs >= _monsterCueCooldownTicks) { _lastMonsterCueTs = now; _cueMonster.Play(); }
+                    }
+                }
+                else _alertedMonsters.Remove(e.Id);
+            }
+        }
+        // (2) unique ground item — edge-triggered per id
+        if (_settings.AudioAlertUniqueDrop)
+            foreach (var e in _entities)
+                if (e.ItemArt is { Length: > 0 } && e.Rarity == Poe2Live.Rarity.Unique && _alertedItems.Add(e.Id))
+                    _cueItem.Play();
+        // (3) objective reached — edge-triggered per selected id
+        if (_settings.AudioAlertObjective)
+            foreach (var id in SnapshotSelection())
+                if (TryResolveTargetGrid(id, out var goal) && NumVec2.Distance(goal, player) < 8f)
+                { if (_alertedTargets.Add(id)) _cueObjective.Play(); }
+                else _alertedTargets.Remove(id);
     }
 
     /// <summary>Snapshot the immutable terrain + player/goal and hand a replan request to the worker
