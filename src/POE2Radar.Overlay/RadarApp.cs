@@ -133,6 +133,7 @@ public sealed class RadarApp : IDisposable
     private DateTime _atlasGoodAt = DateTime.MinValue; // last tick we read nodes — debounces transient misses (world)
     private long _lastAtlasSig;          // view+inputs signature — when unchanged, marks/route stay frozen (no arrow jitter)
     private bool _builtAtlasOnce;        // marks built at least once this atlas session (world)
+    private readonly List<float> _atlasSortBuf = new();   // E5: reused median buffer (world thread)
     // Live atlas zoom (= canvas/node scale @ +0x130; 0.85 max-out … larger zoomed in). relPos is read
     // live (pan baked in) and the projection scales by this zoom, so rings track pan AND zoom.
     private volatile float _atlasZoom = 0.85f;
@@ -163,6 +164,12 @@ public sealed class RadarApp : IDisposable
     private Poe2Live.TerrainData? _terrain;                 // world only
     private int _charLevel;                                 // world only (published in the snapshot)
     private nint _lastAreaInstance;                         // world only: terrain-cache invalidation + atlas anchor
+    // E3: cached per-area-instance reads (avoid re-reading unchanged values each tick).
+    private uint _cachedAreaHash;    // world thread
+    private int _cachedAreaLevel;    // world thread
+    // E2: per-tick Resolve memo (keyed by entity address); cleared at top of WorldTick before both builders.
+    private readonly Dictionary<nint, DisplayRule?> _resolveCache = new();   // world thread; cleared each WorldTick
+    private readonly List<(Poe2Live.EntityDot, bool)> _navScratch = new();   // world thread
 
     // ── Published lock-free snapshot: the world tick swaps this whole immutable record; the render thread
     //    reads it once per frame. Same idiom as _state / _atlasRender. ──
@@ -263,6 +270,10 @@ public sealed class RadarApp : IDisposable
     private readonly POE2Radar.Core.Campaign.ObjectiveDirector _director = new();
     private volatile IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective> _directorQueue =
         Array.Empty<POE2Radar.Core.Campaign.RankedObjective>();
+    // E1+E4: throttle DirectorReconcile to ~4 Hz; compute Rank at most once per tick.
+    private long _directorLastTs;     // world thread
+    private bool _directorForced;     // world thread; set on zone change
+    private static readonly long _directorIntervalTicks = (long)(System.Diagnostics.Stopwatch.Frequency / 4.0); // ~4 Hz
     private readonly POE2Radar.Core.Campaign.ZoneOrderProgress _questProgress =
         new(POE2Radar.Core.Game.CampaignRoute.Shared);
     private volatile string? _campaignGps;   // null = Campaign GPS off; when on, the engine's instruction text is always non-null.
@@ -1156,10 +1167,15 @@ public sealed class RadarApp : IDisposable
     private void WorldTick(nint inGameState, nint areaInstance, nint localPlayer)
     {
         // AreaInstance is a fresh object per area — use its address to invalidate per-area caches.
-        if (areaInstance != _lastAreaInstance) { _terrain = null; _lastAreaInstance = areaInstance; }
-        var areaHash = _live.AreaHash(areaInstance);
-        var areaLevel = _live.AreaLevel(areaInstance);
-        var areaCode = _live.AreaCode(areaInstance);
+        if (areaInstance != _lastAreaInstance)
+        {
+            _terrain = null; _lastAreaInstance = areaInstance;
+            _cachedAreaHash = _live.AreaHash(areaInstance);    // E3: cache; reads at most once per area
+            _cachedAreaLevel = _live.AreaLevel(areaInstance);
+        }
+        var areaHash = _cachedAreaHash;
+        var areaLevel = _cachedAreaLevel;
+        var areaCode = _live.AreaCode(areaInstance);   // already self-caches per instance
         var player = _live.PlayerGrid(localPlayer) ?? NumVec2.Zero;
         _worldPlayer = player;   // for off-thread replans (EnqueueReplan)
 
@@ -1251,6 +1267,10 @@ public sealed class RadarApp : IDisposable
         // the pre-refresh list still held the prior zone's tiles).
         _seenPoiLog.Observe(_entities, _landmarks, areaCode);
 
+        // E2: clear the per-tick Resolve memo before BOTH builders (BuildHpSpecs + BuildNavTargets)
+        // so they share a single Resolve() call per entity-address within this tick.
+        _resolveCache.Clear();
+
         // Decide which mobs get an HP bar + their style ONCE here (rule resolve + colour parse) —
         // the per-render-frame path then only re-reads position/HP for this small set. Returns a fresh
         // immutable list so the render thread can read it lock-free off the published snapshot.
@@ -1276,12 +1296,14 @@ public sealed class RadarApp : IDisposable
 
         // Rebuild the unified navigation-target list (tiles + entity POIs) for this tick.
         _navTargets = BuildNavTargets(player);
-        // Publish the priority-then-distance ranked target list for the Quick-Target Cycler (read-only;
-        // computed world-side where the catalog + entities live). Only when a cycler input is enabled.
+        // E1+E4: compute Rank at most ONCE per tick via lazy ??= (shared by cycler + director).
         // Priority/distance ranking is only needed for INTELLIGENT cycling; default cycling uses _navTargets.
-        _rankedTargets = (_settings.IntelligentTargetCycling
-                          && (_settings.EnableTargetHotkeys || _settings.EnableControllerCycle))
-            ? BuildRankedTargets(player) : System.Array.Empty<RankedTarget>();
+        var rankNeededForCycler = _settings.IntelligentTargetCycling
+                                  && (_settings.EnableTargetHotkeys || _settings.EnableControllerCycle);
+        IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective>? campaignRanked = rankNeededForCycler
+            ? _campaign.Rank(_entities, _landmarks, player) : null;
+        _rankedTargets = rankNeededForCycler
+            ? BuildRankedTargets(player, campaignRanked!) : System.Array.Empty<RankedTarget>();
         // Default cycle list (radar-menu order) built once per world tick so ActiveCycleList() never allocs on the render thread.
         var nav = _navTargets;
         var defList = new List<RankedTarget>(nav.Count);
@@ -1307,16 +1329,21 @@ public sealed class RadarApp : IDisposable
         var gpsOwned = false;
         if (_settings.EnableCampaignGps) gpsOwned = CampaignReconcile(areaCode, player);
         else _campaignGps = null;
-        if (!gpsOwned && _settings.EnableDirector) DirectorReconcile(player);
+        if (!gpsOwned && _settings.EnableDirector)
+        {
+            var now = System.Diagnostics.Stopwatch.GetTimestamp();
+            if (_directorForced || (now - _directorLastTs) >= _directorIntervalTicks)
+            {
+                _directorLastTs = now; _directorForced = false;
+                campaignRanked ??= _campaign.Rank(_entities, _landmarks, player);  // compute once, shared with cycler
+                DirectorReconcile(player, campaignRanked);
+            }
+        }
 
         // Per-tick route maintenance (draw-only, NO A* on this thread). For each selected
         // target: cheaply advance its cursor; fire a BACKGROUND replan only on a real trigger.
         // Then drain finished routes and rebuild _selectedPaths from the trackers' cursors.
-        MaintainRoutes(player);
-
-        // Selection snapshot + legend are render inputs that change only with the selection /
-        // nav-target list — rebuild them here (30 Hz) rather than every render frame.
-        _selectedSnapshot = SnapshotSelection();
+        _selectedSnapshot = MaintainRoutes(player);   // E8: returns the snapshot; no second SnapshotSelection() call
         _legend = BuildLegend(_selectedSnapshot);
 
         // Publish the whole immutable world snapshot atomically for the render thread.
@@ -1410,7 +1437,7 @@ public sealed class RadarApp : IDisposable
                 _                      => false,
             };
             if (!on) continue;
-            var rule = _displayRules.Resolve(e);
+            if (!_resolveCache.TryGetValue(e.Address, out var rule)) { rule = _displayRules.Resolve(e); _resolveCache[e.Address] = rule; }
             if (rule is null || rule.Hide) continue;                   // no bars over hidden mobs
             var (bw, fillHex, borderW, borderHex) = e.Rarity switch    // geometry per rarity; fill = dot colour
             {
@@ -1650,20 +1677,24 @@ public sealed class RadarApp : IDisposable
             targets.Add(new NavTarget(id, LandmarkLabel(lm), lm.Center, lm.Path, IsEntity: false, AutoPath: autoPath));
         }
 
-        // (b) Entity POIs — id "e:<entityId>", nearest-first. Selectable if POI/unique/Auto-path rule;
-        // AutoPath true only when the matched rule's Auto-path flag is set.
-        var pois = _entities
-            .Where(e => e.IsAlive && !e.IconComplete)
-            .Select(e => (e, nav: _displayRules.Resolve(e)?.Navigable ?? false))
-            .Where(x => x.e.Poi
-                        || (x.e.Category == Poe2Live.EntityCategory.Monster && x.e.Rarity == Poe2Live.Rarity.Unique)
-                        || x.nav)
-            .OrderBy(x => NumVec2.DistanceSquared(x.e.Grid, player));
-        foreach (var (e, nav) in pois)
+        // (b) Entity POIs — id "e:<entityId>", nearest-first. Single-pass into _navScratch, then Sort
+        // by DistanceSquared ascending (reproduces the old OrderBy order exactly). Uses _resolveCache
+        // memo so Resolve() is shared with BuildHpSpecs() within the same tick.
+        _navScratch.Clear();
+        foreach (var e in _entities)
+        {
+            if (!e.IsAlive || e.IconComplete) continue;
+            if (!_resolveCache.TryGetValue(e.Address, out var rule)) { rule = _displayRules.Resolve(e); _resolveCache[e.Address] = rule; }
+            var nav2 = rule?.Navigable ?? false;
+            if (!e.Poi && !(e.Category == Poe2Live.EntityCategory.Monster && e.Rarity == Poe2Live.Rarity.Unique) && !nav2) continue;
+            _navScratch.Add((e, nav2));
+        }
+        _navScratch.Sort((a, b) => NumVec2.DistanceSquared(a.Item1.Grid, player).CompareTo(NumVec2.DistanceSquared(b.Item1.Grid, player)));
+        foreach (var (e, nav2) in _navScratch)
         {
             var id = "e:" + e.Id;
             if (!seen.Add(id)) continue;
-            targets.Add(new NavTarget(id, EntityLabel(e.Metadata), e.Grid, e.Metadata, IsEntity: true, AutoPath: nav));
+            targets.Add(new NavTarget(id, EntityLabel(e.Metadata), e.Grid, e.Metadata, IsEntity: true, AutoPath: nav2));
         }
 
         return targets;
@@ -1676,17 +1707,17 @@ public sealed class RadarApp : IDisposable
         => _settings.IntelligentTargetCycling ? _rankedTargets : _defaultCycleTargets;
 
     /// <summary>Rank the current nav targets by catalog priority (desc) then distance (asc): reuse the
-    /// Director's Rank for covered content, then append uncatalogued targets by distance. World-thread.</summary>
-    private IReadOnlyList<RankedTarget> BuildRankedTargets(NumVec2 player)
+    /// Director's Rank for covered content, then append uncatalogued targets by distance. World-thread.
+    /// Accepts the already-computed ranked list so Rank() is called at most once per tick (E1).</summary>
+    private IReadOnlyList<RankedTarget> BuildRankedTargets(NumVec2 player, IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective> ranked)
     {
         var nav = _navTargets;
         if (nav.Count == 0) return System.Array.Empty<RankedTarget>();
         var result = new List<RankedTarget>(nav.Count);
         var covered = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var r in _campaign.Rank(_entities, _landmarks, player))   // priority desc, distance asc; covered only
+        foreach (var r in ranked)
             if (covered.Add(r.Id)) result.Add(new RankedTarget(r.Id, r.Label, r.Category));
-        foreach (var t in nav.Where(t => !covered.Contains(t.Id))
-                             .OrderBy(t => NumVec2.DistanceSquared(t.Grid, player)))
+        foreach (var t in nav.Where(t => !covered.Contains(t.Id)).OrderBy(t => NumVec2.DistanceSquared(t.Grid, player)))
             result.Add(new RankedTarget(t.Id, t.Name, ""));
         return result;
     }
@@ -1743,6 +1774,7 @@ public sealed class RadarApp : IDisposable
     /// NOT touched here — the per-tick reconciliation (ReconcileTrackers) syncs them to _selectedIds.</summary>
     private void OnAreaChanged(uint areaHash)
     {
+        _directorForced = true;   // E4: force the director to run immediately on zone change
         int count; bool restored;
         lock (_navLock)
         {
@@ -1804,16 +1836,14 @@ public sealed class RadarApp : IDisposable
     /// selection (empty or exactly its last active id), set the route to the single top objective.
     /// Reuses the existing id-selection → routing pipeline; never builds a path itself. Read-only.
     /// </summary>
-    private void DirectorReconcile(NumVec2 player)
+    private void DirectorReconcile(NumVec2 player, IReadOnlyList<POE2Radar.Core.Campaign.RankedObjective> ranked)
     {
-        var ranked = _campaign.Rank(_entities, _landmarks, player);
         lock (_navLock)
         {
             var decision = _director.Decide(ranked, _selectedIds);
             if (decision.ChangeSelection)
             {
-                _selectedIds.Clear();
-                _selectionCapWarned = false;
+                _selectedIds.Clear(); _selectionCapWarned = false;
                 if (decision.DesiredActiveId != null) _selectedIds.Add(decision.DesiredActiveId);
             }
         }
@@ -2038,7 +2068,7 @@ public sealed class RadarApp : IDisposable
     /// BACKGROUND replan toward the target's resolved grid. Then drain finished routes into the
     /// trackers and rebuild <see cref="_selectedPaths"/> from the trackers' cursors.
     /// </summary>
-    private void MaintainRoutes(NumVec2 player)
+    private List<string> MaintainRoutes(NumVec2 player)   // E8: returns the selection snapshot (avoids second SnapshotSelection() call in WorldTick)
     {
         // Snapshot the selection ONCE; everything below works off this local list (tick-thread only).
         var selected = SnapshotSelection();
@@ -2071,6 +2101,7 @@ public sealed class RadarApp : IDisposable
 
         // (d) Cheap rebuild of the draw list from each tracker's current (cursor-advanced) points.
         RebuildSelectedPaths(selected);
+        return selected;   // E8: caller uses this as _selectedSnapshot; no second SnapshotSelection()
     }
 
     /// <summary>Snapshot the immutable terrain + player/goal and hand a replan request to the worker
@@ -2274,8 +2305,10 @@ public sealed class RadarApp : IDisposable
         _atlasGoodAt = DateTime.UtcNow;
         // Live zoom = the nodes' shared canvas scale (+0x130). Use the median (robust to a stray 0/odd node).
         // Drives both the ring projection and the route projection (relPos × winH/1600 × zoom).
-        var scales = nodes.Where(n => n.Scale > 0.01f).Select(n => n.Scale).OrderBy(s => s).ToList();
-        if (scales.Count > 0) _atlasZoom = scales[scales.Count / 2];
+        // E5: reuse _atlasSortBuf to avoid per-tick LINQ allocation.
+        _atlasSortBuf.Clear();
+        foreach (var n in nodes) if (n.Scale > 0.01f) _atlasSortBuf.Add(n.Scale);
+        if (_atlasSortBuf.Count > 0) { _atlasSortBuf.Sort(); _atlasZoom = _atlasSortBuf[_atlasSortBuf.Count / 2]; }
 
         // Snapshot the cross-thread inputs ONCE under the lock: the F10 START/END grids (written by the
         // render thread) and the dashboard node selection (written by the API thread).

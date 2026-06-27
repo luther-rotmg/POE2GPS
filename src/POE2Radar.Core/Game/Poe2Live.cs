@@ -44,6 +44,9 @@ public sealed class Poe2Live
     // walk reads each 48-byte node in ONE ReadProcessMemory (fields are contiguous), not 5 syscalls.
     private readonly Queue<nint> _entQueue = new();
     private readonly HashSet<nint> _entVisited = new();
+    // E6: reused BFS buffers for ScanLootLabels (mirrors _entQueue/_entVisited pattern).
+    private readonly Queue<nint> _lootQueue = new();
+    private readonly HashSet<nint> _lootVisited = new();
     private readonly byte[] _nodeBuf = new byte[0x30];
     // Reused camera-matrix buffers (read every render frame).
     private readonly byte[] _camBytes = new byte[64];
@@ -423,7 +426,8 @@ public sealed class Poe2Live
         _entVisited.Clear();
         _modReadBudget = ModReadBudgetPerPass;
         _itemReadBudget = ItemReadBudgetPerPass;
-        while (_entQueue.Count > 0 && _entVisited.Count < 200000)
+        var walkCap = size * 4 + 1024;   // E7: scale cap to entity count (balanced BST of N has N+1 nodes; 4× is generous)
+        while (_entQueue.Count > 0 && _entVisited.Count < walkCap)
         {
             var node = _entQueue.Dequeue();
             if (node == 0 || node == head || !_entVisited.Add(node)) continue;
@@ -1286,12 +1290,12 @@ public sealed class Poe2Live
         if (uiRoot == 0) return result;
         const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
 
-        var queue = new Queue<nint>(); queue.Enqueue(uiRoot);
-        var visited = new HashSet<nint>();
-        while (queue.Count > 0 && visited.Count < maxNodes)
+        // E6: reuse _lootQueue/_lootVisited to avoid per-call Queue/HashSet allocation.
+        _lootQueue.Clear(); _lootQueue.Enqueue(uiRoot); _lootVisited.Clear();
+        while (_lootQueue.Count > 0 && _lootVisited.Count < maxNodes)
         {
-            var el = queue.Dequeue();
-            if (el == 0 || !visited.Add(el)) continue;
+            var el = _lootQueue.Dequeue();
+            if (el == 0 || !_lootVisited.Add(el)) continue;
             var visible = _reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var flags) && (flags & visBit) != 0;
             if (!visible && el != uiRoot) continue;   // prune the invisible subtree (root always descended)
 
@@ -1300,7 +1304,7 @@ public sealed class Poe2Live
             {
                 var n = ((long)last - (long)first) / 8;
                 if (n is > 0 and <= 8192)
-                    for (long k = 0; k < n; k++) queue.Enqueue(Ptr(first + (nint)(k * 8)));
+                    for (long k = 0; k < n; k++) _lootQueue.Enqueue(Ptr(first + (nint)(k * 8)));
             }
 
             var text = ReadStdWString(el + Poe2.UiElement.Text);
