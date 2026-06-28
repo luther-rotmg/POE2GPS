@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "name": "Boss & unique hunter",
+  "styles": {
+    "monsterNormal": { "shape": "Circle", "color": "#FF3333", "opacity": 0.95, "size": 2.6 },
+    "monsterMagic":  { "shape": "Fang",   "color": "#73A6FF", "opacity": 0.97, "size": 5.5 },
+    "monsterRare":   { "shape": "Claw",   "color": "#FFD926", "opacity": 1.0,  "size": 10.0 },
+    "monsterUnique": { "shape": "Skull",  "color": "#FF7300", "opacity": 1.0,  "size": 11.0 },
+    "player":        { "shape": "Person", "color": "#4DF2FF", "opacity": 1.0,  "size": 3.4 },
+    "npc":           { "shape": "Chat",   "color": "#FFD933", "opacity": 0.95, "size": 4.2 },
+    "chestRare":     { "shape": "Chest",  "color": "#FFD926", "opacity": 0.95, "size": 5.0 },
+    "chestUnique":   { "shape": "Crown",  "color": "#FF7300", "opacity": 0.95, "size": 5.5 },
+    "transition":    { "shape": "Stairs", "color": "#66FF99", "opacity": 0.95, "size": 5.0 },
+    "poi":           { "shape": "MapPin", "color": "#8CBFFF", "opacity": 0.8,  "size": 3.6 },
+    "landmark":      { "shape": "Diamond","color": "#F259F2", "opacity": 1.0,  "size": 5.0 },
+    "mechanics": [
+      { "name": "Expedition", "match": ["Expedition2/Expedition2Encounter"], "categories": ["Other"], "shape": "Flag",   "color": "#26E6D9", "opacity": 1.0, "size": 7.0 },
+      { "name": "Ritual",     "match": ["Ritual"],    "categories": ["Object","Other"], "shape": "Star",   "color": "#FF3355", "opacity": 1.0, "size": 7.0 },
+      { "name": "Breach",     "match": ["Breach"],    "categories": ["Object","Other"], "shape": "Portal", "color": "#A64DFF", "opacity": 1.0, "size": 7.0 },
+      { "name": "Strongbox",  "match": ["StrongBoxes"], "categories": ["Chest"],        "shape": "Chest",  "color": "#FFB300", "opacity": 1.0, "size": 6.0 },
+      { "name": "Essence",    "match": ["Essence"],   "categories": ["Object","Other"], "shape": "Flask",  "color": "#33E0FF", "opacity": 1.0, "size": 7.0 },
+      { "name": "Shrine",     "match": ["Metadata/Shrines/"],                           "shape": "Star",   "color": "#7DFF7D", "opacity": 1.0, "size": 6.0 }
+    ]
+  },
+  "hpBars": {
+    "height": 5.0,
+    "offsetX": 0.0,
+    "offsetY": -30.0,
+    "widthNormal": 30.0,
+    "widthMagic": 38.0,
+    "widthRare": 60.0,
+    "widthUnique": 80.0,
+    "borderNormal": 0.0,
+    "borderMagic": 1.0,
+    "borderRare": 3.0,
+    "borderUnique": 3.0,
+    "borderColorNormal": "#FF3333",
+    "borderColorMagic": "#73A6FF",
+    "borderColorRare": "#FFD926",
+    "borderColorUnique": "#FF7300"
+  },
+  "showMonsters": true,
+  "showTerrain": true,
+  "showPlayerBlip": true,
+  "hpBarNormal": false,
+  "hpBarMagic": false,
+  "hpBarRare": true,
+  "hpBarUnique": true,
+  "displayRules": [
+    {
+      "enabled": true,
+      "name": "Hide normal monsters",
+      "categories": ["Monster"],
+      "rarity": "Normal",
+      "hide": true,
+      "shape": "Circle",
+      "color": "#FFFFFF",
+      "opacity": 1.0,
+      "size": 3.0
+    },
+    {
+      "enabled": true,
+      "name": "Hide magic monsters",
+      "categories": ["Monster"],
+      "rarity": "Magic",
+      "hide": true,
+      "shape": "Circle",
+      "color": "#FFFFFF",
+      "opacity": 1.0,
+      "size": 3.0
+    }
+  ]
+}

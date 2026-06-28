@@ -37,6 +37,9 @@
     <EmbeddedResource Include="Web\default_watched.json" />
     <EmbeddedResource Include="Web\default_campaign_objectives.json" />
     <EmbeddedResource Include="Web\labels.json" />
+    <EmbeddedResource Include="Web\presets\high_contrast.poe2preset" />
+    <EmbeddedResource Include="Web\presets\minimal.poe2preset" />
+    <EmbeddedResource Include="Web\presets\boss_hunter.poe2preset" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "name": "Minimal",
+  "styles": {
+    "monsterNormal": { "shape": "Circle", "color": "#CC4444", "opacity": 0.6, "size": 2.0 },
+    "monsterMagic":  { "shape": "Circle", "color": "#6688CC", "opacity": 0.6, "size": 2.0 },
+    "monsterRare":   { "shape": "Claw",   "color": "#C8AA22", "opacity": 0.85, "size": 6.0 },
+    "monsterUnique": { "shape": "Skull",  "color": "#CC5500", "opacity": 1.0,  "size": 7.0 },
+    "player":        { "shape": "Person", "color": "#4DF2FF", "opacity": 1.0,  "size": 3.4 },
+    "npc":           { "shape": "Chat",   "color": "#AA9922", "opacity": 0.8,  "size": 3.0 },
+    "chestRare":     { "shape": "Chest",  "color": "#B89B20", "opacity": 0.8,  "size": 4.0 },
+    "chestUnique":   { "shape": "Crown",  "color": "#CC5500", "opacity": 0.9,  "size": 4.5 },
+    "transition":    { "shape": "Stairs", "color": "#44AA66", "opacity": 0.85, "size": 4.0 },
+    "poi":           { "shape": "MapPin", "color": "#6688BB", "opacity": 0.75, "size": 2.8 },
+    "landmark":      { "shape": "Diamond","color": "#AA44AA", "opacity": 0.8,  "size": 3.5 },
+    "mechanics": [
+      { "name": "Expedition", "match": ["Expedition2/Expedition2Encounter"], "categories": ["Other"], "shape": "Flag",   "color": "#26E6D9", "opacity": 1.0, "size": 6.0 },
+      { "name": "Ritual",     "match": ["Ritual"],    "categories": ["Object","Other"], "shape": "Star",   "color": "#CC2244", "opacity": 1.0, "size": 6.0 },
+      { "name": "Breach",     "match": ["Breach"],    "categories": ["Object","Other"], "shape": "Portal", "color": "#7733CC", "opacity": 1.0, "size": 6.0 },
+      { "name": "Strongbox",  "match": ["StrongBoxes"], "categories": ["Chest"],        "shape": "Chest",  "color": "#BB8800", "opacity": 1.0, "size": 5.0 },
+      { "name": "Essence",    "match": ["Essence"],   "categories": ["Object","Other"], "shape": "Flask",  "color": "#22AACC", "opacity": 1.0, "size": 6.0 },
+      { "name": "Shrine",     "match": ["Metadata/Shrines/"],                           "shape": "Star",   "color": "#55BB55", "opacity": 1.0, "size": 5.0 }
+    ]
+  },
+  "hpBars": {
+    "height": 4.0,
+    "offsetX": 0.0,
+    "offsetY": -30.0,
+    "widthNormal": 24.0,
+    "widthMagic": 30.0,
+    "widthRare": 44.0,
+    "widthUnique": 56.0,
+    "borderNormal": 0.0,
+    "borderMagic": 0.0,
+    "borderRare": 1.5,
+    "borderUnique": 1.5,
+    "borderColorNormal": "#FF3333",
+    "borderColorMagic": "#73A6FF",
+    "borderColorRare": "#FFD926",
+    "borderColorUnique": "#FF7300"
+  },
+  "showMonsters": true,
+  "showTerrain": true,
+  "showPlayerBlip": true,
+  "hpBarNormal": false,
+  "hpBarMagic": false,
+  "hpBarRare": true,
+  "hpBarUnique": true
+}
