@@ -3,6 +3,14 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.9.1] — 2026-06-28
+### Added
+- **Audio: volume slider + per-event tone picker** — set the alert volume and choose a distinct tone (Chime / Bell / Ding / …) for each event, with a Test button to audition.
+- **Preset library** — the Presets card is now a real library: **built-in starter presets** (High-contrast, Minimal, Boss & unique hunter) you can apply in one click, plus **save / name / apply / delete your own** local presets (on top of the existing share-code + file import/export).
+- **Zone summary panel** *(opt-in, off by default)* — a compact overlay panel with live counts for the current zone (rares · uniques · chests · exits), anchorable to any corner; its toggle sits prominently at the top of Settings.
+### Changed
+- The in-app console hotkey banner now lists **Ctrl+Alt+R** (reset Session HUD counters), matching the README.
+
 ## [0.9.0] — 2026-06-27
 ### Added
 - **Audio alerts** *(off by default)* — short, distinct procedurally-generated tones for three high-signal events, each toggleable from a card at the top of Settings: a **rare/unique monster** comes into range, a **unique item** drops, or you **reach your active objective**. A "Test" button auditions each tone. Output only — no input is ever sent to the game.
