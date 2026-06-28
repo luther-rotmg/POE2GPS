@@ -760,6 +760,14 @@ internal static class DashboardHtml
               <span class="chip" data-gicat="Expedition">Expedition</span>
             </div>
           </div>
+          <div class="card" id="keybindsCard">
+            <h3>Keybinds <small class="tag">&middot; click Rebind then press a key</small></h3>
+            <div id="kbRows"></div>
+            <div class="row" style="margin-top:10px">
+              <button class="addbtn" id="kbReset">Reset to defaults</button>
+            </div>
+            <div style="height:14px"><span class="saved" id="savedMsgKb">&#10003; saved</span></div>
+          </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
@@ -846,7 +854,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   activeTab=t.dataset.tab;
   $$('.tab').forEach(x=>x.classList.toggle('on',x===t));
   $$('.view').forEach(v=>v.hidden = v.dataset.view!==activeTab);
-  if(activeTab==='settings') loadSettings();
+  if(activeTab==='settings'){ loadSettings(); loadKeybinds(); }
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
   if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); }
@@ -1899,7 +1907,7 @@ async function checkVersion(){
 wireSettings(); wireHpBars(); wireTerrain(); wireGround();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
-loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); }); // Rules is the default tab
+loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 checkVersion();
 /* ── presets card (export copy/download + import paste/file) ── */
@@ -1919,6 +1927,68 @@ $('#stRescanBtn')?.addEventListener('click', async () => {
   b.textContent = 're-scanning…'; b.disabled = true;
   try { await fetch('/api/rescan', { method: 'POST' }); } catch (e) {}
   setTimeout(() => { b.textContent = t; b.disabled = false; }, 2000);
+});
+
+/* ── Keybinds card ── */
+const KB_CODE_TO_VK = (()=>{
+  const m={};
+  for(let i=1;i<=12;i++) m['F'+i]=0x6F+i;             // F1=0x70..F12=0x7B
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').forEach((c,i)=>m['Key'+c]=0x41+i);
+  '0123456789'.split('').forEach((c,i)=>m['Digit'+c]=0x30+i);
+  Object.assign(m,{BracketRight:0xDD,BracketLeft:0xDB,Semicolon:0xBA,Slash:0xBF,
+    Minus:0xBD,Equal:0xBB,Backquote:0xC0,Quote:0xDE,Backslash:0xDC,
+    Comma:0xBC,Period:0xBE,Space:0x20});
+  return m;
+})();
+function flashKb(msg){ const m=$('#savedMsgKb'); if(!m) return; m.textContent=msg||'✓ saved'; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1800); }
+let _kbCapturing=null; // action name currently in capture mode, or null
+function kbCancelCapture(){
+  if(!_kbCapturing) return;
+  const row=document.querySelector('[data-kb="'+_kbCapturing+'"]');
+  if(row) row.querySelector('.kbrebind').textContent='Rebind';
+  _kbCapturing=null;
+  document.removeEventListener('keydown',_kbKeydown,true);
+}
+function _kbKeydown(e){
+  e.preventDefault(); e.stopPropagation();
+  if(/^(Control|Alt|Shift|Meta)/.test(e.key)) return; // ignore bare modifier presses
+  const vk=KB_CODE_TO_VK[e.code];
+  const action=_kbCapturing;
+  kbCancelCapture();
+  if(!vk||!action) return;
+  fetch('/api/keybinds',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,vk})})
+    .then(r=>{ if(r.status===409){ flashKb('⚠ already bound'); } else if(r.ok){ loadKeybinds(); flashKb('✓ saved'); } else { flashKb('error'); } })
+    .catch(()=>flashKb('error'));
+}
+async function loadKeybinds(){
+  kbCancelCapture();
+  try{
+    const list=await getJSON('/api/keybinds');
+    const el=$('#kbRows'); if(!el) return;
+    el.innerHTML='';
+    list.forEach(kb=>{
+      const row=document.createElement('div'); row.className='row'; row.dataset.kb=kb.action;
+      const rl=document.createElement('div'); rl.className='rl'; rl.textContent=kb.action;
+      const badge=document.createElement('span'); badge.className='numin'; badge.style.cssText='min-width:110px;text-align:center;display:inline-block;font-family:ui-monospace,Consolas,monospace;font-size:12px'; badge.textContent=kb.label;
+      const btn=document.createElement('button'); btn.className='kbrebind addbtn'; btn.textContent='Rebind';
+      btn.onclick=()=>{
+        if(_kbCapturing===kb.action){ kbCancelCapture(); return; }
+        kbCancelCapture();
+        _kbCapturing=kb.action;
+        btn.textContent='press a key…';
+        document.addEventListener('keydown',_kbKeydown,true);
+      };
+      row.appendChild(rl); row.appendChild(badge); row.appendChild(btn);
+      el.appendChild(row);
+    });
+  }catch(e){}
+}
+$('#kbReset')?.addEventListener('click',async()=>{
+  if(!confirm('Reset all keybinds to defaults?')) return;
+  try{
+    const r=await fetch('/api/keybinds/reset',{method:'POST'});
+    if(r.ok){ await loadKeybinds(); flashKb('✓ reset to defaults'); } else flashKb('reset failed');
+  }catch(e){ flashKb('error'); }
 });
 </script>
 </body>

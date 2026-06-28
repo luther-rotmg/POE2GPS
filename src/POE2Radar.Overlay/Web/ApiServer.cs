@@ -6,6 +6,7 @@ using POE2Radar.Core.Campaign;
 using POE2Radar.Core.Config;
 using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
+using POE2Radar.Core.Input;
 using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
 
@@ -789,10 +790,161 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/keybinds":
+            {
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(GetKeybindsList(), Json));
+                }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                        break;
+                    }
+                    var kbBody = ReadBody(ctx);
+                    string? kbAction = null;
+                    int kbVk = 0;
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(kbBody);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("action", out var av)) kbAction = av.GetString();
+                        if (root.TryGetProperty("vk", out var vv) && vv.TryGetInt32(out var vn)) kbVk = vn;
+                    }
+                    catch (JsonException) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "malformed JSON" }, Json)); break; }
+                    var kbErr = ApplyKeybind(kbAction, kbVk);
+                    if (kbErr != null)
+                        Write(ctx, kbErr == "conflict" ? 409 : 400, JsonSerializer.Serialize(new { error = kbErr }, Json));
+                    else
+                        Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case "/api/keybinds/reset":
+            {
+                if (ctx.Request.HttpMethod != "POST")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                    break;
+                }
+                _settings.Keybinds = new KeybindsSettings();
+                _settings.Save();
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
+                break;
+            }
+
             default:
                 Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found", path }, Json));
                 break;
         }
+    }
+
+    // Actions that carry the Ctrl+Alt modifier (their label prefix reflects this in the UI).
+    private static readonly HashSet<string> CtrlAltActions = new(StringComparer.Ordinal)
+        { "CycleNext", "CyclePrev", "NavMenuToggle", "SessionReset" };
+
+    // VK codes accepted for keybind assignment: F1–F12, A–Z, 0–9, common bracket/punct keys.
+    private static bool IsAllowedVk(int vk) =>
+        (vk >= 0x70 && vk <= 0x7B) || // F1–F12
+        (vk >= 0x41 && vk <= 0x5A) || // A–Z
+        (vk >= 0x30 && vk <= 0x39) || // 0–9
+        vk is 0xDD or 0xDB or 0xBA or 0xBF or 0xBD or 0xBB or 0xC0 or 0xDE or 0xDC or 0xBC or 0xBE or 0x20;
+
+    /// <summary>Build the list of all 9 keybind actions with their current VK + computed label.</summary>
+    private object[] GetKeybindsList()
+    {
+        var kb = _settings.Keybinds;
+        return new[]
+        {
+            BuildKbEntry("Quit",           kb.Quit),
+            BuildKbEntry("OpenDashboard",  kb.OpenDashboard),
+            BuildKbEntry("AtlasInspect",   kb.AtlasInspect),
+            BuildKbEntry("AddNearest",     kb.AddNearest),
+            BuildKbEntry("ClearRoutes",    kb.ClearRoutes),
+            BuildKbEntry("CycleNext",      kb.CycleNext),
+            BuildKbEntry("CyclePrev",      kb.CyclePrev),
+            BuildKbEntry("NavMenuToggle",  kb.NavMenuToggle),
+            BuildKbEntry("SessionReset",   kb.SessionReset),
+        };
+    }
+
+    private static object BuildKbEntry(string action, int vk)
+    {
+        var modifier = CtrlAltActions.Contains(action) ? "Ctrl+Alt" : "";
+        var label = (modifier.Length > 0 ? "Ctrl+Alt+" : "") + KeyNames.Format(vk);
+        return new { action, vk, label, modifier };
+    }
+
+    /// <summary>Validate and apply a single keybind change. Returns null on success, or an error string
+    /// ("unknown action", "invalid vk", "conflict") on failure.</summary>
+    private string? ApplyKeybind(string? action, int vk)
+    {
+        if (string.IsNullOrWhiteSpace(action)) return "unknown action";
+        if (!IsAllowedVk(vk)) return "invalid vk";
+
+        var kb = _settings.Keybinds;
+
+        // Determine which modifier group the action belongs to and check for duplicates in the same group.
+        var isCtrlAlt = CtrlAltActions.Contains(action);
+
+        // Explicit action→get/set map (reflection-free).
+        switch (action)
+        {
+            case "Quit":          break;
+            case "OpenDashboard": break;
+            case "AtlasInspect":  break;
+            case "AddNearest":    break;
+            case "ClearRoutes":   break;
+            case "CycleNext":     break;
+            case "CyclePrev":     break;
+            case "NavMenuToggle": break;
+            case "SessionReset":  break;
+            default: return "unknown action";
+        }
+
+        // Duplicate check: scan every action in the SAME modifier group.
+        static bool SameGroup(string a, bool ctrlAlt) => CtrlAltActions.Contains(a) == ctrlAlt;
+
+        string? conflictWith = null;
+        if (SameGroup("Quit", isCtrlAlt)          && kb.Quit          == vk && action != "Quit")          conflictWith = "Quit";
+        if (SameGroup("OpenDashboard", isCtrlAlt)  && kb.OpenDashboard == vk && action != "OpenDashboard") conflictWith = "OpenDashboard";
+        if (SameGroup("AtlasInspect", isCtrlAlt)   && kb.AtlasInspect  == vk && action != "AtlasInspect")  conflictWith = "AtlasInspect";
+        if (SameGroup("AddNearest", isCtrlAlt)     && kb.AddNearest    == vk && action != "AddNearest")    conflictWith = "AddNearest";
+        if (SameGroup("ClearRoutes", isCtrlAlt)    && kb.ClearRoutes   == vk && action != "ClearRoutes")   conflictWith = "ClearRoutes";
+        if (SameGroup("CycleNext", isCtrlAlt)      && kb.CycleNext     == vk && action != "CycleNext")     conflictWith = "CycleNext";
+        if (SameGroup("CyclePrev", isCtrlAlt)      && kb.CyclePrev     == vk && action != "CyclePrev")     conflictWith = "CyclePrev";
+        if (SameGroup("NavMenuToggle", isCtrlAlt)  && kb.NavMenuToggle == vk && action != "NavMenuToggle") conflictWith = "NavMenuToggle";
+        if (SameGroup("SessionReset", isCtrlAlt)   && kb.SessionReset  == vk && action != "SessionReset")  conflictWith = "SessionReset";
+
+        if (conflictWith != null) return "conflict";
+
+        // Apply.
+        switch (action)
+        {
+            case "Quit":          kb.Quit          = vk; break;
+            case "OpenDashboard": kb.OpenDashboard = vk; break;
+            case "AtlasInspect":  kb.AtlasInspect  = vk; break;
+            case "AddNearest":    kb.AddNearest    = vk; break;
+            case "ClearRoutes":   kb.ClearRoutes   = vk; break;
+            case "CycleNext":     kb.CycleNext     = vk; break;
+            case "CyclePrev":     kb.CyclePrev     = vk; break;
+            case "NavMenuToggle": kb.NavMenuToggle = vk; break;
+            case "SessionReset":  kb.SessionReset  = vk; break;
+        }
+        _settings.Save();
+        return null;
     }
 
     /// <summary>
