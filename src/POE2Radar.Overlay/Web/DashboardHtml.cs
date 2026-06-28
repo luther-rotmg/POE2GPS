@@ -574,6 +574,13 @@ internal static class DashboardHtml
               <button class="numin" data-audiotest="objective">Test</button></div>
           </div>
           <div class="card">
+            <h3>Zone summary <small class="tag">opt-in overlay panel</small></h3>
+            <div class="row"><div class="rl">Show zone summary<small>live counts: rares &middot; monsters &middot; chests &middot; exits</small></div>
+              <label class="sw"><input type="checkbox" data-set="zoneSummaryEnabled"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Corner</div>
+              <select class="numin" data-set="zoneSummaryAnchor"><option>TopLeft</option><option>TopRight</option><option>BottomLeft</option><option>BottomRight</option></select></div>
+          </div>
+          <div class="card">
             <h3>Target cycling</h3>
             <div class="row"><div class="rl">Intelligent target cycling<small>On = smart priority/distance order &mdash; Off (default) = cycle follows the radar menu (nav dropdown order)</small></div>
               <label class="sw"><input type="checkbox" data-set="intelligentTargetCycling"><span class="track"></span><span class="knob"></span></label></div>

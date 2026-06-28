@@ -123,6 +123,14 @@ public sealed class RadarApp : IDisposable
     }
     private volatile MonolithRender _monoRender = MonolithRender.Empty;
 
+    // ── Zone summary (live counts per zone: monsters/rares/chests/transitions/landmarks). ──
+    private sealed record ZoneSummaryBundle(uint AreaHash, int MonstersAlive, int RareEliteAlive,
+        int ChestsOpen, int ChestsClosed, int Transitions, int Landmarks)
+    {
+        public static readonly ZoneSummaryBundle Empty = new(0, 0, 0, 0, 0, 0, 0);
+    }
+    private volatile ZoneSummaryBundle _zoneSummary = ZoneSummaryBundle.Empty;
+
     private readonly object _atlasLock = new();
     private readonly HashSet<nint> _atlasSel = new();   // selected node element addresses (from the dashboard)
     private DateTime _nextInspectAt = DateTime.MinValue; // F10 hotkey debounce (render thread)
@@ -1173,7 +1181,13 @@ public sealed class RadarApp : IDisposable
             SessionHudSettings: _settings.SessionHud,
             Health: _healthState,
             HealthMessage: _healthMessage,
-            CampaignGps: _campaignGps);
+            CampaignGps: _campaignGps,
+            ZoneSummary: (worldFresh && _zoneSummary.AreaHash == _areaHash)
+                ? new ZoneSummary(_zoneSummary.MonstersAlive, _zoneSummary.RareEliteAlive,
+                    _zoneSummary.ChestsOpen, _zoneSummary.ChestsClosed,
+                    _zoneSummary.Transitions, _zoneSummary.Landmarks)
+                : null,
+            ZoneSummaryHud: _settings.ZoneSummary);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
@@ -1326,6 +1340,32 @@ public sealed class RadarApp : IDisposable
         // (area-wide, before the panel is opened). Publishes its own _monoRender bundle.
         UpdateMonoliths(areaInstance, areaLevel, areaHash);
 
+        // Zone summary — aggregate counts over _entities (O(n), no new memory reads) + landmarks count.
+        // Published with the current areaHash so Tick() can gate on the same zone-load guard as monoliths.
+        {
+            int monstersAlive = 0, rareEliteAlive = 0, chestsOpen = 0, chestsClosed = 0, transitions = 0;
+            foreach (var e in _entities)
+            {
+                switch (e.Category)
+                {
+                    case Poe2Live.EntityCategory.Monster:
+                        if (e.IsAlive)
+                        {
+                            monstersAlive++;
+                            if (e.Rarity is Poe2Live.Rarity.Rare or Poe2Live.Rarity.Unique) rareEliteAlive++;
+                        }
+                        break;
+                    case Poe2Live.EntityCategory.Chest:
+                        if (e.Opened) chestsOpen++; else chestsClosed++;
+                        break;
+                    case Poe2Live.EntityCategory.Transition:
+                        transitions++;
+                        break;
+                }
+            }
+            _zoneSummary = new ZoneSummaryBundle(areaHash, monstersAlive, rareEliteAlive,
+                chestsOpen, chestsClosed, transitions, _landmarks.Count);
+        }
 
         // Rebuild the unified navigation-target list (tiles + entity POIs) for this tick.
         _navTargets = BuildNavTargets(player);

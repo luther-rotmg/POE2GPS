@@ -844,6 +844,9 @@ public sealed class ApiServer : IDisposable
         sessionHudOffsetX        = _settings.SessionHud.OffsetX,
         sessionHudOffsetY        = _settings.SessionHud.OffsetY,
         sessionHudExcludeTowns   = _settings.SessionHud.ExcludeTownsFromPace,
+        // Zone summary panel settings
+        zoneSummaryEnabled       = _settings.ZoneSummary.Enabled,
+        zoneSummaryAnchor        = _settings.ZoneSummary.Anchor,
         // Audio alert settings (5 fields; master gate defaults OFF)
         enableAudioAlerts        = _settings.EnableAudioAlerts,
         audioAlertRareUnique     = _settings.AudioAlertRareUnique,
@@ -920,6 +923,11 @@ public sealed class ApiServer : IDisposable
                 case "sessionHudAnchor" when TryString(p.Value, out var s): _settings.SessionHud.Anchor = s.Trim(); applied.Add(p.Name); break;
                 case "sessionHudOffsetX" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetX = n; applied.Add(p.Name); break;
                 case "sessionHudOffsetY" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetY = n; applied.Add(p.Name); break;
+                // Zone summary panel settings
+                case "zoneSummaryEnabled" when TryBool(p.Value, out var b): _settings.ZoneSummary.Enabled = b; applied.Add(p.Name); break;
+                case "zoneSummaryAnchor"  when TryString(p.Value, out var s):
+                    _settings.ZoneSummary.Anchor = s.Trim() is "TopLeft" or "TopRight" or "BottomLeft" or "BottomRight" ? s.Trim() : "TopRight";
+                    applied.Add(p.Name); break;
                 // Audio alert settings
                 case "enableAudioAlerts" when TryBool(p.Value, out var b): _settings.EnableAudioAlerts = b; applied.Add(p.Name); break;
                 case "audioAlertRareUnique" when TryBool(p.Value, out var b): _settings.AudioAlertRareUnique = b; applied.Add(p.Name); break;

@@ -89,6 +89,15 @@ public sealed record MonolithMarker(
     NumVec2 Grid, int Holes, bool IsUnique, bool Collected, string AnchorName,
     double BestEx, string BestName, uint Color, IReadOnlyList<MonolithReward> Rewards);
 
+/// <summary>Live zone-aggregate counts published by the world thread and gated on AreaHash in Tick().</summary>
+public readonly record struct ZoneSummary(
+    int MonstersAlive,
+    int RareEliteAlive,
+    int ChestsOpen,
+    int ChestsClosed,
+    int Transitions,
+    int Landmarks);
+
 /// <summary>What the PoE2 renderer needs each frame. Built fresh by <see cref="RadarApp"/>.</summary>
 public sealed record RenderContext(
     bool InGame,
@@ -207,4 +216,7 @@ public sealed record RenderContext(
     POE2Radar.Core.Health.HealthState     Health             = POE2Radar.Core.Health.HealthState.Ok,
     string?                               HealthMessage      = null,
     // ── Campaign GPS: compact top-strip instruction line (null → no line drawn). ──
-    string?                               CampaignGps        = null);
+    string?                               CampaignGps        = null,
+    // ── Zone summary panel: live counts for the current area (null → not yet ready / stale zone). ──
+    ZoneSummary?                          ZoneSummary        = null,
+    Config.ZoneSummarySettings?           ZoneSummaryHud     = null);

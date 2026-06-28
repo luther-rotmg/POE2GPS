@@ -148,6 +148,7 @@ public sealed class OverlayRenderer : IDisposable
                 DrawRitualRewards(rt, ctx);            // name labels on the ritual tribute-shop tiles (screen-space)
                 DrawMonolithPanel(rt, ctx);            // nearby-monolith reward list (screen-space)
                 DrawSessionHud(rt, ctx);               // session pace/zone/death HUD (screen-space)
+                DrawZoneSummary(rt, ctx);              // opt-in zone summary panel (rares/chests/exits)
                 DrawCampaignGps(rt, ctx);              // compact campaign GPS instruction line (top strip)
             }
 
@@ -689,6 +690,56 @@ public sealed class OverlayRenderer : IDisposable
             {
                 rt.DrawText(text, _tf!, rowRect, _bText!, DrawTextOptions.Clip);
             }
+            cy += lineH;
+        }
+    }
+
+    /// <summary>Opt-in zone summary panel: live counts of rares/elites, chests, exits, and landmarks.
+    /// Mirrored corner anchoring from <see cref="DrawSessionHud"/>.</summary>
+    private void DrawZoneSummary(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (ctx.ZoneSummaryHud is not { Enabled: true } hud || ctx.ZoneSummary is not { } z) return;
+
+        // Build row strings (always all 4; no dynamic line cache needed — counts change rarely).
+        var chestTotal = z.ChestsOpen + z.ChestsClosed;
+        var rows = new string[]
+        {
+            $"Rares/Elites  {z.RareEliteAlive}",
+            $"Monsters      {z.MonstersAlive}",
+            $"Chests        {z.ChestsOpen}/{chestTotal}",
+            $"Exits         {z.Transitions}",
+        };
+
+        const float panelW = 200f;
+        const float pad = 6f, titleH = 16f, lineH = 15f;
+        int rowCount = rows.Length;
+        float panelH = titleH + rowCount * lineH + pad * 2;
+
+        // Corner anchoring — same math as DrawSessionHud.
+        var corner = hud.Anchor;
+        bool isRight  = corner is "TopRight"   or "BottomRight";
+        bool isBottom = corner is "BottomLeft" or "BottomRight";
+        const float margin = 10f;
+
+        float left = isRight
+            ? ctx.WindowWidth  - margin - panelW - hud.OffsetX
+            : margin + hud.OffsetX;
+        float top  = isBottom
+            ? ctx.WindowHeight - margin - panelH - hud.OffsetY
+            : margin + hud.OffsetY;
+        left = Math.Clamp(left, margin, ctx.WindowWidth  - margin - panelW);
+        top  = Math.Clamp(top,  margin, ctx.WindowHeight - margin - panelH);
+
+        rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
+
+        float cy = top + pad;
+        // Title row.
+        rt.DrawText("Zone", _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        cy += titleH;
+        // Data rows.
+        foreach (var row in rows)
+        {
+            rt.DrawText(row, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bText!, DrawTextOptions.Clip);
             cy += lineH;
         }
     }

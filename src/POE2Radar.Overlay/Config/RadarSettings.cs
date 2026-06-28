@@ -217,6 +217,9 @@ public sealed class RadarSettings
     // ── Session HUD: elapsed time, zone pace, death counter overlay. Off by default. ──
     public SessionHudSettings SessionHud { get; set; } = new();
 
+    // ── Zone summary panel: live counts (rares, chests, exits, landmarks) drawn as a corner HUD. Off by default. ──
+    public ZoneSummarySettings ZoneSummary { get; set; } = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -446,6 +449,14 @@ public sealed class SessionHudSettings
     public int    OffsetY               { get; set; } = 0; // pixels inward from the anchored corner (positive = toward screen center)
     // Behavior-tuning flag (NOT a visibility toggle): defaults TRUE so towns are excluded from pace.
     public bool   ExcludeTownsFromPace  { get; set; } = true;
+}
+
+public sealed class ZoneSummarySettings
+{
+    public bool   Enabled { get; set; } = false;
+    public string Anchor  { get; set; } = "TopRight";  // TopLeft|TopRight|BottomLeft|BottomRight
+    public int    OffsetX { get; set; } = 0;
+    public int    OffsetY { get; set; } = 0;
 }
 
 public sealed class GroundItemSettings
