@@ -104,16 +104,20 @@ Pick your next objective, fast-cycle to the boss across the zone, pop the menu o
 - 🛰️ **Entity radar** — enemies, NPCs, chests, transitions, players, and POIs; optional world-space HP bars; dangerous rare/magic mods flagged.
 - 🧱 **Terrain + map overlay** — the walkable-terrain mask and entity dots, projected onto the in-game map.
 - 📍 **Tile landmarks** — boss arenas, transitions, reward rooms, surfaced the moment you enter a zone, with community-curated names.
-- 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Cycle** the active target hands-free — keyboard (`Ctrl+Alt+]`/`[`) or **[fully from your controller](#-full-controller-support--no-keyboard-needed)** (R3/L3 to step, hold to fast-cycle). **Draw-only — never sends input to the game.**
+- 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Cycle** the active target hands-free — keyboard (`Ctrl+Alt+]`/`[`) or **[fully from your controller](#-full-controller-support--no-keyboard-needed)** (R3/L3 to step, hold to fast-cycle). A saved **auto-nav** pattern list re-selects matching targets on zone entry. **Draw-only — never sends input to the game.**
 - 🌌 **Atlas overlay + route planning** — labels nodes by content, off-screen arrows to tracked maps, shortest-hop auto-routes.
 - 💎 **Dynasty-support maps** *(opt-in)* — highlight the endgame maps whose Anomaly bosses drop Lineage/Dynasty support gems (Sealed Vault, Sacred Reservoir, Derelict Mansion, The Jade Isles), each labeled with the gems it drops — full Citadel-style ring + arrow + track. Toggle in Settings; a dashboard reference card lists every map · boss · gems.
-- 🏷️ **Reward/name labels** — names of ground drops and Ritual / Runeforge / monolith rewards (no economy values).
+- 🏷️ **Loot & reward labels** *(opt-in)* — name labels over on-ground drops by category (Uniques, Currency, Runes, Soul Cores, Uncut Gems, Essences, and more), plus Ritual / Runeforge reward overlays. Names only — no economy values.
+- 🏛️ **Monolith reward panel** *(off by default)* — a dedicated overlay panel listing nearby monolith rewards, color-graded by the best reward offered (configurable Exalted threshold), with a hide-collected toggle.
 - 🧪 **Objective Director** *(experimental, off by default)* — auto-routes you through a zone's objectives in priority order: **seasonal event → side bosses → side zones → exit**. Still maturing — [roadmap below](#-roadmap).
+- 🚩 **Campaign GPS** *(experimental, off by default)* — cross-zone campaign navigation: routes you to the next critical-path zone's exit from a built-in zone-order table, shown on the overlay and the Director's Zone Plan. A quest-memory precision layer is [in the works](#-roadmap).
 - 🗺️ **Entity Atlas** — name every entity the radar doesn't recognize (your names show on the radar instantly), classify the notable ones from a rich label set, and **export/import shareable packs** — or **[Contribute](#-community-mapping)** your finds to the whole community in **one click**. Submitted names get folded into the built-in table each release — a community effort to map the whole game.
 - ⭐ **God-Roll Detector** *(experimental, off by default)* — scores your inventory items 0–100 and stars the god rolls, with **meta-derived starter weights** distilled from the current ladder so it works the moment you switch it on. One-click stat-id chips to tune what you value, rarity-colored items, per-affix **tier (T#/N) + % of max roll** (so you see *how good* a roll is, not just *that* the stat matters), and a green→red **score heatmap grid**. Dashboard **Gear** tab; reads inventory only while enabled.
 - 🎨 **Customizable icons & display rules** — per-rule shape/color/size, editable live; drop your own `*.svg` into `icons/`.
 - 🔔 **Audio alerts** *(off by default)* — short, distinct tones for the moments that matter: a rare/unique monster comes into range, a unique item hits the ground, or you reach your active objective. Each event toggles independently from a card pinned to the top of Settings. **Output only — never sends input to the game.**
 - 🎁 **Community presets** — share your whole radar *look* (display rules + icon/HP-bar/terrain styles) as a copy-paste **share-code** or a `.poe2preset` file; import one to instantly adopt someone else's setup. A backup of your current look is saved automatically before any import.
+- ⏱️ **Session HUD** *(opt-in, off by default)* — a live run tracker: session + zone timers, zones visited, zones-per-hour pace, area name + level, and a death counter (with a per-zone count). Each metric toggles independently and anchors to any screen corner; **Ctrl+Alt+R** resets the counters.
+- 🩺 **Patch-resilience & self-healing** — starts even if the game isn't running yet and self-connects once it launches, re-attaches after a game restart, and self-detects when a PoE2 patch shifts the offsets. A **health pill** in the dashboard masthead + a Settings **Status** panel show the live read-state, and a **Force re-scan** button re-detects the game after a patch without a restart. An optional startup **update check** (the only request the overlay makes beyond your own machine — off-switchable in Settings) flags new releases.
 - 🕵️ **Stealth / low footprint** — relaunches under a random-named hardlink, randomized window class/title, neutral assembly name + binary metadata, character name never exposed, release binary string-scrubbed, and **hidden from screen capture** (screenshots / OBS / share-screen) by default — toggle off in Settings if you want to capture the overlay itself.
 - 🖥️ **Web dashboard** (`http://localhost:7777`, or **F12**) — click any entity/landmark to navigate to it; tune radar/icons/atlas. Local-only, loopback-gated.
 
@@ -130,6 +134,7 @@ Grab the latest **`POE2GPS-vX.Y.Z-win-x64.zip`** from the [**Releases**](https:/
 | 🎮 **R3 / L3** *(or **Ctrl + Alt + ] / [**)* | cycle active nav target next / prev |
 | 🎮 **hold R3 / L3** | **fast-cycle** through targets (auto-repeat) |
 | **Ctrl + Alt + 1–9 / 0** | jump to nav target slot / clear |
+| **Ctrl + Alt + R** | reset the Session HUD counters |
 | **F6 / F7** | route to nearest landmark/POI / clear routes |
 | **F10** | (Atlas open) inspect hovered tile, set route start/end |
 | **F9** | quit (or right-click tray → Exit) |
@@ -174,14 +179,15 @@ When you label an entity or POI in the **Entity Atlas** tab (dashboard → **F12
 ## 🏗️ Architecture
 
 - **`src/POE2Radar.Core`** — read-only memory plumbing (`OpenProcess` read-only + `NtReadVirtualMemory`), the PoE2 offset table, the live read layer, the `Stealth/RandomName` generator, and the `Campaign/` objective catalog + director.
-- **`src/POE2Radar.Overlay`** — the overlay `.exe` (`Overlay.exe`): attaches, AOB-resolves the game roots, runs the tick loop, renders the Direct2D overlay, serves the dashboard. Reads only.
+- **`src/POE2Radar.Overlay`** — the overlay `.exe` (`Overlay.exe`): attaches, AOB-resolves the game roots, runs the tick loop, renders the Direct2D overlay, plays the output-only audio cues, and serves the dashboard. Reads only.
 - **`src/POE2Radar.Research`** — dev-time offset discovery tools. Never shipped; excluded from the gate.
+- **`cloudflare-worker/`** — the optional open-source community-name collector (auto-filter → GitHub issue → merge pipeline). Server-side only; never part of the shipped overlay.
 
 PoE2 offsets drift with patches — validated values live in `Game/Poe2Offsets.cs`; re-discover via the Research probes or pull updates from Sikaka.
 
 ## 🧪 Roadmap
 
-The **Objective Director** is the headline work-in-progress. Next up: deep detection/cataloging of every relevant POI (seasonal events, passive-point upgrades, free skill/support gems), richer priority tiers, and — the dream — quest-aware cross-zone guidance that reads your quest log and points you to the right zone.
+The **Objective Director** is the headline work-in-progress. Zone-order **Campaign GPS** already ships (experimental). Next up: deep detection/cataloging of every relevant POI (seasonal events, passive-point upgrades, free skill/support gems), richer priority tiers, and a **quest-memory precision layer** — reading your actual quest-completion state to sharpen Campaign GPS beyond its built-in zone-order table.
 
 ## 💜 Support the dev
 
