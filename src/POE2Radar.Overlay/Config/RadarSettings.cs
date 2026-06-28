@@ -222,6 +222,11 @@ public sealed class RadarSettings
     // ── Zone summary panel: live counts (rares, chests, exits, landmarks) drawn as a corner HUD. Off by default. ──
     public ZoneSummarySettings ZoneSummary { get; set; } = new();
 
+    // ── Configurable hotkey VK codes. Defaults are the original literals — no behavior change for
+    //    existing users. The Ctrl+Alt modifier pair, slot-digit 1-9/0 keys, and controller buttons
+    //    are fixed and not in this table (rebinding them would conflict with PoE2's own controls). ──
+    public KeybindsSettings Keybinds { get; set; } = new();
+
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -459,6 +464,24 @@ public sealed class ZoneSummarySettings
     public string Anchor  { get; set; } = "TopRight";  // TopLeft|TopRight|BottomLeft|BottomRight
     public int    OffsetX { get; set; } = 0;
     public int    OffsetY { get; set; } = 0;
+}
+
+/// <summary>
+/// Virtual key codes for overlay hotkeys. All defaults reproduce the original hardcoded literals
+/// exactly — existing users see no behavior change. The Ctrl+Alt modifier pair, the slot-jump
+/// digit keys (1-9/0), and controller buttons (L3/R3) are fixed and cannot be changed here.
+/// </summary>
+public sealed class KeybindsSettings
+{
+    public int Quit          { get; set; } = 0x78; // F9  — quits the overlay (no foreground gate)
+    public int OpenDashboard { get; set; } = 0x7B; // F12 — open web dashboard (foreground-gated)
+    public int AtlasInspect  { get; set; } = 0x79; // F10 — inspect atlas tile under cursor
+    public int AddNearest    { get; set; } = 0x75; // F6  — add nearest nav target (debounced)
+    public int ClearRoutes   { get; set; } = 0x76; // F7  — clear all nav routes (debounced)
+    public int CycleNext     { get; set; } = 0xDD; // ]   — cycle next target  (Ctrl+Alt+], hold-to-fast)
+    public int CyclePrev     { get; set; } = 0xDB; // [   — cycle prev target  (Ctrl+Alt+[, hold-to-fast)
+    public int NavMenuToggle { get; set; } = 0x4D; // M   — toggle nav menu    (Ctrl+Alt+M, foreground-gated)
+    public int SessionReset  { get; set; } = 0x52; // R   — reset session HUD  (Ctrl+Alt+R, foreground-gated)
 }
 
 public sealed class GroundItemSettings

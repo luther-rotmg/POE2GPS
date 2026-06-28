@@ -243,6 +243,7 @@ public sealed class RadarApp : IDisposable
     // ── Read-only player vitals readout (HP/Mana/ES) for the HUD + dashboard. ──
     private DateTime _nextPathKeyAt = DateTime.MinValue;
     private DateTime _nextBrowserAt = DateTime.MinValue;
+    private DateTime _nextQuitAt    = DateTime.MinValue; // quit debounce (500 ms; no foreground gate)
     private float _hpPct = 100f, _manaPct = 100f, _esPct = 100f;
     private float[]? _cameraMatrix;
 
@@ -263,8 +264,6 @@ public sealed class RadarApp : IDisposable
     // at the palette size so colors stay distinct (and per-tick planning stays bounded). On a zone
     // change the selection is cleared, then the persistent auto-nav patterns re-select matching
     // targets in the new zone.
-    private const int AddNearestVk = 0x75; // F6
-    private const int ClearPathsVk = 0x76; // F7
     private const int MaxSelectedTargets = 8; // == OverlayRenderer.PathPalette.Length
     // Background A* replanner (single reused PathPlanner on a worker thread) + one RouteTracker per
     // selected id. The tick thread does only CHEAP per-tick maintenance (cursor advance) and rebuilds
@@ -1585,37 +1584,42 @@ public sealed class RadarApp : IDisposable
     /// Map calibration is web-config-only (no in-game keys, to avoid accidental presses).</summary>
     private void HandleHotkeys()
     {
-        // F9 quits the overlay (besides the tray-icon Exit).
-        if (Down(0x78)) { Console.WriteLine("\nF9 — exiting."); RequestShutdown(); }
+        // Quit overlay (default F9). No foreground gate — quit works from any context.
+        // 500 ms debounce guards against accidental double-trigger on a rebound key.
+        if (Down(_settings.Keybinds.Quit) && DateTime.UtcNow >= _nextQuitAt)
+        {
+            _nextQuitAt = DateTime.UtcNow.AddMilliseconds(500);
+            Console.WriteLine("\nQuit key — exiting.");
+            RequestShutdown();
+        }
 
-        // F12 opens the web dashboard in the default browser — only while PoE2 is the foreground
-        // window (debounced). Purely launches a browser; sends nothing to the game.
-        if (Down(0x7B) && DateTime.UtcNow >= _nextBrowserAt
+        // Open web dashboard (default F12) — only while PoE2 is the foreground window (debounced).
+        // Purely launches a browser; sends nothing to the game.
+        if (Down(_settings.Keybinds.OpenDashboard) && DateTime.UtcNow >= _nextBrowserAt
             && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd)
         {
             _nextBrowserAt = DateTime.UtcNow.AddMilliseconds(800);
             OpenDashboard();
         }
 
-        // F6 adds the nearest not-yet-selected landmark to the path selection; F7 clears it.
-        // Both debounced.
+        // Add nearest nav target (default F6) / clear all routes (default F7). Both debounced.
         if (DateTime.UtcNow >= _nextPathKeyAt)
         {
-            if (Down(AddNearestVk))
+            if (Down(_settings.Keybinds.AddNearest))
             {
                 AddNearestPathTarget();
                 _nextPathKeyAt = DateTime.UtcNow.AddMilliseconds(300);
             }
-            else if (Down(ClearPathsVk))
+            else if (Down(_settings.Keybinds.ClearRoutes))
             {
                 ClearPathTargets();
                 _nextPathKeyAt = DateTime.UtcNow.AddMilliseconds(300);
             }
         }
 
-        // Atlas tile inspector: F10 = dump the tile under the cursor (map/content/biome/flags) as an
-        // on-atlas tooltip so you can see what to set as a web-UI filter.
-        if (Down(0x79) && DateTime.UtcNow >= _nextInspectAt) // F10
+        // Atlas tile inspector (default F10): dump the tile under the cursor (map/content/biome/flags)
+        // as an on-atlas tooltip so you can see what to set as a web-UI filter.
+        if (Down(_settings.Keybinds.AtlasInspect) && DateTime.UtcNow >= _nextInspectAt)
         {
             _nextInspectAt = DateTime.UtcNow.AddMilliseconds(250);
             AtlasRoutePick();
@@ -1623,12 +1627,13 @@ public sealed class RadarApp : IDisposable
 
         // Quick-Target Cycler (keyboard): Ctrl+Alt+ ] next / [ prev (hold-to-fast via HoldRepeat),
         // 1-9 jump-to-slot, 0 clear (discrete, debounced). Foreground-gated. Reads keys only — sends
-        // nothing to the game. Cycle keys are [ ] (0xDB/0xDD), NOT arrows (Ctrl+Alt+Arrow rotates Intel).
+        // nothing to the game. Ctrl+Alt modifier pair and slot-digit keys are fixed; only the cycle
+        // keys (default ] / [) come from settings.
         if (_settings.EnableTargetHotkeys)
         {
             var foreground = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
             var ctrlAlt = foreground && Down(0x11) && Down(0x12);
-            var kbDir = ctrlAlt ? (Down(0xDD) ? +1 : Down(0xDB) ? -1 : 0) : 0;   // ] = +1, [ = -1
+            var kbDir = ctrlAlt ? (Down(_settings.Keybinds.CycleNext) ? +1 : Down(_settings.Keybinds.CyclePrev) ? -1 : 0) : 0;
             var steps = _keyboardHold.Update(kbDir, DateTime.UtcNow);
             for (var i = 0; i < steps; i++) Cycle(kbDir < 0 ? CycleAction.Prev : CycleAction.Next);
 
@@ -1641,21 +1646,23 @@ public sealed class RadarApp : IDisposable
                 if (fired) _nextCycleAt = DateTime.UtcNow.AddMilliseconds(250);
             }
         }
-        // Nav-menu toggle (keyboard): Ctrl+Alt+M flips the top-left nav-menu dropdown. Foreground-gated +
-        // debounced. Reads keys only — sends nothing to the game.
+        // Nav-menu toggle (default Ctrl+Alt+M): flips the top-left nav-menu dropdown.
+        // Foreground-gated + debounced. Ctrl+Alt modifier is fixed; key comes from settings.
+        // Reads keys only — sends nothing to the game.
         if (_settings.EnableTargetHotkeys && DateTime.UtcNow >= _nextMenuAt
             && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd
-            && Down(0x11) && Down(0x12) && Down(0x4D))   // Ctrl + Alt + M
+            && Down(0x11) && Down(0x12) && Down(_settings.Keybinds.NavMenuToggle))   // Ctrl + Alt + M
         {
             _navMenuExpanded = !_navMenuExpanded;
             _nextMenuAt = DateTime.UtcNow.AddMilliseconds(300);
         }
-        // Ctrl+Alt+R — reset session counters (read-only: GetAsyncKeyState polling + GetForegroundWindow,
-        // no input emission, no process write).
+        // Session counter reset (default Ctrl+Alt+R). Foreground-gated + debounced. Ctrl+Alt modifier
+        // is fixed; key comes from settings. Read-only: GetAsyncKeyState polling + GetForegroundWindow,
+        // no input emission, no process write.
         if (_settings.SessionHud.Enabled
             && DateTime.UtcNow >= _nextSessionResetAt
             && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd
-            && Down(0x11) && Down(0x12) && Down(0x52))  // VK_CONTROL=0x11, VK_MENU=0x12, VK_R=0x52
+            && Down(0x11) && Down(0x12) && Down(_settings.Keybinds.SessionReset))  // Ctrl+Alt+R
         {
             _session.Reset(DateTime.UtcNow.Ticks);
             _nextSessionResetAt = DateTime.UtcNow.AddMilliseconds(500);
