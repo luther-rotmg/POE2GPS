@@ -537,7 +537,35 @@ internal static class DashboardHtml
       </section>
 
       <section class="view" data-view="settings" hidden>
+        <div style="display:flex;align-items:center;gap:10px;margin:0 0 14px">
+          <span style="font-family:'Cinzel','Georgia',serif;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)">Settings</span>
+          <button id="qsReopenBtn" type="button" style="font:inherit;font-size:11px;letter-spacing:.06em;color:var(--ink-dim);background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:4px 12px;cursor:pointer" title="Re-open the quick-start guide">Quick start</button>
+        </div>
         <div class="panel-grid">
+          <div class="card" id="qsCard" style="grid-column:1/-1">
+            <h3>Quick Start <span class="tag">&middot; getting up and running</span></h3>
+            <div class="row"><div class="rl hint-row" style="line-height:1.7">
+              <b>POE2GPS</b> is a read-only map overlay — it never injects into the game. Open Path of Exile 2 first, then start the overlay.
+              <br>The recommended setup below turns on zone summary counts, shows HP bars for Rare &amp; Unique monsters, and enables ground-item labels for Uniques, Currency, Runes, and Soul Cores.
+            </div></div>
+            <div class="row" style="flex-wrap:wrap;gap:8px 0">
+              <div class="rl" style="min-width:100%"><b>Essentials</b></div>
+              <div class="rl hint-row" style="min-width:100%;line-height:1.9">
+                &bull; <b>Run as Administrator</b> &mdash; required to read game memory<br>
+                &bull; <b>Be in a zone</b> &mdash; the overlay activates once you enter the game world<br>
+                &bull; <b>F12</b> &mdash; open / close this dashboard (foreground-gated)<br>
+                &bull; <b>F9</b> &mdash; quit the overlay<br>
+                &bull; <b>F6</b> &mdash; add nearest navigation target &nbsp;&nbsp; <b>F7</b> &mdash; clear all routes<br>
+                &bull; <b>F10</b> &mdash; inspect Atlas tile under cursor (when Atlas is open)<br>
+                &bull; <b>Ctrl+Alt+[&nbsp;/&nbsp;]</b> &mdash; cycle targets (hold to fast-cycle)
+              </div>
+            </div>
+            <div class="row" style="gap:10px;flex-wrap:wrap;padding-top:14px">
+              <button id="qsApplyBtn" type="button" style="font:inherit;font-size:12px;color:#1a140a;background:var(--gold);border:1px solid var(--gold-bright);border-radius:3px;padding:8px 18px;cursor:pointer;font-weight:600">Apply recommended setup</button>
+              <button id="qsDismissBtn" type="button" style="font:inherit;font-size:12px;color:var(--ink-dim);background:#0c0a07;border:1px solid var(--line);border-radius:3px;padding:8px 14px;cursor:pointer">Dismiss</button>
+              <span class="saved" id="savedMsgQs" style="align-self:center">&#10003; applied</span>
+            </div>
+          </div>
           <div class="card" id="statusCard" style="grid-column:1/-1">
             <h3>Status</h3>
             <div class="row"><div class="rl">Attached to Path of Exile 2</div><div class="ro" id="stAttach">&mdash;</div></div>
@@ -854,7 +882,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   activeTab=t.dataset.tab;
   $$('.tab').forEach(x=>x.classList.toggle('on',x===t));
   $$('.view').forEach(v=>v.hidden = v.dataset.view!==activeTab);
-  if(activeTab==='settings'){ loadSettings(); loadKeybinds(); }
+  if(activeTab==='settings'){ loadSettings(); loadKeybinds(); loadQuickStart(); }
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
   if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); }
@@ -891,6 +919,33 @@ async function loadSettings(){
     renderHpBars(); renderTerrain(); renderGround();
   }catch(e){}
 }
+
+/* ── quick-start card (first-run onboarding) ── */
+async function loadQuickStart(){
+  try{
+    const s=await getJSON('/api/settings');
+    const card=$('#qsCard');
+    if(card) card.hidden=!!s.firstRunSeen;
+  }catch(e){}
+}
+function flashQs(msg){ const m=$('#savedMsgQs'); if(!m) return; m.textContent=msg||'✓ applied'; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1800); }
+$('#qsApplyBtn')?.addEventListener('click',async()=>{
+  try{
+    const r=await fetch('/api/quickstart/apply',{method:'POST'});
+    if(r.ok){ await loadSettings(); await loadQuickStart(); flashQs('✓ recommended setup applied'); }
+    else flashQs('error');
+  }catch(e){ flashQs('error'); }
+});
+$('#qsDismissBtn')?.addEventListener('click',async()=>{
+  try{
+    const r=await fetch('/api/quickstart/dismiss',{method:'POST'});
+    if(r.ok){ await loadQuickStart(); await loadSettings(); }
+    else flashQs('error');
+  }catch(e){ flashQs('error'); }
+});
+$('#qsReopenBtn')?.addEventListener('click',()=>{
+  const card=$('#qsCard'); if(card) card.hidden=false;
+});
 
 /* ── ground-item labels (nested object: POST the whole {groundItems}) ── */
 let gi = null;
@@ -1907,7 +1962,7 @@ async function checkVersion(){
 wireSettings(); wireHpBars(); wireTerrain(); wireGround();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
-loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); }); // Rules is the default tab
+loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 checkVersion();
 /* ── presets card (export copy/download + import paste/file) ── */

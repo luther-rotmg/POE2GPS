@@ -354,6 +354,47 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/quickstart/dismiss":
+            {
+                // POST-only, loopback-gated. Marks the first-run card as seen without applying settings.
+                if (ctx.Request.HttpMethod != "POST")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                    break;
+                }
+                _settings.FirstRunSeen = true;
+                _settings.Save();
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
+                break;
+            }
+
+            case "/api/quickstart/apply":
+            {
+                // POST-only, loopback-gated. Applies the recommended setup bundle and marks the card seen.
+                // The four keys (zoneSummaryEnabled, hpBarRare, hpBarUnique, groundItems) are all whitelisted
+                // in ApplySettings — no game write, no input.
+                if (ctx.Request.HttpMethod != "POST")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                    break;
+                }
+                ApplySettings("{\"zoneSummaryEnabled\":true,\"hpBarRare\":true,\"hpBarUnique\":true,\"groundItems\":{\"enabled\":true,\"categories\":[\"Uniques\",\"Currency\",\"Runes\",\"SoulCores\"]}}");
+                _settings.FirstRunSeen = true;
+                _settings.Save();
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
+                break;
+            }
+
             case "/api/audio-test":
             {
                 // POST-only, loopback-gated. Triggers a local audio cue for dashboard test buttons.
@@ -1011,6 +1052,7 @@ public sealed class ApiServer : IDisposable
         audioToneObjective       = _settings.AudioToneObjective,
         audioAlertMechanic       = _settings.AudioAlertMechanic,
         audioToneMechanic        = _settings.AudioToneMechanic,
+        firstRunSeen             = _settings.FirstRunSeen,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -1094,6 +1136,7 @@ public sealed class ApiServer : IDisposable
                 case "audioToneObjective" when TryString(p.Value, out var s): _settings.AudioToneObjective = s.Trim(); applied.Add(p.Name); break;
                 case "audioAlertMechanic" when TryBool(p.Value, out var b): _settings.AudioAlertMechanic = b; applied.Add(p.Name); break;
                 case "audioToneMechanic"  when TryString(p.Value, out var s): _settings.AudioToneMechanic  = s.Trim(); applied.Add(p.Name); break;
+                case "firstRunSeen" when TryBool(p.Value, out var b): _settings.FirstRunSeen = b; applied.Add(p.Name); break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }

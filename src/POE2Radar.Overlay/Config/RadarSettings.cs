@@ -167,6 +167,11 @@ public sealed class RadarSettings
     // need ~1.5× the size the old flat shapes used to be legible at radar scale.
     public bool IconSizesV1 { get; set; }
 
+    // Onboarding: false until the user has dismissed or applied the first-run quick-start card.
+    // Existing users see it once on upgrade (it's dismissible + informative); no migration guard needed
+    // because false is the correct default for everyone.
+    public bool FirstRunSeen { get; set; } = false;
+
     // ── HTTP API. ──
     public int ApiPort { get; set; } = 7777;
 
