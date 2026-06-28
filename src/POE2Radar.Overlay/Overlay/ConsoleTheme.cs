@@ -71,6 +71,7 @@ internal static class ConsoleTheme
         ("F10", "(Atlas) inspect tile · set route"),
         ("Ctrl+Alt+ ] / [", "cycle active nav target"),
         ("Ctrl+Alt+ 1-9 / 0", "jump to target slot / clear"),
+        ("Ctrl+Alt+R", "reset session HUD counters"),
         ("Ctrl+Alt+M / L3+R3", "toggle the nav-menu list"),
         ("R3 / L3 (controller)", "next / prev nav target · hold = fast-cycle"),
         ("F9", "quit (or tray → Exit)"),
