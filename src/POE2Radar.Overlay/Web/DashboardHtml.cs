@@ -561,6 +561,17 @@ internal static class DashboardHtml
               <button class="numin" data-audiotest="objective">Test</button></div>
             <div class="row"><div class="rl">Monster alert radius (cells)</div>
               <input class="numin" type="number" min="10" max="200" data-set="audioAlertRadiusCells"></div>
+            <div class="row"><div class="rl">Volume</div>
+              <input class="numin" type="range" min="0" max="100" data-set="audioAlertVolume" style="width:140px"></div>
+            <div class="row"><div class="rl">Monster tone</div>
+              <select class="numin" data-set="audioToneMonster"><option>Chime</option><option>Bell</option><option>Ding</option><option>Beep</option><option>Blip</option><option>Alert</option><option>Low</option></select>
+              <button class="numin" data-audiotest="monster">Test</button></div>
+            <div class="row"><div class="rl">Item tone</div>
+              <select class="numin" data-set="audioToneItem"><option>Chime</option><option>Bell</option><option>Ding</option><option>Beep</option><option>Blip</option><option>Alert</option><option>Low</option></select>
+              <button class="numin" data-audiotest="item">Test</button></div>
+            <div class="row"><div class="rl">Objective tone</div>
+              <select class="numin" data-set="audioToneObjective"><option>Chime</option><option>Bell</option><option>Ding</option><option>Beep</option><option>Blip</option><option>Alert</option><option>Low</option></select>
+              <button class="numin" data-audiotest="objective">Test</button></div>
           </div>
           <div class="card">
             <h3>Target cycling</h3>
