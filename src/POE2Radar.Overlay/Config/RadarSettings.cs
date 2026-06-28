@@ -192,6 +192,10 @@ public sealed class RadarSettings
     public bool AudioAlertUniqueDrop { get; set; } = true;
     public bool AudioAlertObjective { get; set; } = true;
     public int  AudioAlertRadiusCells { get; set; } = 60;
+    public int    AudioAlertVolume    { get; set; } = 70;     // 0-100 -> PureToneWav volume /100
+    public string AudioToneMonster    { get; set; } = "Chime";
+    public string AudioToneItem       { get; set; } = "Bell";
+    public string AudioToneObjective  { get; set; } = "Ding";
 
     // ── Per-item icon styling (shape / color / opacity / size) + metadata-matched "mechanic"
     //    overrides. Defaults reproduce the original hardcoded look exactly. ──

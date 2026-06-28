@@ -147,9 +147,9 @@ public sealed class RadarApp : IDisposable
     private static string ConfigDir => Path.Combine(AppContext.BaseDirectory, "config");
 
     // ── Audio cues (world-thread-owned; built in ctor; Play() fire-and-forget). ──
-    private readonly AudioCue _cueMonster;
-    private readonly AudioCue _cueItem;
-    private readonly AudioCue _cueObjective;
+    private AudioCue _cueMonster   = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
+    private AudioCue _cueItem      = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
+    private AudioCue _cueObjective = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
     private readonly HashSet<uint> _alertedMonsters = new();
     private readonly HashSet<uint> _alertedItems = new();
     private readonly HashSet<string> _alertedTargets = new();
@@ -578,9 +578,7 @@ public sealed class RadarApp : IDisposable
         // Audio cues: pre-load PCM tones into SoundPlayer so Play() is fire-and-forget with no disk I/O.
         // Master gate (EnableAudioAlerts) defaults false — nothing plays until the user opts in.
         // Initialized before ApiServer so the audioTest lambda can capture non-null references.
-        _cueMonster   = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(660, 120));
-        _cueItem      = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(880, 150));
-        _cueObjective = new AudioCue(POE2Radar.Core.Audio.PureToneWav.Generate(520, 180));
+        RebuildAudioCues();
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
                              _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
@@ -588,6 +586,7 @@ public sealed class RadarApp : IDisposable
                              AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, RequestRescan,
                              audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; } },
+                             rebuildAudio: () => RebuildAudioCues(),
                              port: _settings.ApiPort);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
@@ -606,6 +605,17 @@ public sealed class RadarApp : IDisposable
                     ConsoleTheme.Accent($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
             });
         }
+    }
+
+    /// <summary>(Re)build the three audio cues from the current tone + volume settings. Runs in the ctor
+    /// and whenever the dashboard changes a volume/tone key (invoked via the rebuildAudio delegate, on the
+    /// API thread). Reference-width field stores are atomic on x64; Play() is fire-and-forget.</summary>
+    private void RebuildAudioCues()
+    {
+        double vol = Math.Clamp(_settings.AudioAlertVolume, 0, 100) / 100.0;
+        _cueMonster   = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneMonster,   vol));
+        _cueItem      = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneItem,      vol));
+        _cueObjective = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneObjective, vol));
     }
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.

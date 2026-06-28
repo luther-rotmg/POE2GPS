@@ -77,6 +77,9 @@ public sealed class ApiServer : IDisposable
     // Delegate wired from RadarApp to play a named audio cue ("monster"|"item"|"objective").
     // POST /api/audio-test invokes it for dashboard test buttons — loopback-gated.
     private readonly Action<string>? _audioTest;
+    // Delegate wired from RadarApp to rebuild audio cues when volume/tone settings change.
+    // POST /api/settings invokes it when any audioAlert* or audioTone* key is applied.
+    private readonly Action? _rebuildAudio;
     private volatile bool _running;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -105,6 +108,7 @@ public sealed class ApiServer : IDisposable
         Func<object>? versionProvider = null,
         Action? rescan = null,
         Action<string>? audioTest = null,
+        Action? rebuildAudio = null,
         int port = 7777)
     {
         _state = state;
@@ -114,6 +118,7 @@ public sealed class ApiServer : IDisposable
         _version = versionProvider;
         _rescan = rescan;
         _audioTest = audioTest;
+        _rebuildAudio = rebuildAudio;
         _settings = settings;
         _navGet = navGet;
         _navToggle = navToggle;
@@ -770,6 +775,10 @@ public sealed class ApiServer : IDisposable
         audioAlertUniqueDrop     = _settings.AudioAlertUniqueDrop,
         audioAlertObjective      = _settings.AudioAlertObjective,
         audioAlertRadiusCells    = _settings.AudioAlertRadiusCells,
+        audioAlertVolume         = _settings.AudioAlertVolume,
+        audioToneMonster         = _settings.AudioToneMonster,
+        audioToneItem            = _settings.AudioToneItem,
+        audioToneObjective       = _settings.AudioToneObjective,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -842,10 +851,16 @@ public sealed class ApiServer : IDisposable
                 case "audioAlertUniqueDrop" when TryBool(p.Value, out var b): _settings.AudioAlertUniqueDrop = b; applied.Add(p.Name); break;
                 case "audioAlertObjective" when TryBool(p.Value, out var b): _settings.AudioAlertObjective = b; applied.Add(p.Name); break;
                 case "audioAlertRadiusCells" when TryInt(p.Value, out var n): _settings.AudioAlertRadiusCells = Math.Clamp(n, 10, 200); applied.Add(p.Name); break;
+                case "audioAlertVolume"   when TryInt(p.Value, out var n): _settings.AudioAlertVolume = Math.Clamp(n, 0, 100); applied.Add(p.Name); break;
+                case "audioToneMonster"   when TryString(p.Value, out var s): _settings.AudioToneMonster   = s.Trim(); applied.Add(p.Name); break;
+                case "audioToneItem"      when TryString(p.Value, out var s): _settings.AudioToneItem      = s.Trim(); applied.Add(p.Name); break;
+                case "audioToneObjective" when TryString(p.Value, out var s): _settings.AudioToneObjective = s.Trim(); applied.Add(p.Name); break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }
 
+        if (applied.Any(k => k.StartsWith("audioAlert", StringComparison.Ordinal) || k.StartsWith("audioTone", StringComparison.Ordinal)))
+            _rebuildAudio?.Invoke();
         if (applied.Count > 0) _settings.Save();
         return applied.ToArray();
     }
