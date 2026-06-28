@@ -857,6 +857,8 @@ public sealed class ApiServer : IDisposable
         audioToneMonster         = _settings.AudioToneMonster,
         audioToneItem            = _settings.AudioToneItem,
         audioToneObjective       = _settings.AudioToneObjective,
+        audioAlertMechanic       = _settings.AudioAlertMechanic,
+        audioToneMechanic        = _settings.AudioToneMechanic,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -938,6 +940,8 @@ public sealed class ApiServer : IDisposable
                 case "audioToneMonster"   when TryString(p.Value, out var s): _settings.AudioToneMonster   = s.Trim(); applied.Add(p.Name); break;
                 case "audioToneItem"      when TryString(p.Value, out var s): _settings.AudioToneItem      = s.Trim(); applied.Add(p.Name); break;
                 case "audioToneObjective" when TryString(p.Value, out var s): _settings.AudioToneObjective = s.Trim(); applied.Add(p.Name); break;
+                case "audioAlertMechanic" when TryBool(p.Value, out var b): _settings.AudioAlertMechanic = b; applied.Add(p.Name); break;
+                case "audioToneMechanic"  when TryString(p.Value, out var s): _settings.AudioToneMechanic  = s.Trim(); applied.Add(p.Name); break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }

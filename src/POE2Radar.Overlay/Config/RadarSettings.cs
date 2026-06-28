@@ -196,6 +196,8 @@ public sealed class RadarSettings
     public string AudioToneMonster    { get; set; } = "Chime";
     public string AudioToneItem       { get; set; } = "Bell";
     public string AudioToneObjective  { get; set; } = "Ding";
+    public bool   AudioAlertMechanic  { get; set; } = true;
+    public string AudioToneMechanic   { get; set; } = "Alert";
 
     // ── Per-item icon styling (shape / color / opacity / size) + metadata-matched "mechanic"
     //    overrides. Defaults reproduce the original hardcoded look exactly. ──

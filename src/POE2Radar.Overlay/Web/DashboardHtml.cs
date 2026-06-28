@@ -559,6 +559,9 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Objective reached</div>
               <label class="sw"><input type="checkbox" data-set="audioAlertObjective"><span class="track"></span><span class="knob"></span></label>
               <button class="numin" data-audiotest="objective">Test</button></div>
+            <div class="row"><div class="rl">Mechanic nearby</div>
+              <label class="sw"><input type="checkbox" data-set="audioAlertMechanic"><span class="track"></span><span class="knob"></span></label>
+              <button class="numin" data-audiotest="mechanic">Test</button></div>
             <div class="row"><div class="rl">Monster alert radius (cells)</div>
               <input class="numin" type="number" min="10" max="200" data-set="audioAlertRadiusCells"></div>
             <div class="row"><div class="rl">Volume</div>
@@ -572,6 +575,9 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Objective tone</div>
               <select class="numin" data-set="audioToneObjective"><option>Chime</option><option>Bell</option><option>Ding</option><option>Beep</option><option>Blip</option><option>Alert</option><option>Low</option></select>
               <button class="numin" data-audiotest="objective">Test</button></div>
+            <div class="row"><div class="rl">Mechanic tone</div>
+              <select class="numin" data-set="audioToneMechanic"><option>Chime</option><option>Bell</option><option>Ding</option><option>Beep</option><option>Blip</option><option>Alert</option><option>Low</option></select>
+              <button class="numin" data-audiotest="mechanic">Test</button></div>
           </div>
           <div class="card">
             <h3>Zone summary <small class="tag">opt-in overlay panel</small></h3>

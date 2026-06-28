@@ -161,9 +161,11 @@ public sealed class RadarApp : IDisposable
     private AudioCue _cueMonster   = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
     private AudioCue _cueItem      = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
     private AudioCue _cueObjective = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
+    private AudioCue _cueMechanic  = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
     private readonly HashSet<uint> _alertedMonsters = new();
     private readonly HashSet<uint> _alertedItems = new();
     private readonly HashSet<string> _alertedTargets = new();
+    private readonly HashSet<string> _alertedMechanics = new();
     private long _lastMonsterCueTs;
     private static readonly long _monsterCueCooldownTicks = System.Diagnostics.Stopwatch.Frequency * 3; // 3 s
 
@@ -597,7 +599,7 @@ public sealed class RadarApp : IDisposable
                              GearJson, _gearWeights,
                              AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, RequestRescan,
-                             audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; } },
+                             audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; case "mechanic": _cueMechanic.Play(); break; } },
                              rebuildAudio: () => RebuildAudioCues(),
                              presetStore: _presetStore,
                              port: _settings.ApiPort);
@@ -629,6 +631,7 @@ public sealed class RadarApp : IDisposable
         _cueMonster   = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneMonster,   vol));
         _cueItem      = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneItem,      vol));
         _cueObjective = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneObjective, vol));
+        _cueMechanic  = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneMechanic,  vol));
     }
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.
@@ -1902,7 +1905,7 @@ public sealed class RadarApp : IDisposable
         }
         _director.ResetZone();
         _selectedPaths = new List<SelectedPath>();
-        _alertedMonsters.Clear(); _alertedItems.Clear(); _alertedTargets.Clear();
+        _alertedMonsters.Clear(); _alertedItems.Clear(); _alertedTargets.Clear(); _alertedMechanics.Clear();
 
         if (count > 0)
             Console.WriteLine($"\nNav: {(restored ? "restored" : "auto-selected")} {count} target(s) on zone change.");
@@ -2241,6 +2244,19 @@ public sealed class RadarApp : IDisposable
                 if (TryResolveTargetGrid(id, out var goal) && NumVec2.Distance(goal, player) < 8f)
                 { if (_alertedTargets.Add(id)) _cueObjective.Play(); }
                 else _alertedTargets.Remove(id);
+        // (4) mechanic entity entering radius — edge-triggered per entity id
+        if (_settings.AudioAlertMechanic)
+        {
+            float r = _settings.AudioAlertRadiusCells;
+            foreach (var e in _entities)
+            {
+                if (POE2Radar.Core.Game.MechanicPatterns.Classify(e.Metadata) is null) continue;
+                var key = e.Id.ToString();
+                bool inRange = NumVec2.Distance(e.Grid, player) < r;
+                if (inRange) { if (_alertedMechanics.Add(key)) _cueMechanic.Play(); }
+                else _alertedMechanics.Remove(key);
+            }
+        }
     }
 
     /// <summary>Snapshot the immutable terrain + player/goal and hand a replan request to the worker
