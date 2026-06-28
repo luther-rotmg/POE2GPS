@@ -96,7 +96,13 @@ public readonly record struct ZoneSummary(
     int ChestsOpen,
     int ChestsClosed,
     int Transitions,
-    int Landmarks);
+    int Landmarks,
+    int ExpeditionCount,
+    int RitualCount,
+    int BreachCount,
+    int StrongboxCount,
+    int EssenceCount,
+    int ShrineCount);
 
 /// <summary>What the PoE2 renderer needs each frame. Built fresh by <see cref="RadarApp"/>.</summary>
 public sealed record RenderContext(

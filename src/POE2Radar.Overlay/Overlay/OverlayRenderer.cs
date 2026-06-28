@@ -700,19 +700,25 @@ public sealed class OverlayRenderer : IDisposable
     {
         if (ctx.ZoneSummaryHud is not { Enabled: true } hud || ctx.ZoneSummary is not { } z) return;
 
-        // Build row strings (always all 4; no dynamic line cache needed — counts change rarely).
+        // Build row strings: fixed rows first, then conditional mechanic rows (only when count > 0).
         var chestTotal = z.ChestsOpen + z.ChestsClosed;
-        var rows = new string[]
+        var rows = new System.Collections.Generic.List<string>
         {
             $"Rares/Elites  {z.RareEliteAlive}",
             $"Monsters      {z.MonstersAlive}",
             $"Chests        {z.ChestsOpen}/{chestTotal}",
             $"Exits         {z.Transitions}",
         };
+        if (z.ExpeditionCount > 0) rows.Add($"Expedition    {z.ExpeditionCount}");
+        if (z.RitualCount     > 0) rows.Add($"Ritual        {z.RitualCount}");
+        if (z.BreachCount     > 0) rows.Add($"Breach        {z.BreachCount}");
+        if (z.StrongboxCount  > 0) rows.Add($"Strongbox     {z.StrongboxCount}");
+        if (z.EssenceCount    > 0) rows.Add($"Essence       {z.EssenceCount}");
+        if (z.ShrineCount     > 0) rows.Add($"Shrine        {z.ShrineCount}");
 
         const float panelW = 200f;
         const float pad = 6f, titleH = 16f, lineH = 15f;
-        int rowCount = rows.Length;
+        int rowCount = rows.Count;
         float panelH = titleH + rowCount * lineH + pad * 2;
 
         // Corner anchoring — same math as DrawSessionHud.

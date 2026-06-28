@@ -123,11 +123,13 @@ public sealed class RadarApp : IDisposable
     }
     private volatile MonolithRender _monoRender = MonolithRender.Empty;
 
-    // ── Zone summary (live counts per zone: monsters/rares/chests/transitions/landmarks). ──
+    // ── Zone summary (live counts per zone: monsters/rares/chests/transitions/landmarks + mechanics). ──
     private sealed record ZoneSummaryBundle(uint AreaHash, int MonstersAlive, int RareEliteAlive,
-        int ChestsOpen, int ChestsClosed, int Transitions, int Landmarks)
+        int ChestsOpen, int ChestsClosed, int Transitions, int Landmarks,
+        int ExpeditionCount, int RitualCount, int BreachCount,
+        int StrongboxCount, int EssenceCount, int ShrineCount)
     {
-        public static readonly ZoneSummaryBundle Empty = new(0, 0, 0, 0, 0, 0, 0);
+        public static readonly ZoneSummaryBundle Empty = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
     private volatile ZoneSummaryBundle _zoneSummary = ZoneSummaryBundle.Empty;
 
@@ -1185,7 +1187,9 @@ public sealed class RadarApp : IDisposable
             ZoneSummary: (worldFresh && _zoneSummary.AreaHash == _areaHash)
                 ? new ZoneSummary(_zoneSummary.MonstersAlive, _zoneSummary.RareEliteAlive,
                     _zoneSummary.ChestsOpen, _zoneSummary.ChestsClosed,
-                    _zoneSummary.Transitions, _zoneSummary.Landmarks)
+                    _zoneSummary.Transitions, _zoneSummary.Landmarks,
+                    _zoneSummary.ExpeditionCount, _zoneSummary.RitualCount, _zoneSummary.BreachCount,
+                    _zoneSummary.StrongboxCount, _zoneSummary.EssenceCount, _zoneSummary.ShrineCount)
                 : null,
             ZoneSummaryHud: _settings.ZoneSummary);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
@@ -1344,6 +1348,7 @@ public sealed class RadarApp : IDisposable
         // Published with the current areaHash so Tick() can gate on the same zone-load guard as monoliths.
         {
             int monstersAlive = 0, rareEliteAlive = 0, chestsOpen = 0, chestsClosed = 0, transitions = 0;
+            int expedition = 0, ritual = 0, breach = 0, strongbox = 0, essence = 0, shrine = 0;
             foreach (var e in _entities)
             {
                 switch (e.Category)
@@ -1362,9 +1367,19 @@ public sealed class RadarApp : IDisposable
                         transitions++;
                         break;
                 }
+                switch (POE2Radar.Core.Game.MechanicPatterns.Classify(e.Metadata))
+                {
+                    case "Expedition": expedition++; break;
+                    case "Ritual":     ritual++;     break;
+                    case "Breach":     breach++;     break;
+                    case "Strongbox":  strongbox++;  break;
+                    case "Essence":    essence++;    break;
+                    case "Shrine":     shrine++;     break;
+                }
             }
             _zoneSummary = new ZoneSummaryBundle(areaHash, monstersAlive, rareEliteAlive,
-                chestsOpen, chestsClosed, transitions, _landmarks.Count);
+                chestsOpen, chestsClosed, transitions, _landmarks.Count,
+                expedition, ritual, breach, strongbox, essence, shrine);
         }
 
         // Rebuild the unified navigation-target list (tiles + entity POIs) for this tick.
