@@ -80,6 +80,7 @@ public sealed class ApiServer : IDisposable
     // Delegate wired from RadarApp to rebuild audio cues when volume/tone settings change.
     // POST /api/settings invokes it when any audioAlert* or audioTone* key is applied.
     private readonly Action? _rebuildAudio;
+    private readonly PresetStore _presetStore;
     private volatile bool _running;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -109,6 +110,7 @@ public sealed class ApiServer : IDisposable
         Action? rescan = null,
         Action<string>? audioTest = null,
         Action? rebuildAudio = null,
+        PresetStore? presetStore = null,
         int port = 7777)
     {
         _state = state;
@@ -134,6 +136,7 @@ public sealed class ApiServer : IDisposable
         _entityNames = entityNames;
         _gear = gearProvider;
         _gearWeights = gearWeights;
+        _presetStore = presetStore ?? new PresetStore();
         _listener.Prefixes.Add($"http://localhost:{port}/");
     }
 
@@ -714,6 +717,78 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/preset/list":
+                // Read-only: returns built-in presets (builtIn=true) first, then user presets sorted by
+                // name, excluding the auto-backup. Consistent with /api/preset/export (no loopback gate).
+                Write(ctx, 200, JsonSerializer.Serialize(new { presets = _presetStore.List() }, Json));
+                break;
+
+            case "/api/preset/save":
+            {
+                // POST + loopback only. Builds the current look server-side (client supplies only {name}).
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                string saveBody = ReadBody(ctx);
+                string saveName;
+                try
+                {
+                    using var doc = JsonDocument.Parse(saveBody);
+                    saveName = doc.RootElement.TryGetProperty("name", out var np) ? np.GetString() ?? "" : "";
+                }
+                catch { Write(ctx, 400, JsonSerializer.Serialize(new { error = "malformed JSON" }, Json)); break; }
+                var safeName = PresetName.Sanitize(saveName);
+                if (safeName == PresetName.Fallback && string.IsNullOrWhiteSpace(saveName))
+                {
+                    Write(ctx, 400, JsonSerializer.Serialize(new { error = "name is required" }, Json)); break;
+                }
+                if (_presetStore.IsBuiltIn(safeName)) { Write(ctx, 409, JsonSerializer.Serialize(new { error = "name conflicts with a built-in" }, Json)); break; }
+                var bundleJson = BuildPresetBundleJson(safeName);
+                _presetStore.Save(safeName, bundleJson);
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, name = safeName }, Json));
+                break;
+            }
+
+            case "/api/preset/apply":
+            {
+                // POST + loopback only. Body: {name}. Applies the named preset (built-in or user).
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                string applyBody = ReadBody(ctx);
+                string applyName;
+                try
+                {
+                    using var doc = JsonDocument.Parse(applyBody);
+                    applyName = doc.RootElement.TryGetProperty("name", out var np) ? np.GetString() ?? "" : "";
+                }
+                catch { Write(ctx, 400, JsonSerializer.Serialize(new { error = "malformed JSON" }, Json)); break; }
+                if (string.IsNullOrWhiteSpace(applyName)) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "name is required" }, Json)); break; }
+                if (!_presetStore.TryGet(applyName, out var presetJson)) { Write(ctx, 404, JsonSerializer.Serialize(new { error = "preset not found" }, Json)); break; }
+                // ApplyPresetImport accepts raw bundle JSON (takes the non-code branch automatically).
+                ApplyPresetImport(presetJson);
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, rules = _displayRules.All.Count }, Json));
+                break;
+            }
+
+            case "/api/preset/delete":
+            {
+                // POST + loopback only. Body: {name}. Refuses built-ins.
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                string deleteBody = ReadBody(ctx);
+                string deleteName;
+                try
+                {
+                    using var doc = JsonDocument.Parse(deleteBody);
+                    deleteName = doc.RootElement.TryGetProperty("name", out var np) ? np.GetString() ?? "" : "";
+                }
+                catch { Write(ctx, 400, JsonSerializer.Serialize(new { error = "malformed JSON" }, Json)); break; }
+                if (string.IsNullOrWhiteSpace(deleteName)) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "name is required" }, Json)); break; }
+                if (_presetStore.IsBuiltIn(deleteName)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "cannot delete a built-in preset" }, Json)); break; }
+                _presetStore.Delete(deleteName);
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true }, Json));
+                break;
+            }
+
             default:
                 Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found", path }, Json));
                 break;
@@ -1178,29 +1253,37 @@ public sealed class ApiServer : IDisposable
     /// <c>{ name, json, code }</c> — ready to copy-paste or save as a .poe2preset file.</summary>
     private object BuildPresetExport()
     {
+        var json = BuildPresetBundleJson("exported");
+        var code = PresetCodec.Encode(json);
+        return new { name = "exported", json, code };
+    }
+
+    /// <summary>Serialize the current look as a <see cref="PresetBundle"/> JSON string with the
+    /// given <paramref name="name"/>. Shared by <see cref="BuildPresetExport"/> (export endpoint)
+    /// and <c>/api/preset/save</c> (server-side save — client supplies only the name).</summary>
+    private string BuildPresetBundleJson(string name)
+    {
         var bundle = new PresetBundle
         {
-            Schema       = 1,
-            Name         = "exported",
-            Author       = "",
-            AppVersion   = UpdateChecker.Current,
-            CreatedAtUtc = DateTime.UtcNow.ToString("o"),
-            Styles       = _settings.Styles,
-            HpBars       = _settings.HpBars,
-            Terrain      = _settings.Terrain,
-            GroundItems  = _settings.GroundItems,
+            Schema        = 1,
+            Name          = name,
+            Author        = "",
+            AppVersion    = UpdateChecker.Current,
+            CreatedAtUtc  = DateTime.UtcNow.ToString("o"),
+            Styles        = _settings.Styles,
+            HpBars        = _settings.HpBars,
+            Terrain       = _settings.Terrain,
+            GroundItems   = _settings.GroundItems,
             ShowMonsters  = _settings.ShowMonsters,
             ShowTerrain   = _settings.ShowTerrain,
             ShowPlayerBlip = _settings.ShowPlayerBlip,
-            HpBarNormal  = _settings.HpBarNormal,
-            HpBarMagic   = _settings.HpBarMagic,
-            HpBarRare    = _settings.HpBarRare,
-            HpBarUnique  = _settings.HpBarUnique,
-            DisplayRules = _displayRules.All.ToList(),
+            HpBarNormal   = _settings.HpBarNormal,
+            HpBarMagic    = _settings.HpBarMagic,
+            HpBarRare     = _settings.HpBarRare,
+            HpBarUnique   = _settings.HpBarUnique,
+            DisplayRules  = _displayRules.All.ToList(),
         };
-        var json = JsonSerializer.Serialize(bundle, JsonWhenWritingNull);
-        var code = PresetCodec.Encode(json);
-        return new { name = bundle.Name, json, code };
+        return JsonSerializer.Serialize(bundle, JsonWhenWritingNull);
     }
 
     /// <summary>Apply an imported preset: accepts <c>{"code":"POE2GPS-..."}</c> or a raw

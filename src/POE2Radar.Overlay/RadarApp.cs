@@ -59,6 +59,7 @@ public sealed class RadarApp : IDisposable
     private readonly EntityAtlasLog _entityAtlas;
     private readonly EntityNameStore _entityNameStore;
     private readonly GearWeightStore _gearWeights;
+    private readonly PresetStore _presetStore;
     private volatile GearSnapshot? _gearSnapshot;   // God-Roll Detector (experimental); null when off
     private int _gearTickCounter;
     // ── Session HUD tracker + published snapshot (render thread reads _sessionSnapshot lock-free). ──
@@ -574,6 +575,7 @@ public sealed class RadarApp : IDisposable
         _entityAtlas = new EntityAtlasLog(Path.Combine(ConfigDir, "entity_atlas.json"));
         _entityNameStore = new EntityNameStore(Path.Combine(ConfigDir, "entity_names_user.json"));
         _gearWeights = new GearWeightStore(Path.Combine(ConfigDir, "stat_weights.json"));
+        _presetStore = new PresetStore();
         ConsoleTheme.Kv("rules", $"{_hidden.Count} hidden · {_displayRules.Count} display · {_modCatalog.Count} mods");
         // Audio cues: pre-load PCM tones into SoundPlayer so Play() is fire-and-forget with no disk I/O.
         // Master gate (EnableAudioAlerts) defaults false — nothing plays until the user opts in.
@@ -587,6 +589,7 @@ public sealed class RadarApp : IDisposable
                              SetAtlasHighlight, VersionJson, RequestRescan,
                              audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; } },
                              rebuildAudio: () => RebuildAudioCues(),
+                             presetStore: _presetStore,
                              port: _settings.ApiPort);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
