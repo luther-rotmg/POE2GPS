@@ -332,6 +332,15 @@ internal static class DashboardHtml
   .delbtn:hover{border-color:var(--blood-bright)}
   .chip{font-family:inherit; font-size:10px; color:var(--ink); background:#0c0a07; border:1px solid var(--line); border-radius:10px; padding:2px 8px; margin:0 4px 4px 0; cursor:pointer}
   .chip:hover{border-color:var(--gold-deep); color:var(--gold)}
+
+  /* ── settings: search + collapsible cards ── */
+  #settingsSearch{display:block; width:100%; font-family:inherit; font-size:12px; color:var(--ink); background:#0c0a07; border:1px solid var(--line); border-radius:2px; padding:8px 12px; margin-bottom:14px}
+  #settingsSearch:focus{outline:none; border-color:var(--gold-deep)}
+  #settingsSearch::placeholder{color:var(--ink-faint)}
+  .card h3 .chevron{float:right; font-size:9px; color:var(--ink-faint); line-height:1.8; transition:transform .2s; user-select:none}
+  .card[data-card] h3{cursor:pointer; user-select:none}
+  .card.collapsed > :not(h3){display:none}
+  .card.collapsed h3 .chevron{transform:rotate(-90deg)}
   .addbtn{font-family:"Cinzel","Georgia",serif; font-size:11px; letter-spacing:.1em; color:var(--gold-bright); background:transparent; border:1px dashed var(--gold-deep); border-radius:3px; padding:8px 14px; cursor:pointer; width:100%; margin-top:4px}
   .addbtn:hover{background:rgba(200,160,73,.07)}
 
@@ -541,6 +550,7 @@ internal static class DashboardHtml
           <span style="font-family:'Cinzel','Georgia',serif;font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold)">Settings</span>
           <button id="qsReopenBtn" type="button" style="font:inherit;font-size:11px;letter-spacing:.06em;color:var(--ink-dim);background:var(--panel);border:1px solid var(--line-soft);border-radius:10px;padding:4px 12px;cursor:pointer" title="Re-open the quick-start guide">Quick start</button>
         </div>
+        <input type="search" id="settingsSearch" placeholder="Search settings&hellip;">
         <div class="panel-grid">
           <div class="card" id="qsCard" style="grid-column:1/-1">
             <h3>Quick Start <span class="tag">&middot; getting up and running</span></h3>
@@ -574,7 +584,7 @@ internal static class DashboardHtml
             <div class="row" id="stMsgRow" hidden><div class="rl" id="stMsg" style="font-style:italic"></div></div>
             <div class="row" id="stRescanRow" hidden><button id="stRescanBtn" type="button" style="font:inherit;font-size:12px;color:var(--gold-bright);background:#0c0a07;border:1px solid var(--line);border-radius:3px;padding:6px 12px;cursor:pointer">Force re-scan</button><small style="opacity:.55;margin-left:8px">re-detect the game after a patch</small></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="audio">
             <h3>Audio alerts</h3>
             <div class="row"><div class="rl">Enable audio alerts<small>short tones for key events &mdash; off by default</small></div>
               <label class="sw"><input type="checkbox" data-set="enableAudioAlerts"><span class="track"></span><span class="knob"></span></label></div>
@@ -607,19 +617,19 @@ internal static class DashboardHtml
               <select class="numin" data-set="audioToneMechanic"><option>Chime</option><option>Bell</option><option>Ding</option><option>Beep</option><option>Blip</option><option>Alert</option><option>Low</option></select>
               <button class="numin" data-audiotest="mechanic">Test</button></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="zone">
             <h3>Zone summary <small class="tag">opt-in overlay panel</small></h3>
             <div class="row"><div class="rl">Show zone summary<small>live counts: rares &middot; monsters &middot; chests &middot; exits</small></div>
               <label class="sw"><input type="checkbox" data-set="zoneSummaryEnabled"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Corner</div>
               <select class="numin" data-set="zoneSummaryAnchor"><option>TopLeft</option><option>TopRight</option><option>BottomLeft</option><option>BottomRight</option></select></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="cycling">
             <h3>Target cycling</h3>
             <div class="row"><div class="rl">Intelligent target cycling<small>On = smart priority/distance order &mdash; Off (default) = cycle follows the radar menu (nav dropdown order)</small></div>
               <label class="sw"><input type="checkbox" data-set="intelligentTargetCycling"><span class="track"></span><span class="knob"></span></label></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="radar">
             <h3>Radar Display</h3>
             <div class="row"><div class="rl">Show terrain<small>walkable-terrain bitmap</small></div>
               <label class="sw"><input type="checkbox" data-set="showTerrain"><span class="track"></span><span class="knob"></span></label></div>
@@ -658,8 +668,8 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Contribute URL<small>your Cloudflare Worker endpoint; set this to enable one-click &ldquo;Contribute&rdquo;</small></div>
               <input class="numin" type="text" data-set="contributeUrl" placeholder="https://&hellip;workers.dev" style="width:240px"></div>
           </div>
-          <div class="card">
-            <div class="card-title">Session HUD</div>
+          <div class="card" data-card="session">
+            <h3>Session HUD</h3>
 
             <div class="row"><div class="rl">Enable HUD<small>Show session stats overlay</small></div>
               <label class="sw"><input type="checkbox" data-set="sessionHudEnabled">
@@ -695,7 +705,7 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Offset Y</div>
               <input class="numin" type="number" step="1" data-set="sessionHudOffsetY"></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="hpbars">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
             <div class="row"><div class="rl hint-row">Toggle the bar on/off per rarity with the <b>On</b> checkbox &mdash; uncheck all to disable HP bars entirely, or leave only the rarities you want. The rest sets the bar <i>geometry</i> per rarity.</div></div>
             <div class="hpgrid">
@@ -728,7 +738,7 @@ internal static class DashboardHtml
             </div>
             <div class="row"><div class="rl hint-row">Bar fill follows the monster icon color; set border color &amp; thickness per rarity (thickness 0 = no border). Offset Y negative = above the mob.</div></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="terrain">
             <h3>Terrain <span class="tag">&middot; walkable overlay</span></h3>
             <div class="row"><div class="rl">Interior fill<small>wash over walkable cells</small></div>
               <span class="trow-ctl">
@@ -742,7 +752,7 @@ internal static class DashboardHtml
                 <span class="opv" data-topv="edgeOpacity">—</span></span></div>
             <div class="row"><div class="rl hint-row">Edits rebuild the terrain bitmap; use &ldquo;Show terrain&rdquo; above to hide it entirely.</div></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="calibration">
             <h3>Map Calibration</h3>
             <div class="row"><div class="rl">Scale multiplier<small>projection scale of the map overlay</small></div>
               <input class="numin" type="number" step="0.01" data-set="scaleMul"></div>
@@ -750,7 +760,7 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Offset Y</div><input class="numin" type="number" step="1" data-set="offY"></div>
             <div class="row"><div class="rl hint-row">Adjust here &mdash; changes apply live (no in-game hotkeys).</div></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="presets">
             <h3>Presets <small>share your radar look</small></h3>
             <div class="row"><div id="presetList" style="width:100%"></div></div>
             <div class="row"><input class="numin" id="presetSaveName" placeholder="name…" style="flex:1">
@@ -766,7 +776,7 @@ internal static class DashboardHtml
             </div>
             <div style="height:14px"><span class="saved" id="savedMsgPreset">&#10003; preset applied</span></div>
           </div>
-          <div class="card">
+          <div class="card" data-card="grounditems">
             <h3>Ground Item Labels</h3>
             <div class="row"><div class="rl">Enabled<small>draw name labels</small></div>
               <label class="sw"><input type="checkbox" data-gi="enabled"><span class="track"></span><span class="knob"></span></label></div>
@@ -788,7 +798,7 @@ internal static class DashboardHtml
               <span class="chip" data-gicat="Expedition">Expedition</span>
             </div>
           </div>
-          <div class="card" id="keybindsCard">
+          <div class="card" id="keybindsCard" data-card="keybinds">
             <h3>Keybinds <small class="tag">&middot; click Rebind then press a key</small></h3>
             <div id="kbRows"></div>
             <div class="row" style="margin-top:10px">
@@ -2045,6 +2055,52 @@ $('#kbReset')?.addEventListener('click',async()=>{
     if(r.ok){ await loadKeybinds(); flashKb('✓ reset to defaults'); } else flashKb('reset failed');
   }catch(e){ flashKb('error'); }
 });
+
+/* ── Settings: search filter + collapsible cards ── */
+(function(){
+  // Inject chevron spans into all collapsible card headings (those with data-card).
+  function initSettingsCards(){
+    const view=document.querySelector('[data-view="settings"]'); if(!view) return;
+    view.querySelectorAll('.card[data-card]').forEach(card=>{
+      const key='settings-card-'+card.dataset.card;
+      // Restore collapsed state from localStorage.
+      if(localStorage.getItem(key)==='1') card.classList.add('collapsed');
+      // Add chevron to h3 (once; guard idempotency).
+      const h3=card.querySelector('h3'); if(!h3) return;
+      if(!h3.querySelector('.chevron')){
+        const ch=document.createElement('span'); ch.className='chevron'; ch.textContent='▾'; h3.appendChild(ch);
+      }
+      // Toggle collapse on h3 click.
+      h3.onclick=()=>{
+        card.classList.toggle('collapsed');
+        localStorage.setItem(key, card.classList.contains('collapsed')?'1':'0');
+      };
+    });
+  }
+
+  // Search filter: hide cards whose text doesn't match the query (never hide statusCard or qsCard).
+  function applySettingsSearch(q){
+    const view=document.querySelector('[data-view="settings"]'); if(!view) return;
+    view.querySelectorAll('.card').forEach(card=>{
+      if(card.id==='statusCard'||card.id==='qsCard'){ card.hidden=false; return; }
+      card.hidden = !!(q && !card.textContent.toLowerCase().includes(q));
+    });
+  }
+
+  // Wire up the search box.
+  const srch=document.getElementById('settingsSearch');
+  if(srch){
+    srch.addEventListener('input',()=>applySettingsSearch(srch.value.toLowerCase().trim()));
+    // Clear search when leaving the tab so state is clean on re-enter.
+  }
+
+  // Hook the settings tab click to init cards and clear search on each activation.
+  document.querySelectorAll('.tab[data-tab="settings"]').forEach(tab=>{
+    tab.addEventListener('click',()=>{ initSettingsCards(); if(srch){ srch.value=''; applySettingsSearch(''); } });
+  });
+  // Also run once immediately in case the settings view is pre-shown or for the initial page load.
+  initSettingsCards();
+})();
 </script>
 </body>
 </html>
