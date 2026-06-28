@@ -711,6 +711,9 @@ internal static class DashboardHtml
           </div>
           <div class="card">
             <h3>Presets <small>share your radar look</small></h3>
+            <div class="row"><div id="presetList" style="width:100%"></div></div>
+            <div class="row"><input class="numin" id="presetSaveName" placeholder="name…" style="flex:1">
+              <button class="addbtn" id="presetSave">Save current as…</button></div>
             <div class="row">
               <button class="addbtn" id="presetCopy">Copy share-code</button>
               <button class="addbtn" id="presetDownload">Download .poe2preset</button>
@@ -1883,7 +1886,7 @@ async function checkVersion(){
 wireSettings(); wireHpBars(); wireTerrain(); wireGround();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
-loadIcons().then(()=>{ loadSettings(); loadFilters(); }); // Rules is the default tab
+loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 checkVersion();
 /* ── presets card (export copy/download + import paste/file) ── */
@@ -1894,6 +1897,9 @@ $('#presetDownload')?.addEventListener('click',async()=>{ try{ const p=await pre
 async function presetImport(body){ if(!confirm('Applying a preset replaces your display rules and visual styles. A backup is saved first. Continue?')) return; try{ const r=await fetch('/api/preset/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); if(r.ok){ await loadSettings(); flashPreset('✓ preset applied'); } else flashPreset('import rejected'); }catch(e){ flashPreset('import failed'); } }
 $('#presetApplyCode')?.addEventListener('click',()=>{ const c=$('#presetCode').value.trim(); if(c) presetImport({code:c}); });
 $('#presetFile')?.addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ try{ presetImport(JSON.parse(rd.result)); }catch(_){ flashPreset('invalid preset file'); } }; rd.readAsText(f); e.target.value=''; });
+async function presetApply(name){ if(!confirm('Applying a preset replaces your display rules and visual styles. A backup is saved first. Continue?')) return; try{ const r=await fetch('/api/preset/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}); if(r.ok){ await loadSettings(); flashPreset('✓ preset applied'); loadPresets(); } else flashPreset('apply rejected'); }catch(e){ flashPreset('apply failed'); } }
+async function loadPresets(){ try{ const r=await (await fetch('/api/preset/list',{cache:'no-store'})).json(); const el=$('#presetList'); if(!el) return; el.innerHTML=''; (r.presets||[]).forEach(p=>{ const row=document.createElement('div'); row.className='row'; row.innerHTML='<div class="rl">'+(p.builtIn?'⭐ ':'')+p.name+'</div>'; const apply=document.createElement('button'); apply.className='addbtn'; apply.textContent='Apply'; apply.onclick=()=>presetApply(p.name); row.appendChild(apply); if(!p.builtIn){ const del=document.createElement('button'); del.className='addbtn'; del.textContent='Delete'; del.onclick=async()=>{ if(!confirm('Delete preset "'+p.name+'"?')) return; await fetch('/api/preset/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:p.name})}); loadPresets(); flashPreset('✓ deleted'); }; row.appendChild(del); } el.appendChild(row); }); }catch(e){} }
+$('#presetSave')?.addEventListener('click',async()=>{ const name=$('#presetSaveName').value.trim(); if(!name) return; const r=await fetch('/api/preset/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})}); if(r.ok){ $('#presetSaveName').value=''; loadPresets(); flashPreset('✓ saved'); } else flashPreset('save rejected'); });
 
 $('#stRescanBtn')?.addEventListener('click', async () => {
   const b = $('#stRescanBtn'), t = b.textContent;
