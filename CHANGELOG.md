@@ -3,6 +3,13 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.10.0] — 2026-06-28
+### Added
+- **Custom keybinds** — remap the keyboard hotkeys (F6/F7/F9/F10/F12 and the Ctrl+Alt cycle/menu/reset binds) from a new **Keybinds** card in Settings. Still 100% read-only — the overlay only *reads* the keys you choose, never sends input. (Controller R3/L3 and the slot-jump digits stay fixed.)
+- **Map-mechanic intelligence** — the Zone summary panel now also counts nearby **league mechanics** (Strongbox, Shrine, Breach, Expedition, Ritual, Essence), and there's a new optional **"mechanic nearby" audio cue**.
+- **First-run quick-start** — a welcome card with the essentials, a hotkey cheat-sheet, and a one-click **"Apply recommended setup"**; dismissible, re-openable any time.
+- **Settings search & collapsible cards** — a search box filters the Settings cards, and each card collapses (state remembered) so the growing options list stays navigable.
+
 ## [0.9.1] — 2026-06-28
 ### Added
 - **Audio: volume slider + per-event tone picker** — set the alert volume and choose a distinct tone (Chime / Bell / Ding / …) for each event, with a Test button to audition.
