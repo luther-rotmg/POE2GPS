@@ -1,3 +1,4 @@
+using System.Buffers;
 using POE2Radar.Core.Health;
 
 namespace POE2Radar.Core.Game;
@@ -983,21 +984,25 @@ public sealed class Poe2Live
         var width = bytesPerRow * 2;
         if (rows <= 0 || rows > 65536) return null;
 
-        var raw = new byte[totalBytes];
-        if (_reader.TryReadBytes(first, raw) != raw.Length) return null;
-
-        var walk = new byte[width * rows];
-        for (var y = 0; y < rows; y++)
+        byte[] raw = ArrayPool<byte>.Shared.Rent((int)totalBytes);
+        try
         {
-            var rowBase = (long)y * bytesPerRow;
-            for (var x = 0; x < width; x++)
+            if (_reader.TryReadBytes(first, raw.AsSpan(0, (int)totalBytes)) != (int)totalBytes) return null;
+
+            var walk = new byte[width * rows];   // retained by TerrainData — NOT pooled
+            for (var y = 0; y < rows; y++)
             {
-                var b = raw[rowBase + (x >> 1)];
-                var nibble = (x & 1) == 0 ? (b & 0x0F) : (b >> 4);
-                walk[y * width + x] = (byte)(nibble != 0 ? 1 : 0);
+                var rowBase = (long)y * bytesPerRow;
+                for (var x = 0; x < width; x++)
+                {
+                    var b = raw[rowBase + (x >> 1)];
+                    var nibble = (x & 1) == 0 ? (b & 0x0F) : (b >> 4);
+                    walk[y * width + x] = (byte)(nibble != 0 ? 1 : 0);
+                }
             }
+            return new TerrainData(walk, width, rows);
         }
-        return new TerrainData(walk, width, rows);
+        finally { ArrayPool<byte>.Shared.Return(raw); }
     }
 
     private readonly List<nint> _mapEls = new();
