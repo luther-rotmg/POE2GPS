@@ -640,10 +640,14 @@ public sealed class Poe2Live
         var n = (int)(len / stride);
         if (n > 100) { _mods[entity] = Array.Empty<string>(); return null; }
 
+        Span<byte> arrBuf = stackalloc byte[n * stride];   // n<=100, stride=0x40 -> <=6400 bytes
+        if (_reader.TryReadBytes(first, arrBuf) < arrBuf.Length) { _mods[entity] = Array.Empty<string>(); return null; }
+
         var list = new List<string>(n);
+        var seen = new HashSet<string>();
         for (var i = 0; i < n; i++)
         {
-            var rec = Ptr(first + (nint)(i * stride + Poe2.ObjectMagicProperties.ModRecordPtr));
+            var rec = (nint)BitConverter.ToInt64(arrBuf.Slice(i * stride + Poe2.ObjectMagicProperties.ModRecordPtr, 8));
             if (rec == 0) continue;
             // record's +ModIdString qword is a POINTER to the UTF-16 mod id (not the string inline) — must
             // deref even when the offset is 0 (Ptr(rec+0) = *rec). Skipping this deref read the record
@@ -651,7 +655,7 @@ public sealed class Poe2Live
             var idPtr = Ptr(rec + Poe2.ObjectMagicProperties.ModIdString);
             if (idPtr == 0) continue;
             var s = _reader.ReadStringUtf16(idPtr, 64);
-            if (LooksLikeModId(s) && !list.Contains(s)) list.Add(s);
+            if (LooksLikeModId(s) && seen.Add(s)) list.Add(s);
         }
         var arr = list.Count == 0 ? Array.Empty<string>() : list.ToArray();
         _mods[entity] = arr;
