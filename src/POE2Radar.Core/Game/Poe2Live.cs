@@ -23,6 +23,7 @@ public sealed class Poe2Live
     private readonly Dictionary<nint, nint> _posAddr = new();      // entity → Positioned component (0 = none)
     private readonly Dictionary<nint, nint> _ompAddr = new();      // entity → ObjectMagicProperties (0 = none)
     private readonly Dictionary<nint, nint> _chestAddr = new();    // entity → Chest component (0 = none)
+    private readonly HashSet<nint> _openedChests = new();          // entity → chest confirmed opened (one-way; cleared on zone change/rebind)
     private readonly Dictionary<nint, EntityCategory> _category = new();
     private readonly Dictionary<nint, string> _meta = new();
     private readonly Dictionary<nint, nint> _iconAddr = new();     // entity → MinimapIcon component (0 = none); game POI
@@ -74,7 +75,7 @@ public sealed class Poe2Live
     public void Rebind(nint gameStateSlot)
     {
         _gameStateSlot = gameStateSlot;
-        _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear();
+        _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear();
         _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _mods.Clear();
         _itemIdent.Clear(); _idAt.Clear();
         _entCacheKey = 0;
@@ -424,7 +425,7 @@ public sealed class Poe2Live
     {
         if (areaInstance != _entCacheKey)
         {
-            _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear();
+            _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear();
             _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear();
             _entCacheKey = areaInstance;
         }
@@ -1391,9 +1392,12 @@ public sealed class Poe2Live
     /// than silently hiding a real one — which is exactly the bug this flip caused.</summary>
     private bool ReadChestOpened(nint entity)
     {
+        if (_openedChests.Contains(entity)) return true;
         if (!_chestAddr.TryGetValue(entity, out var c)) { c = ResolveComponent(entity, "Chest"); _chestAddr[entity] = c; }
         if (c == 0) return false;
-        return _reader.TryReadStruct<byte>(c + Poe2.ChestComponent.OpenState, out var b) && b != 0;
+        if (!_reader.TryReadStruct<byte>(c + Poe2.ChestComponent.OpenState, out var b) || b == 0) return false;
+        _openedChests.Add(entity);
+        return true;
     }
 
     /// <summary>WorldToScreen matrix (16 floats, row-major) from Camera@InGameState+0x368. Null if unavailable.</summary>
