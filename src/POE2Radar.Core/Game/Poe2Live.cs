@@ -50,6 +50,9 @@ public sealed class Poe2Live
     private readonly Queue<nint> _lootQueue = new();
     private readonly HashSet<nint> _lootVisited = new();
     private readonly byte[] _nodeBuf = new byte[0x30];
+    private readonly byte[] _compBucketBuf = new byte[256 * 16];   // fixed upper-bound scratch; reused
+    private static readonly string[] _hotComponents =
+        { "Render", "Positioned", "Life", "ObjectMagicProperties", "MinimapIcon", "Chest" };
     // Reused camera-matrix buffers (read every render frame).
     private readonly byte[] _camBytes = new byte[64];
     private readonly float[] _camMatrix = new float[16];
@@ -451,6 +454,7 @@ public sealed class Poe2Live
         _modReadBudget = ModReadBudgetPerPass;
         _itemReadBudget = ItemReadBudgetPerPass;
         var walkCap = size * 4 + 1024;   // E7: scale cap to entity count (balanced BST of N has N+1 nodes; 4× is generous)
+        Span<nint> batchR = stackalloc nint[6];   // reused per new entity; declared outside the loop (CA2014)
         while (_entQueue.Count > 0 && _entVisited.Count < walkCap)
         {
             var node = _entQueue.Dequeue();
@@ -476,6 +480,19 @@ public sealed class Poe2Live
             // positions). Re-resolves fresh below.
             if (_idAt.TryGetValue(entity, out var prevId) && prevId != id) EvictEntity(entity);
             _idAt[entity] = id;
+
+            // Batch-resolve the 6 hot-path components in ONE bucket read for newly-seen entities.
+            // Per-component methods keep their TryGetValue→resolve fallback (now always a cache hit).
+            if (!_renderAddr.ContainsKey(entity))
+            {
+                ResolveComponents(entity, _hotComponents, batchR);
+                _renderAddr[entity] = batchR[0];
+                _posAddr[entity]    = batchR[1];
+                _lifeAddr[entity]   = batchR[2];
+                _ompAddr[entity]    = batchR[3];
+                _iconAddr[entity]   = batchR[4];
+                _chestAddr[entity]  = batchR[5];
+            }
 
             var world = EntityWorld(entity);
             if (world is not { } wv) continue;
@@ -1481,32 +1498,66 @@ public sealed class Poe2Live
         meta.Contains("/Daemon/", StringComparison.Ordinal) ||
         meta.Contains("Invisible", StringComparison.Ordinal);
 
-    /// <summary>Resolve a component address by name via EntityDetails → ComponentLookUp (StdBucket) → ComponentList.</summary>
-    private nint ResolveComponent(nint entity, string name)
+    /// <summary>Resolve several component addresses for one entity in a single bucket read.
+    /// results[i] is the component address for names[i], or 0 if absent. names.Length == results.Length.</summary>
+    private void ResolveComponents(nint entity, ReadOnlySpan<string> names, Span<nint> results)
     {
+        for (var i = 0; i < results.Length; i++) results[i] = 0;
+
         var details = Ptr(entity + Poe2.Entity.EntityDetailsPtr);
-        if (details == 0) return 0;
+        if (details == 0) return;
         var lookup = Ptr(details + Poe2.EntityDetails.ComponentLookUpPtr);
-        if (lookup == 0) return 0;
-        if (!_reader.TryReadStruct<StdVector>(entity + Poe2.Entity.ComponentList, out var compList)) return 0;
+        if (lookup == 0) return;
+        if (!_reader.TryReadStruct<StdVector>(entity + Poe2.Entity.ComponentList, out var compList)) return;
         var compCount = ((long)compList.Last - (long)compList.First) / 8;
-        if (compCount is <= 0 or > 256) return 0;
+        if (compCount is <= 0 or > 256) return;
 
         var bFirst = Ptr(lookup + Poe2.ComponentLookUp.NameAndIndexBucket);
-        if (!_reader.TryReadStruct<nint>(lookup + Poe2.ComponentLookUp.NameAndIndexBucket + 8, out var bLast)) return 0;
+        if (!_reader.TryReadStruct<nint>(lookup + Poe2.ComponentLookUp.NameAndIndexBucket + 8, out var bLast)) return;
         var entries = ((long)bLast - (long)bFirst) / Poe2.ComponentLookUp.EntryStride;
-        if (bFirst == 0 || entries is <= 0 or > 256) return 0;
+        if (bFirst == 0 || entries is <= 0 or > 256) return;
 
-        for (long i = 0; i < entries; i++)
+        var span = (int)(entries * Poe2.ComponentLookUp.EntryStride);
+        if (_reader.TryReadBytes(bFirst, _compBucketBuf.AsSpan(0, span)) < span) return;   // ONE bulk read of the whole bucket
+
+        var remaining = names.Length;
+        for (long i = 0; i < entries && remaining > 0; i++)
         {
-            var e = bFirst + (nint)(i * Poe2.ComponentLookUp.EntryStride);
-            var namePtr = Ptr(e);
-            if (!_reader.TryReadStruct<int>(e + 8, out var index)) continue;
+            var off = (int)(i * Poe2.ComponentLookUp.EntryStride);
+            var namePtr = (nint)BitConverter.ToInt64(_compBucketBuf, off);
+            var index = BitConverter.ToInt32(_compBucketBuf, off + 8);
             if (index < 0 || index >= compCount) continue;
-            if (_reader.ReadStringUtf8(namePtr, 32) != name) continue;
-            return Ptr(compList.First + (nint)(index * 8));
+            var name = _reader.ReadStringUtf8(namePtr, 32);   // one read per entry, shared across all targets
+            for (var t = 0; t < names.Length; t++)
+            {
+                if (results[t] != 0 || names[t] != name) continue;
+                results[t] = Ptr(compList.First + (nint)(index * 8));
+                remaining--;
+            }
         }
-        return 0;
+    }
+
+    /// <summary>Resolve a component address by name via EntityDetails → ComponentLookUp (StdBucket) → ComponentList.
+    /// Thin wrapper over <see cref="ResolveComponents"/> — all ~14 existing single-name call sites unchanged.</summary>
+    private nint ResolveComponent(nint entity, string name)
+    {
+        Span<nint> r = stackalloc nint[1];
+        ResolveComponents(entity, new[] { name }, r);
+        return r[0];
+    }
+
+    /// <summary>Pure: given decoded (name,index) bucket entries and target names, return each target's
+    /// component index (or -1 if absent), preserving target order. No memory access — unit-tested.</summary>
+    public static int[] MatchComponentIndices(ReadOnlySpan<(string Key, int Index)> entries, ReadOnlySpan<string> targets)
+    {
+        var results = new int[targets.Length];
+        for (var t = 0; t < targets.Length; t++)
+        {
+            results[t] = -1;
+            for (var i = 0; i < entries.Length; i++)
+                if (entries[i].Key == targets[t]) { results[t] = entries[i].Index; break; }
+        }
+        return results;
     }
 
     /// <summary>Read an entity's metadata path: EntityDetails(+0x08) → name StdWString(+0x08).</summary>
