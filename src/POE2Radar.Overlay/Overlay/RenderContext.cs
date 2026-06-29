@@ -33,6 +33,13 @@ public readonly record struct SelectedPath(int ColorSlot, IReadOnlyList<(int x, 
 /// so the bar tracks the moving monster smoothly. The renderer just projects + fills.</summary>
 public readonly record struct HpBarTarget(Vector3 World, float Frac, float Width, uint Fill, float BorderWidth, uint Border);
 
+/// <summary>One mob whose affix nameplate should be drawn this frame. <see cref="World"/> is the mob's
+/// live world position (re-read from its Render component every render frame via
+/// <c>_liveRender.TryLiveBarAt</c>, exactly like <see cref="HpBarTarget.World"/>); <see cref="Lines"/>
+/// is the pre-filtered, pre-formatted list built at world rate by <c>BuildAffixSpecs</c>. The renderer
+/// projects <see cref="World"/> and draws the lines above the HP bar. Null/empty list → skip.</summary>
+public readonly record struct AffixNameplateTarget(Vector3 World, POE2Radar.Core.Game.AffixLine[] Lines);
+
 /// <summary>A priced ground-item label drawn over the in-world loot icon. <see cref="World"/> is the
 /// dropped item's world position (projected via the camera matrix, like HP bars). <see cref="Name"/> is
 /// the resolved unique name (from the art→price map — shown even for UNIDENTIFIED items), <see cref="Value"/>
@@ -225,4 +232,9 @@ public sealed record RenderContext(
     string?                               CampaignGps        = null,
     // ── Zone summary panel: live counts for the current area (null → not yet ready / stale zone). ──
     ZoneSummary?                          ZoneSummary        = null,
-    Config.ZoneSummarySettings?           ZoneSummaryHud     = null);
+    Config.ZoneSummarySettings?           ZoneSummaryHud     = null,
+    // ── Affix nameplates: pre-read per-mob world positions + filtered affix lines, built at render rate
+    // from the world tick's AffixNameplateSpec list (same HP-bar pattern: world reads live pos each frame).
+    // Null/empty → none drawn. Settings mirrored so the renderer needs no settings reference. ──
+    IReadOnlyList<AffixNameplateTarget>?  AffixTargets       = null,
+    Config.AffixNameplateSettings?        AffixNameplates    = null);

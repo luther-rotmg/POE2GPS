@@ -185,6 +185,7 @@ public sealed class RadarApp : IDisposable
     private readonly record struct ItemLabelSpec(nint Render, string Name, string Value, bool Highlight, bool ShowName);
     private readonly List<ItemLabel> _itemFrame = new();   // render-thread scratch (rebuilt per frame)
     private readonly record struct AffixNameplateSpec(nint Render, AffixLine[] Lines);
+    private readonly List<AffixNameplateTarget> _affixFrame = new();   // render-thread scratch (rebuilt per frame)
     private IReadOnlyList<Poe2Live.Landmark> _landmarks = Array.Empty<Poe2Live.Landmark>(); // world only
     private Poe2Live.TerrainData? _terrain;                 // world only
     private int _charLevel;                                 // world only (published in the snapshot)
@@ -1026,6 +1027,16 @@ public sealed class RadarApp : IDisposable
                 _itemFrame.Add(new ItemLabel(w, s.Name, s.Value, s.Highlight, s.ShowName));
             }
 
+            // Affix nameplates: re-read each mob's live world position THIS frame (same HP-bar pattern),
+            // life arg 0 → world-pos only (HP not needed — just the position to anchor the labels).
+            _affixFrame.Clear();
+            if (snap.AffixSpecs is { Count: > 0 } affixSpecs && _settings.AffixNameplates.Enabled)
+            {
+                foreach (var spec in affixSpecs)
+                    if (_liveRender.TryLiveBarAt(spec.Render, 0, out var w, out _, out _))
+                        _affixFrame.Add(new AffixNameplateTarget(w, spec.Lines));
+            }
+
             // Atlas marks/routes: re-read each node's live RelativePos this frame so the rings + route lines
             // track the atlas pan at full FPS (the world walk only refreshes baked positions ~30 Hz). Cheap —
             // only the handful of DRAWN marks + route points, one atomic 8-byte read each; a stale/closed node
@@ -1068,7 +1079,7 @@ public sealed class RadarApp : IDisposable
                 }
             }
         }
-        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); if (_atlasRouteFrame.Count > 0) _atlasRouteFrame.Clear(); if (_atlasAutoRoutesFrame.Count > 0) _atlasAutoRoutesFrame.Clear(); }
+        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_affixFrame.Count > 0) _affixFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); if (_atlasRouteFrame.Count > 0) _atlasRouteFrame.Clear(); if (_atlasAutoRoutesFrame.Count > 0) _atlasAutoRoutesFrame.Clear(); }
 
         // Zone-load guard: the world snapshot lags the live chain by up to one world pass, so right after a
         // zone change its entities/terrain/route still belong to the PREVIOUS area. Only draw them once the
@@ -1199,7 +1210,9 @@ public sealed class RadarApp : IDisposable
                     _zoneSummary.ExpeditionCount, _zoneSummary.RitualCount, _zoneSummary.BreachCount,
                     _zoneSummary.StrongboxCount, _zoneSummary.EssenceCount, _zoneSummary.ShrineCount)
                 : null,
-            ZoneSummaryHud: _settings.ZoneSummary);
+            ZoneSummaryHud: _settings.ZoneSummary,
+            AffixTargets: _affixFrame,
+            AffixNameplates: _settings.AffixNameplates);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
