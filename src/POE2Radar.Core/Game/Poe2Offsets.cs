@@ -190,8 +190,8 @@ public static class Poe2
         public const int AnchorHolder= 0x30; // ✓ → holder; (+0x28 → rune-table ptr; *ptr = per-area table base)
         public const int HoleCount   = 0x38; // ✓ int N — the authoritative recipe hole count ("slots")
         public const int AnchorPos   = 0x3c; // ✓ int — anchor hole index (0-based)
-        public const int ListenerSub = 0x98; // ✓ listener node ptr = station + 0x98
-        public const int RuneStride  = 0x6c; // ✓ Expedition2Runes row stride (anchorIdx = (rowPtr-base)/stride)
+        public const int ListenerSub = 0xA0; // listener node ptr; 0x98→0xA0 on the 2026-06-25 patch (upstream Sikaka 058db5d); re-validate via Research --monolith
+        public const int RuneStride  = 0x68; // Expedition2Runes row stride (anchorIdx=(rowPtr-base)/stride); 0x6c→0x68 on the 2026-06-25 patch (upstream Sikaka 058db5d)
         public const int RuneCount   = 34;   // ✓ Expedition2Runes rows 0..33
     }
 
