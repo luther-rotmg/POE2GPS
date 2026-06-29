@@ -23,6 +23,7 @@
     <EmbeddedResource Include="Game\starter_stat_weights.json" />
     <EmbeddedResource Include="Game\poe2_mod_ranges.json" />
     <EmbeddedResource Include="Game\dynasty_maps.json" />
+    <EmbeddedResource Include="Game\poe2_monster_mod_names.json" />
   </ItemGroup>
 
 </Project>

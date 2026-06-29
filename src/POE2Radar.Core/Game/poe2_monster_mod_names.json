@@ -1,0 +1,16 @@
+{
+  "MonsterVolatile1": { "name": "Volatile (explodes on death)", "tier": "Deadly" },
+  "MonsterDamageReflection1": { "name": "Reflects Damage", "tier": "Deadly" },
+  "MonsterCannotBeStunned1": { "name": "Cannot be Stunned", "tier": "Notable" },
+  "MonsterExtraFast1": { "name": "Extra Fast", "tier": "Minor" },
+  "MonsterExtraLife1": { "name": "Extra Life", "tier": "Minor" },
+  "MonsterPhysicalDamageAura1": { "name": "Physical Damage Aura", "tier": "Notable" },
+  "MonsterColdDamageAura1": { "name": "Cold Damage Aura", "tier": "Notable" },
+  "MonsterFireDamageAura1": { "name": "Fire Damage Aura", "tier": "Notable" },
+  "MonsterLightningDamageAura1": { "name": "Lightning Damage Aura", "tier": "Notable" },
+  "MonsterEnergyShieldAura1": { "name": "Energy Shield Aura", "tier": "Minor" },
+  "MonsterManaSiphon1": { "name": "Mana Siphoner", "tier": "Notable" },
+  "MonsterAlliesCannotDie1": { "name": "Allies cannot Die", "tier": "Deadly" },
+  "MonsterReducedAreaOfEffect1": { "name": "Reduced Player AoE", "tier": "Minor" },
+  "MonsterCriticalStrikes1": { "name": "Extra Critical Strikes", "tier": "Notable" }
+}
