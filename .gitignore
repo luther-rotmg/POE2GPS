@@ -433,3 +433,6 @@ resources/*
 
 # POE2GPS probe launcher output (local dev)
 probes/output/
+
+# v0.11.0 perf before/after comparison builds (local dev)
+perf-compare/
