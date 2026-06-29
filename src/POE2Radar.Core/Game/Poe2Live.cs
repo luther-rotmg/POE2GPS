@@ -29,6 +29,12 @@ public sealed class Poe2Live
     private readonly Dictionary<nint, string> _meta = new();
     private readonly Dictionary<nint, nint> _iconAddr = new();     // entity → MinimapIcon component (0 = none); game POI
     private readonly Dictionary<nint, Rarity> _rarity = new();     // entity → rarity (static per spawn; cached)
+    private readonly Dictionary<nint, byte> _reaction = new();    // entity → Reaction byte (static per spawn; slow-refresh cache)
+    private int _reactionTick;
+    private const int ReactionRefreshTicks = 30;   // ~1s at 30Hz world cadence; re-reads catch enemy<->friendly conversions
+
+    /// <summary>Pure: true on ticks where the reaction cache should be flushed and re-read.</summary>
+    public static bool ShouldRefreshReaction(int tick, int interval) => interval > 0 && tick % interval == 0;
     private readonly Dictionary<nint, string[]> _mods = new();     // entity → affix mod ids (static per spawn; cached; empty = no mods)
     private readonly Dictionary<nint, (Rarity rarity, string? art, bool identified, string? name)> _itemIdent = new(); // WorldItem entity → dropped-item identity (static; cached)
     private readonly Dictionary<nint, uint> _idAt = new();         // entity address → last-seen std::map key id (recycle guard)
@@ -80,7 +86,7 @@ public sealed class Poe2Live
     {
         _gameStateSlot = gameStateSlot;
         _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear();
-        _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _mods.Clear();
+        _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear();
         _itemIdent.Clear(); _idAt.Clear();
         _entCacheKey = 0;
         _league = ""; _leagueFor = -1;
@@ -439,9 +445,12 @@ public sealed class Poe2Live
         if (areaInstance != _entCacheKey)
         {
             _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear();
-            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear();
+            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear();
             _entCacheKey = areaInstance;
         }
+
+        _reactionTick++;
+        if (ShouldRefreshReaction(_reactionTick, ReactionRefreshTicks)) _reaction.Clear();
 
         var dots = new List<EntityDot>(256);
         var head = Ptr(areaInstance + Poe2.AreaInstance.AwakeEntities);
@@ -527,7 +536,7 @@ public sealed class Poe2Live
     {
         _renderAddr.Remove(entity); _lifeAddr.Remove(entity); _posAddr.Remove(entity);
         _ompAddr.Remove(entity); _chestAddr.Remove(entity); _category.Remove(entity);
-        _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity);
+        _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _reaction.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity);
     }
 
     /// <summary>
@@ -777,13 +786,16 @@ public sealed class Poe2Live
 
     private byte ReadReaction(nint entity)
     {
+        if (_reaction.TryGetValue(entity, out var cached)) return cached;
         if (!_posAddr.TryGetValue(entity, out var pos))
         {
             pos = ResolveComponent(entity, "Positioned");
             _posAddr[entity] = pos;
         }
-        if (pos == 0) return 0;
-        return _reader.TryReadStruct<byte>(pos + Poe2.Positioned.Reaction, out var b) ? b : (byte)0;
+        if (pos == 0) { _reaction[entity] = 0; return 0; }
+        var b = _reader.TryReadStruct<byte>(pos + Poe2.Positioned.Reaction, out var v) ? v : (byte)0;
+        _reaction[entity] = b;
+        return b;
     }
 
     private (int cur, int max) ReadHp(nint entity)
