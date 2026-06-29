@@ -11,8 +11,14 @@ on‑screen feature, then Atlas, then items.
 ## How to use this
 
 - **Tick each box as you go.** Stop and tell me if anything FAILS — that's a real bug to fix.
-- **Probe commands are copy‑paste.** Run them from a terminal at the repo root, **as Administrator**
-  (same as the overlay). When a probe prints output, **paste it back to me** and I'll interpret it.
+- **You don't have to type any probe commands.** A one‑click launcher kit lives in **`probes\`** — double‑click
+  the file that matches what you're checking (it auto‑elevates, runs, and saves the output for me to read), then
+  just tell me e.g. `"core done"`. See `probes\README.txt`. Mapping: `--chain/--info/--vitals/--rarity` → **1 - core**;
+  `--inventory --itemmods` → **2 - items**; `--atlas-probe/--atlas-graph` → **3 - atlas**; `--camera` → **4 - camera**;
+  `--tiles` → **5 - tiles**; `--xp` → **6 - xp**; `--quest` → **7 - quest**; `--watch` → **8 - watch**;
+  `--rune-dump` (metadata) → **9 - metadata**.
+- The raw `dotnet run …` commands are still listed below if you'd rather type them. When a probe prints output,
+  **paste it back to me** (or just say `"<name> done"` and I'll read the saved file) and I'll interpret it.
 - **⭐ = critical** (gates whether the tool works at all on the live patch). Do the ⭐ items even if you're short on time.
 - **🔍 = discovery probe** — only meaningful in the right situation (gaining XP, just finished a quest, etc.). Opportunistic; skip if the situation doesn't arise.
 - The base probe command is always:

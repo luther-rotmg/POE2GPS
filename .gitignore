@@ -430,3 +430,6 @@ resources/*
 
 # POE2GPS reference clones (inspection only)
 .reference/
+
+# POE2GPS probe launcher output (local dev)
+probes/output/
