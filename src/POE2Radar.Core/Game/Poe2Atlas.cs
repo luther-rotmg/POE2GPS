@@ -277,7 +277,7 @@ public sealed class Poe2Atlas
         nint Element, uint Id, uint Content, byte State, byte Biome, byte Flags, byte Completion,
         float X, float Y, float W, float H, float Scale, bool Visible, int IconType,
         int GridX, int GridY, string MapName, string MapCode, IReadOnlyList<string> Tags,
-        bool Accessible, bool Completed, string Kind)
+        bool Accessible, bool Completed, string Kind, string MapType, string MapGroup, IReadOnlyList<string> MapDataTags)
     {
         /// <summary>The node's atlas grid coordinate (<see cref="Poe2Offsets.AtlasNode.GridPos"/>) — the
         /// key into the connection graph for routing (unique per node; stable while the atlas is open).</summary>
@@ -299,7 +299,7 @@ public sealed class Poe2Atlas
     // row (validated live 2026-06-07): the headline content @ row+0x38 → contentRow+0x30 name, plus the
     // league mechanics from the stats list @ row+0x50 (stat ids "map_atlas_node_has_<mechanic>"). Cached
     // (content is stable while the atlas is open) and resolved at a bounded rate to avoid a tick hitch.
-    private readonly Dictionary<nint, (string code, string map, string[] content)> _tagCache = new();
+    private readonly Dictionary<nint, (string code, string map, string[] content, AtlasMapData.MapMeta? meta)> _tagCache = new();
     private static readonly string[] NoTags = Array.Empty<string>();
 
     // Atlas CONNECTION GRAPH (grid coord → neighbour grid coords), read from the canvas's edge vector
@@ -431,10 +431,14 @@ public sealed class Poe2Atlas
             if (!_tagCache.TryGetValue(el, out var resolved))
             {
                 if (resolveBudget > 0) { resolved = ResolveTags(el); _tagCache[el] = resolved; resolveBudget--; }
-                else { resolved = ("", "", NoTags); allCached = false; } // budget spent — retried next call (not cached)
+                else { resolved = ("", "", NoTags, null); allCached = false; } // budget spent — retried next call (not cached)
             }
             var kind = Classify(resolved.code);   // map-archetype class (Citadel/Boss/Tower/Unique/Merchant/Normal) — first-class track target
-            outNodes.Add(new AtlasNodeLive(el, id, content, state, biome, flags, compl, x, y, w, h, scale, visible, iconType, gridX, gridY, resolved.map, resolved.code, resolved.content, accessible, completed, kind));
+            var meta = resolved.meta;
+            outNodes.Add(new AtlasNodeLive(el, id, content, state, biome, flags, compl, x, y, w, h, scale, visible, iconType, gridX, gridY, resolved.map, resolved.code, resolved.content, accessible, completed, kind,
+                meta is { } mm ? mm.Type : "normal",
+                meta is { } mm2 ? mm2.Group : "",
+                meta is { } mm3 ? mm3.Tags : System.Array.Empty<string>()));
         }
         if (matched < 8) { Invalidate(); return false; }          // canvas no longer the node container
         AllTagsResolved = allCached;   // true once every node's tags are cached (seed defaults only then)
@@ -722,7 +726,7 @@ public sealed class Poe2Atlas
     /// the headline content (row+0x38 → content row +0x30 name, e.g. "Powerful Map Boss") plus the league
     /// mechanics harvested from the stats sub-struct (row+0x50): stat ids "map_atlas_node_has_&lt;x&gt;"
     /// → "X" (Breach, Delirium, …). Validated live 2026-06-07; re-confirm offsets via Research --atlas-resolve.</summary>
-    private (string code, string map, string[] content) ResolveTags(nint el)
+    private (string code, string map, string[] content, AtlasMapData.MapMeta? meta) ResolveTags(nint el)
     {
         // Map NAME: node +0x300 → EndgameMaps row; its +0x00 → the WorldAreas row, which holds
         // {+0x00 → Id "MapXxx",  +0x08 → the LOCALIZED display name}. We now read +0x08 (the game's real
@@ -797,7 +801,8 @@ public sealed class Poe2Atlas
         foreach (var bc in BadgeContentsNoLock(el))
             if (!tags.Contains(bc)) tags.Add(bc);
 
-        return (code, map, tags.Count == 0 ? NoTags : tags.ToArray());
+        AtlasMapData.MapMeta? meta = AtlasMapData.Shared.TryGet(code, out var mm) ? mm : (AtlasMapData.MapMeta?)null;
+        return (code, map, tags.Count == 0 ? NoTags : tags.ToArray(), meta);
     }
 
     /// <summary>Read a NUL/garbage-terminated ASCII run at <paramref name="addr"/> (stat ids are ASCII).</summary>
