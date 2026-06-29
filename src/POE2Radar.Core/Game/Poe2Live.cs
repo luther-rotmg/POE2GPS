@@ -544,7 +544,7 @@ public sealed class Poe2Live
     private void EvictEntity(nint entity)
     {
         _renderAddr.Remove(entity); _lifeAddr.Remove(entity); _posAddr.Remove(entity);
-        _ompAddr.Remove(entity); _chestAddr.Remove(entity); _category.Remove(entity);
+        _ompAddr.Remove(entity); _chestAddr.Remove(entity); _openedChests.Remove(entity); _category.Remove(entity);
         _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _reaction.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity);
     }
 

@@ -1245,6 +1245,11 @@ public sealed class RadarApp : IDisposable
 
         // RPM rate: update the windowed reads/sec once per second (all three reader stacks; _atlas rides _reader).
         var nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_rpmSnapshotAtTicks == 0)
+        {
+            _rpmSnapshot = _reader.ReadCount + _readerRender.ReadCount + _readerApi.ReadCount;
+            _rpmSnapshotAtTicks = nowTicks;
+        }
         var dt = (nowTicks - _rpmSnapshotAtTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
         if (dt >= 1.0)
         {
