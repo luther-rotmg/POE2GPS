@@ -120,8 +120,8 @@ is rescaled by liveZoom/calibZoom each frame. See `resources/atlas-research-note
   shifted every AreaInstance field ≥0x580 by +0x18; the low fields (AreaInfo/Level/Hash) were unchanged.
 - Entity: Details `+0x08`, ComponentList `+0x10`; component map via ComponentLookUp StdBucket.
   Rarity = ObjectMagicProperties `+0x144`; hostility = Positioned.Reaction `+0x1E0` (friendly = bit
-  pattern `(b&0x7F)==1`); grid = Render world `+0x138` / 10.87; Life HP `+0x1A8` / Mana `+0x1F8` / ES
-  `+0x230`; Player name `+0x1B0`, level `+0x204`.
+  pattern `(b&0x7F)==1`); grid = Render world `+0x138` / 10.87; Life HP `+0x1B0` / Mana `+0x208` / ES
+  `+0x248` (✓ 0.5.4 validated live; was 0x1A8/0x1F8/0x230 pre-patch); Player name `+0x1B0`, level `+0x204`.
 - Map UI: UiRoot `InGameState +0x2F0`; UiElement Self `+0x08`, Children `+0x10`, Flags `+0x180`
   (visible = bit `0x0B`); MapUiElement Shift `+0x368`, DefaultShift `+0x370` (= (0,-20)), Zoom `+0x3A8`.
 - Inventory (✓ live, Research `--inventory`): `AreaInstance +0x598` → ServerData → `+0x48` PlayerServerData
