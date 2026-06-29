@@ -212,6 +212,9 @@ public sealed class RadarSettings
     //    this adds per-rarity sizing, border thickness, and border color). ──
     public HpBarSettings HpBars { get; set; } = new();
 
+    // ── Affix nameplates: opt-in per-mob mod labels drawn above the HP bar. Off by default. ──
+    public AffixNameplateSettings AffixNameplates { get; set; } = new();
+
     // ── Walkable-terrain bitmap colors/transparency. Defaults reproduce the old hardcoded wash. ──
     public TerrainSettings Terrain { get; set; } = new();
 
@@ -390,6 +393,29 @@ public sealed class MechanicStyle
     public string Color { get; set; } = "#FFFFFF";
     public float Opacity { get; set; } = 1.0f;
     public float Size { get; set; } = 6.0f;
+}
+
+/// <summary>
+/// Affix nameplates: opt-in overlay that draws the most-dangerous explicit mods above each mob's HP
+/// bar. Disabled by default (Enabled = false). <see cref="Tier"/> sets the minimum tier shown
+/// (Deadly | NotableAndAbove | All); <see cref="AlwaysShow"/> / <see cref="Hide"/> are mod-id
+/// override lists; <see cref="DisplayAll"/> bypasses threshold/overrides entirely.
+/// </summary>
+public sealed class AffixNameplateSettings
+{
+    public bool Enabled { get; set; } = false;            // opt-in
+    public string Tier { get; set; } = "Deadly";          // threshold: Deadly | NotableAndAbove | All
+    public List<string> AlwaysShow { get; set; } = new(); // mod ids always shown
+    public List<string> Hide { get; set; } = new();       // mod ids never shown
+    public bool DisplayAll { get; set; } = false;         // ignore threshold/overrides, show every affix
+    public bool ShowOnRare { get; set; } = true;
+    public bool ShowOnUnique { get; set; } = true;
+    public bool ShowOnMagic { get; set; } = false;
+    public int MaxLines { get; set; } = 4;
+    public float OffsetY { get; set; } = -46f;            // px above the mob (clears the -30 HP bar)
+    public string DeadlyColor { get; set; } = "#FF3333";
+    public string NotableColor { get; set; } = "#FF9900";
+    public string MinorColor { get; set; } = "#AAAAAA";
 }
 
 /// <summary>
