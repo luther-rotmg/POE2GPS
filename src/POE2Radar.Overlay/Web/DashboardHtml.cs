@@ -738,6 +738,22 @@ internal static class DashboardHtml
             </div>
             <div class="row"><div class="rl hint-row">Bar fill follows the monster icon color; set border color &amp; thickness per rarity (thickness 0 = no border). Offset Y negative = above the mob.</div></div>
           </div>
+          <div class="card collapsed" data-card="affix-nameplates">
+            <h3>Affix nameplates <small class="tag">opt-in</small></h3>
+            <div class="row"><div class="rl">Show affixes above elite monsters<small>floating text on the mob's head — off by default</small></div>
+              <label class="sw"><input type="checkbox" data-an="enabled"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Danger tier</div>
+              <select class="numin" data-an="tier"><option value="Deadly">Deadly only</option><option value="NotableAndAbove">Deadly + Notable</option><option value="All">All affixes</option></select></div>
+            <div class="row"><div class="rl">Display ALL affixes<small>ignore the filter — show every affix on the mob</small></div>
+              <label class="sw"><input type="checkbox" data-an="displayAll"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">On Rare</div><label class="sw"><input type="checkbox" data-an="showOnRare"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">On Unique</div><label class="sw"><input type="checkbox" data-an="showOnUnique"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">On Magic</div><label class="sw"><input type="checkbox" data-an="showOnMagic"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Max lines</div><input type="number" class="numin" data-an="maxLines" min="1" max="10"></div>
+            <div class="row"><div class="rl">Per-affix overrides<small>search the masterlist; mark Always-show or Hide</small></div></div>
+            <input id="anSearch" class="numin" placeholder="filter affixes…" style="width:100%">
+            <div id="anOverrides" style="max-height:240px;overflow:auto"></div>
+          </div>
           <div class="card" data-card="terrain">
             <h3>Terrain <span class="tag">&middot; walkable overlay</span></h3>
             <div class="row"><div class="rl">Interior fill<small>wash over walkable cells</small></div>
@@ -892,7 +908,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   activeTab=t.dataset.tab;
   $$('.tab').forEach(x=>x.classList.toggle('on',x===t));
   $$('.view').forEach(v=>v.hidden = v.dataset.view!==activeTab);
-  if(activeTab==='settings'){ loadSettings(); loadKeybinds(); loadQuickStart(); }
+  if(activeTab==='settings'){ loadSettings(); loadKeybinds(); loadQuickStart(); loadAffixCatalog(); }
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
   if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); }
@@ -927,6 +943,7 @@ async function loadSettings(){
     terrain = s.terrain || null;
     gi = s.groundItems || {};
     renderHpBars(); renderTerrain(); renderGround();
+    an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
   }catch(e){}
 }
 
@@ -957,6 +974,8 @@ $('#qsReopenBtn')?.addEventListener('click',()=>{
   const card=$('#qsCard'); if(card) card.hidden=false;
 });
 
+/* ── affix nameplates (own endpoint: POST the whole an object to /api/affix-nameplates) ── */
+let an=null, anCatalog=[];
 /* ── ground-item labels (nested object: POST the whole {groundItems}) ── */
 let gi = null;
 function renderGround(){
@@ -1969,7 +1988,45 @@ async function checkVersion(){
   }catch(e){}
 }
 
-wireSettings(); wireHpBars(); wireTerrain(); wireGround();
+/* ── affix nameplates card (own endpoint /api/affix-nameplates) ── */
+function renderAffixNameplates(){
+  if(!an) return;
+  document.querySelectorAll('[data-an]').forEach(el=>{
+    const k=el.dataset.an;
+    if(el.type==='checkbox') el.checked=!!an[k];
+    else if(an[k]!==undefined) el.value=an[k];
+  });
+  renderAnOverrides();
+}
+async function saveAffixNameplates(){
+  try{ await fetch('/api/affix-nameplates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(an)});
+    const m=$('#savedMsg'); if(m){m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1100);} }catch(e){}
+}
+function wireAffixNameplates(){
+  document.querySelectorAll('[data-an]').forEach(el=>{
+    const k=el.dataset.an;
+    const upd=()=>{ an = an||{}; an[k] = el.type==='checkbox'?el.checked : (el.type==='number'?parseInt(el.value||'0',10):el.value); saveAffixNameplates(); };
+    if(el.type==='checkbox'||el.tagName==='SELECT') el.onchange=upd; else el.onchange=upd;
+  });
+  const s=document.getElementById('anSearch'); if(s) s.oninput=renderAnOverrides;
+}
+async function loadAffixCatalog(){ try{ const r=await getJSON('/api/affix-catalog'); anCatalog=r.affixes||[]; renderAnOverrides(); }catch(e){} }
+function renderAnOverrides(){
+  const box=document.getElementById('anOverrides'); if(!box||!an) return;
+  const q=(document.getElementById('anSearch')?.value||'').toLowerCase();
+  const always=new Set(an.alwaysShow||[]), hide=new Set(an.hide||[]);
+  box.innerHTML = anCatalog.filter(a=>!q||a.name.toLowerCase().includes(q)||a.modId.toLowerCase().includes(q)).slice(0,300).map(a=>{
+    const st = always.has(a.modId)?'show':hide.has(a.modId)?'hide':'';
+    return `<div class="row" style="gap:6px"><div class="rl">${a.name} <small>${a.tier}${a.curated?'':' · seen'}</small></div>
+      <select class="numin" data-anov="${a.modId}"><option value=""${st===''?' selected':''}>—</option><option value="show"${st==='show'?' selected':''}>Always</option><option value="hide"${st==='hide'?' selected':''}>Hide</option></select></div>`;
+  }).join('');
+  box.querySelectorAll('[data-anov]').forEach(sel=>{ sel.onchange=()=>{
+    const id=sel.dataset.anov; an.alwaysShow=(an.alwaysShow||[]).filter(x=>x!==id); an.hide=(an.hide||[]).filter(x=>x!==id);
+    if(sel.value==='show') an.alwaysShow.push(id); else if(sel.value==='hide') an.hide.push(id);
+    saveAffixNameplates();
+  };});
+}
+wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab
