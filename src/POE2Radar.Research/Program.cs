@@ -151,7 +151,7 @@ if (HasFlag(args, "--xp"))
     return RunXp(process, reader);
 
 if (HasFlag(args, "--quest"))
-    return RunQuest(process, reader);
+    return RunQuest(process, reader, HasFlag(args, "--diff"));
 
 if (HasFlag(args, "--presence"))
     return RunPresence(process, reader, HasFlag(args, "--diff"));
@@ -1629,9 +1629,13 @@ static int RunXp(ProcessHandle process, MemoryReader reader)
 //   val  — small / non-pointer scalar (could be a count, flag, enum, …)
 //   <<< std::vector? — three consecutive PTRs where begin ≤ end ≤ cap (quest lists are often vecs)
 //
-//   Usage:  <Research.exe> --quest   (with PoE2 running, character in-game)
-static int RunQuest(ProcessHandle process, MemoryReader reader)
+//   Usage:  <Research.exe> --quest            baseline (save 0x5000 bytes of ServerDataStructure)
+//            <Research.exe> --quest --diff     diff current vs baseline; print changed dwords
+static int RunQuest(ProcessHandle process, MemoryReader reader, bool diff)
 {
+    const int Window = 0x5000;   // covers the +0x3030 known-lead with margin
+    var snapPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "poe2_quest_baseline.bin");
+
     var (_, _, ai, _) = ResolveChain(process, reader);
     if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
 
@@ -1643,68 +1647,94 @@ static int RunQuest(ProcessHandle process, MemoryReader reader)
     var sdStruct = ResolveServerDataStruct(reader, serverData);
     if (sdStruct == 0) { Console.Error.WriteLine("Could not resolve ServerDataStructure (PlayerServerData vec at ServerData+0x48)."); return 1; }
     Console.WriteLine($"ServerDataStructure 0x{sdStruct:X}");
-    Console.WriteLine();
-    Console.WriteLine("── Field dump (qword, 0x000..0x600) ──────────────────────────────────────────");
-    Console.WriteLine("  (PTR = looks like a heap pointer; val = scalar; <<< = StdVector-shaped triple)");
-    Console.WriteLine();
 
-    const int DumpEnd  = 0x600;
-    const int Step     = 8;
-    // Canonical userspace pointer range for Windows x64.
-    const ulong PtrLo  = 0x10000UL;
-    const ulong PtrHi  = 0x00007FFFFFFFFFFFUL;
-
-    static bool IsPtr(ulong v) => v >= PtrLo && v <= PtrHi && (v & 7) == 0;
-
-    // Read all qwords into a flat array so we can look ahead for vector triples.
-    int slots = DumpEnd / Step;
-    var words = new ulong[slots];
-    for (var i = 0; i < slots; i++)
-        reader.TryReadStruct<ulong>((nint)(sdStruct + i * Step), out words[i]);
-
-    var annotated = new HashSet<int>(); // indices already annotated as part of a vector triple
-
-    // First pass: mark vector-shaped triples.
-    for (var i = 0; i + 2 < slots; i++)
+    // ── DIFF mode ──────────────────────────────────────────────────────────────
+    if (diff)
     {
-        var b = words[i]; var e = words[i + 1]; var c = words[i + 2];
-        if (IsPtr(b) && IsPtr(e) && IsPtr(c) && b <= e && e <= c && (c - b) <= 0x100000)
+        if (!System.IO.File.Exists(snapPath))
         {
-            annotated.Add(i); annotated.Add(i + 1); annotated.Add(i + 2);
+            Console.Error.WriteLine("No baseline found — run --quest first.");
+            return 1;
         }
-    }
-
-    // Second pass: print.
-    for (var i = 0; i < slots; i++)
-    {
-        var off = i * Step;
-        var val = words[i];
-        if (val == 0) continue;   // skip nulls to keep output readable
-
-        var kind = IsPtr(val) ? "PTR " : "val ";
-        Console.WriteLine($"  +0x{off:X3}  {kind} {(IsPtr(val) ? $"0x{val:X}" : val.ToString())}");
-
-        // If this is the start of a vector triple, append a summary line.
-        if (annotated.Contains(i) && i + 2 < slots)
+        var raw = System.IO.File.ReadAllBytes(snapPath);
+        if (raw.Length < 8 + 4)
         {
-            var b = words[i]; var e = (i + 1 < slots ? words[i + 1] : 0); var cap = (i + 2 < slots ? words[i + 2] : 0);
-            if (IsPtr(b) && IsPtr(e) && IsPtr(cap) && b <= e && e <= cap)
+            Console.Error.WriteLine("Baseline file too small / stale — re-run --quest.");
+            return 1;
+        }
+        var baseAddr = (nint)BitConverter.ToInt64(raw, 0);
+        var baseline = raw[8..];
+
+        // Read current window.
+        var cur = new byte[baseline.Length];
+        var got = reader.TryReadBytes(sdStruct, cur);
+        var n = Math.Min(got, baseline.Length);
+
+        Console.WriteLine($"Diffing {n} bytes (SDS baseline=0x{baseAddr:X}, current=0x{sdStruct:X})");
+        Console.WriteLine("(churn filter: dwords whose containing 8-byte qword looks like a heap pointer in either snapshot are skipped)");
+        Console.WriteLine();
+
+        var candidates = 0;
+        var churned    = 0;
+        var total      = 0;
+
+        for (var off = 0; off + 4 <= n; off += 4)
+        {
+            var before = BitConverter.ToUInt32(baseline, off);
+            var after  = BitConverter.ToUInt32(cur,      off);
+            if (before == after) continue;
+            total++;
+
+            // Pointer-churn filter: read the containing aligned 8-byte qword from both snapshots.
+            // If either qword is > 0xFFFFFFFF it looks like a 64-bit heap/module pointer — skip.
+            var qOff = off & ~7;   // align down to 8
+            var qBefore = (qOff + 8 <= baseline.Length) ? BitConverter.ToUInt64(baseline, qOff) : 0UL;
+            var qAfter  = (qOff + 8 <= cur.Length)      ? BitConverter.ToUInt64(cur,      qOff) : 0UL;
+            if (qBefore > 0xFFFF_FFFFUL || qAfter > 0xFFFF_FFFFUL)
             {
-                var countBy8  = (long)(e - b) / 8;
-                var countBy16 = (long)(e - b) / 16;
-                Console.WriteLine($"      <<< looks like a std::vector at +0x{off:X3} " +
-                                  $"(span 0x{e - b:X}; count≈{countBy8}×8 or {countBy16}×16)");
+                churned++;
+                continue;
             }
+
+            // Candidate — print it.
+            var line = $"  SDS+0x{off:X4} : 0x{before:X8} -> 0x{after:X8}   ({before} -> {after})";
+            if (before == 0 && after != 0) line += "  <<< flag SET";
+            else if (before != 0 && after == 0) line += "  <<< flag CLEARED";
+            if (off == 0x3030) line += "  <<< KNOWN QUEST-FLAG LEAD";
+            Console.WriteLine(line);
+            candidates++;
         }
+
+        Console.WriteLine();
+        Console.WriteLine($"Summary: {total} dwords changed total; {churned} skipped as pointer churn; {candidates} candidates.");
+        if (candidates == 0)
+            Console.WriteLine("Zero candidates — either no quest step was completed between runs, or the flag lies outside the 0x5000 window.");
+        return 0;
+    }
+
+    // ── BASELINE mode ──────────────────────────────────────────────────────────
+    var buf = new byte[Window];
+    var read = reader.TryReadBytes(sdStruct, buf);
+    Console.WriteLine($"Read 0x{read:X} bytes from ServerDataStructure.");
+
+    try
+    {
+        using var fs = System.IO.File.Create(snapPath);
+        // Prepend the 8-byte ServerDataStructure base address so the diff can report absolute offsets.
+        fs.Write(BitConverter.GetBytes((long)sdStruct));
+        fs.Write(buf, 0, read);
+        Console.WriteLine($"BASELINE SAVED: {snapPath}");
+        Console.WriteLine($"  Base: 0x{sdStruct:X}   Bytes: {read} (0x{read:X})");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to write baseline: {ex.Message}");
+        return 1;
     }
 
     Console.WriteLine();
-    Console.WriteLine($"── Known anchor: PlayerInventories vec @ +0x320 ──");
-    Console.WriteLine("   Compare the dump above: fields near +0x320 are inventory-related.");
-    Console.WriteLine("   Quest-state is likely a nearby vector or small-int array — look for");
-    Console.WriteLine("   PTR triples or repeated small vals in the +0x200..+0x500 range.");
-    Console.WriteLine();
-    Console.WriteLine("Tip: run --serverdata-vec <off> on any PTR triple address to walk its elements.");
+    Console.WriteLine("Now COMPLETE your quest step in-game, then run:");
+    Console.WriteLine("    --quest --diff");
     return 0;
 }
 

@@ -23,7 +23,8 @@ $map = @{
   camera   = @{ probes=@('--camera');                               long=$false; doThis='Stand in a zone (ideally near a monster pack).' }
   tiles    = @{ probes=@('--tiles');                                long=$false; doThis='Be in a non-town zone that has landmarks.' }
   xp       = @{ probes=@('--xp');                                   long=$false; doThis='Be actively killing monsters (run it mid-fight if you can).' }
-  quest    = @{ probes=@('--quest');                                long=$false; doThis='Run this right AFTER you advance/complete a quest step.' }
+  questbase= @{ probes=@('--quest');         long=$false; doThis='Run this BEFORE you complete the quest step (saves a baseline). Do NOT complete the step yet.' }
+  questdiff= @{ probes=@('--quest --diff');  long=$false; doThis='Run this AFTER you complete the quest step (diffs against the baseline).' }
   watch    = @{ probes=@('--watch');                                long=$true;  doThis='Leave this running, then walk through 2-3 ZONE CHANGES.' }
   metadata = @{ probes=@('--rune-dump');                            long=$false; doThis='Stand near the mechanic whose audio cue did NOT fire.' }
 }
