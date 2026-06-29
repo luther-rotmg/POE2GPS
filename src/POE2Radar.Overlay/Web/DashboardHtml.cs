@@ -538,6 +538,7 @@ internal static class DashboardHtml
             <div class="controls" style="gap:6px;margin:0 0 8px;flex-wrap:wrap">
               <button class="chip on" data-group="all">All</button>
               <button class="chip" data-group="Kind">Kind</button>
+              <button class="chip" data-group="Type">Type</button>
               <button class="chip" data-group="Content">Content</button>
               <button class="chip" data-group="Map">Map</button>
               <span style="flex:1"></span>
@@ -549,6 +550,15 @@ internal static class DashboardHtml
             <div id="atlasHlTable" style="max-height:460px;overflow:auto;border:1px solid var(--line);border-radius:6px">
               <span class="hint-row" style="padding:8px;display:block">Open the Atlas in-game + Refresh to list filters.</span>
             </div>
+          </div>
+          <!-- #7 colour groups: a named set of map names that all draw in one ring/label colour. -->
+          <div class="card" style="grid-column:1/-1">
+            <h3 style="display:flex;align-items:center;gap:10px">Map colour groups
+              <span class="hint-row" style="opacity:.7;font-weight:400">recolour a whole category at once (Citadels, Halls, Uniques&hellip;)</span>
+              <span style="flex:1"></span>
+              <button class="chip" id="atlasGroupAdd">+ Add group</button>
+            </h3>
+            <div id="atlasGroups"></div>
           </div>
           <div class="card">
             <h3>Dynasty-support maps <small>Anomaly-boss maps that drop Lineage/Dynasty support gems &mdash; enable the highlight in Settings</small></h3>
@@ -923,7 +933,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   if(activeTab==='settings'){ loadSettings(); loadKeybinds(); loadQuickStart(); loadAffixCatalog(); }
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
-  if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); loadSettings(); }
+  if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); loadSettings(); loadAtlasGroups(); }
   if(activeTab==='director') loadDirector();
   if(activeTab==='entatlas') loadEntAtlas();
   if(activeTab==='gear') loadGear();
@@ -1739,17 +1749,44 @@ const biomeName=i=>(i>=0&&i<BIOMES.length)?BIOMES[i]:('biome '+i);
 function catContent(t){ const s=t.toLowerCase(); if(/not shown|\[dnt\]/.test(s))return'Hidden'; if(/boss/.test(s))return'Boss'; if(/influence/.test(s))return'Influence'; return'Mechanic'; }
 function catMap(t){ const s=t.toLowerCase(); if(/citadel/.test(s))return'Citadel'; if(/tower/.test(s))return'Tower'; if(/temple/.test(s))return'Temple'; if(/vaal/.test(s))return'Vaal'; return'Map'; }
 // Per-category colour (badge tint).
-const CATCOL={Boss:'#e0533a',Mechanic:'#3ca0ff',Influence:'#a06cff',Hidden:'#ff5db1',Citadel:'#e0b341',Tower:'#2fb6a8',Temple:'#d98a2b',Vaal:'#c0395a',Unique:'#c678dd',Merchant:'#5aa9e6',Map:'#8a93a0'};
+const CATCOL={Boss:'#e0533a',Mechanic:'#3ca0ff',Influence:'#a06cff',Hidden:'#ff5db1',Citadel:'#e0b341',Tower:'#2fb6a8',Temple:'#d98a2b',Vaal:'#c0395a',Unique:'#c678dd',Merchant:'#5aa9e6',Map:'#8a93a0',Type:'#d98a2b'};
 function catBadge(cat){ const c=CATCOL[cat]||'#8a93a0'; return '<span style="display:inline-block;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600;background:'+c+'26;color:'+c+';border:1px solid '+c+'66">'+esc(cat)+'</span>'; }
 // Build the unified filter list (content + map) with {title,count,cat,group}.
 function atlasFilterRows(d){
   const rows=[];
   // Kind rows first: tracking one (e.g. "Tower") rings + routes to EVERY map of that archetype.
   (d.allKinds||[]).forEach(t=>rows.push({title:t.tag,count:t.count,group:'Kind',cat:t.tag}));
-  (d.allTags||[]).forEach(t=>rows.push({title:t.tag,count:t.count,group:'Content',cat:catContent(t.tag)}));
+  // Type rows (#7): maps.json type/tags — unique / lineage / arbiter. One-click route-to-all-of-a-kind.
+  (d.allDataTags||[]).forEach(t=>rows.push({title:t.tag,count:t.count,group:'Type',cat:'Type'}));
+  (d.allTags||[]).forEach(t=>rows.push({title:t.tag,count:t.count,group:'Content',cat:catContent(t.tag),desc:t.desc}));
   (d.allMaps||[]).forEach(t=>rows.push({title:t.tag,count:t.count,group:'Map',cat:catMap(t.tag)}));
   return rows;
 }
+// ── Atlas colour-groups editor (#7) ─────────────────────────────────────────────────────────────
+let atlasGroupsData=[];
+async function loadAtlasGroups(){
+  let s; try{ s=await getJSON('/api/settings'); }catch(e){ return; }
+  atlasGroupsData = Array.isArray(s.atlasGroups) ? s.atlasGroups.map(g=>({name:g.name||'',color:g.color||'#E0B341',maps:(g.maps||[]).slice()})) : [];
+  renderAtlasGroups();
+}
+function saveAtlasGroups(){ saveSetting('atlasGroups', atlasGroupsData); }
+function renderAtlasGroups(){
+  const box=$('#atlasGroups'); if(!box) return;
+  if(atlasGroupsData.length===0){ box.innerHTML='<span class="hint-row" style="opacity:.6">No groups. Maps in a group draw in its colour when tracked.</span>'; return; }
+  box.innerHTML = atlasGroupsData.map((g,i)=>
+    '<div style="display:grid;grid-template-columns:130px 44px 1fr 60px;gap:8px;align-items:start;padding:5px 0;border-bottom:1px solid var(--line)">'
+    +'<input data-gi="'+i+'" data-gf="name" value="'+esc(g.name)+'" placeholder="group name" style="width:100%">'
+    +'<input data-gi="'+i+'" data-gf="color" type="color" value="'+esc(g.color)+'" style="width:40px;height:28px;padding:0;border:none;background:none">'
+    +'<textarea data-gi="'+i+'" data-gf="maps" rows="2" placeholder="one map name per line" style="width:100%;resize:vertical">'+esc((g.maps||[]).join('\n'))+'</textarea>'
+    +'<button class="chip" data-gdel="'+i+'">Delete</button></div>'
+  ).join('');
+  box.querySelectorAll('[data-gf]').forEach(el=>{
+    const i=+el.dataset.gi, f=el.dataset.gf;
+    el.onchange=()=>{ if(f==='maps') atlasGroupsData[i].maps=el.value.split('\n').map(x=>x.trim()).filter(Boolean); else atlasGroupsData[i][f]=el.value; saveAtlasGroups(); };
+  });
+  box.querySelectorAll('[data-gdel]').forEach(b=>b.onclick=()=>{ atlasGroupsData.splice(+b.dataset.gdel,1); renderAtlasGroups(); saveAtlasGroups(); });
+}
+document.querySelector('#atlasGroupAdd')?.addEventListener('click',()=>{ atlasGroupsData.push({name:'New group',color:'#E0B341',maps:[]}); renderAtlasGroups(); saveAtlasGroups(); });
 let atlasHlSort={key:'count',dir:-1};
 function renderAtlasHighlight(d){
   const box=$('#atlasHlTable'); if(!box) return;

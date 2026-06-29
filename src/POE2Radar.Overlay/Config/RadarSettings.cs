@@ -126,6 +126,11 @@ public sealed class RadarSettings
     // Guard for the built-in "Map Targets" preset (#6): set true after SeedAtlasDefaults runs once
     // (gated on AllTagsResolved). Never re-seeds — user edits from the dashboard persist independently.
     public bool AtlasTargetsSeeded { get; set; }
+    // Map colour groups (#7): named sets of map display names → one ring/label colour, so a whole category
+    // (Citadels, Halls, Uniques, Expedition) recolours together. Seeded with sensible defaults once
+    // (AtlasGroupsSeeded). A node in a group draws in the group colour when it has no per-rule colour.
+    public List<AtlasMapGroup> AtlasGroups { get; set; } = new();
+    public bool AtlasGroupsSeeded { get; set; }
     // DEBUG: draw EVERY atlas node (overriding the highlight-only rule) — for offset/coverage diagnostics.
     // Off by default: normally only nodes matching AtlasHighlightTags (or manually selected) are drawn.
     public bool AtlasDrawAll { get; set; } = false;
@@ -400,6 +405,18 @@ public sealed class MechanicStyle
     public string Color { get; set; } = "#FFFFFF";
     public float Opacity { get; set; } = 1.0f;
     public float Size { get; set; } = 6.0f;
+}
+
+/// <summary>
+/// A named Atlas colour group (#7): a set of map display names that all draw in one ring/label colour,
+/// so a whole category (Citadels, Halls, Uniques, Expedition) recolours together. Adopted from the
+/// GameHelper2 Atlas plugin's Map Styles. <see cref="Color"/> is <c>#RRGGBB</c>.
+/// </summary>
+public sealed class AtlasMapGroup
+{
+    public string Name { get; set; } = "";
+    public string Color { get; set; } = "#e0b341";
+    public List<string> Maps { get; set; } = new();
 }
 
 /// <summary>

@@ -1086,6 +1086,8 @@ public sealed class ApiServer : IDisposable
         audioAlertMechanic       = _settings.AudioAlertMechanic,
         audioToneMechanic        = _settings.AudioToneMechanic,
         firstRunSeen             = _settings.FirstRunSeen,
+        // Atlas colour groups (#7): the full group list so the dashboard can render + edit them.
+        atlasGroups              = _settings.AtlasGroups,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -1172,6 +1174,10 @@ public sealed class ApiServer : IDisposable
                 case "audioAlertMechanic" when TryBool(p.Value, out var b): _settings.AudioAlertMechanic = b; applied.Add(p.Name); break;
                 case "audioToneMechanic"  when TryString(p.Value, out var s): _settings.AudioToneMechanic  = s.Trim(); applied.Add(p.Name); break;
                 case "firstRunSeen" when TryBool(p.Value, out var b): _settings.FirstRunSeen = b; applied.Add(p.Name); break;
+                // Atlas colour groups (#7): the dashboard re-POSTs the full array on edit.
+                case "atlasGroups" when p.Value.ValueKind == JsonValueKind.Array:
+                    if (TryParseAtlasGroups(p.Value, out var atlasGrps)) { _settings.AtlasGroups = atlasGrps; _settings.AtlasGroupsSeeded = true; applied.Add(p.Name); }
+                    break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }
@@ -1298,6 +1304,35 @@ public sealed class ApiServer : IDisposable
             return true;
         }
         catch (JsonException) { return false; }
+    }
+
+    /// <summary>Parse the atlas colour-groups array (#7) the dashboard re-POSTs on edit: each entry is
+    /// <c>{ name, color (#RRGGBB), maps[] }</c>. Sanitized + capped at 32 groups; a malformed entry is
+    /// skipped. Never throws — returns false only on a top-level JSON exception.</summary>
+    private static bool TryParseAtlasGroups(JsonElement el, out List<AtlasMapGroup> groups)
+    {
+        groups = new List<AtlasMapGroup>();
+        try
+        {
+            foreach (var g in el.EnumerateArray())
+            {
+                if (g.ValueKind != JsonValueKind.Object) continue;
+                var name = g.TryGetProperty("name", out var nv) && nv.ValueKind == JsonValueKind.String ? (nv.GetString() ?? "").Trim() : "";
+                if (name.Length == 0) continue;   // skip nameless entries
+                if (name.Length > 64) name = name[..64];
+                var color = g.TryGetProperty("color", out var cv) && cv.ValueKind == JsonValueKind.String ? (cv.GetString() ?? "") : "";
+                color = ValidHexOr(color, "#E0B341");
+                var maps = new List<string>();
+                if (g.TryGetProperty("maps", out var mv) && mv.ValueKind == JsonValueKind.Array)
+                    foreach (var m in mv.EnumerateArray())
+                        if (m.ValueKind == JsonValueKind.String && m.GetString() is { Length: > 0 } ms && maps.Count < 200)
+                            maps.Add(ms.Trim());
+                groups.Add(new AtlasMapGroup { Name = name, Color = color, Maps = maps });
+                if (groups.Count >= 32) break;
+            }
+            return true;
+        }
+        catch { return false; }
     }
 
     /// <summary>Deserialize + sanitize a full <see cref="AffixNameplateSettings"/> from a posted JSON body.

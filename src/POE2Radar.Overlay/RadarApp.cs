@@ -2495,7 +2495,7 @@ public sealed class RadarApp : IDisposable
             // highlight-rule pickers. These are the readable content/mechanic names (Powerful Map Boss,
             // Breach, Delirium, …) resolved from each node's EndgameMapAtlas row.
             allTags = nodes.SelectMany(n => n.Tags).GroupBy(t => t).OrderByDescending(g => g.Count())
-                .Select(g => new { tag = g.Key, count = g.Count() }),
+                .Select(g => new { tag = g.Key, count = g.Count(), desc = POE2Radar.Core.Game.AtlasMapData.Shared.ContentDesc(g.Key), icon = POE2Radar.Core.Game.AtlasMapData.Shared.ContentIcon(g.Key) }),
             // Distinct MAP NAMES (Sun Temple, Precursor Tower, Vaal City, …) — the separate "Map" filter
             // group, so towers/temples/specific maps are highlightable independently of rolled content.
             allMaps = nodes.Where(n => !string.IsNullOrEmpty(n.MapName)).GroupBy(n => n.MapName)
@@ -2504,6 +2504,12 @@ public sealed class RadarApp : IDisposable
             // targets (improvement 3): tracking "Tower" rings/routes EVERY tower without listing each name.
             allKinds = nodes.Where(n => !string.IsNullOrEmpty(n.Kind) && n.Kind != "Normal").GroupBy(n => n.Kind)
                 .OrderByDescending(g => g.Count()).Select(g => new { tag = g.Key, count = g.Count() }),
+            // maps.json classification tokens (#7): the map TYPE (e.g. "unique") + cross-cutting TAGS
+            // (lineage/arbiter). Selectable as one-click route/track targets like allKinds. De-duped union.
+            allDataTags = nodes.SelectMany(n =>
+                    (string.IsNullOrEmpty(n.MapType) || n.MapType == "normal" ? Enumerable.Empty<string>() : new[] { n.MapType })
+                    .Concat(n.MapDataTags ?? Array.Empty<string>()))
+                .GroupBy(t => t).OrderByDescending(g => g.Count()).Select(g => new { tag = g.Key, count = g.Count() }),
             // The currently active rules (persisted): tracked tags (rings) + arrow tags (off-screen
             // direction). Match against BOTH content tags and map names.
             highlightTags = _settings.AtlasHighlightTags,
@@ -2542,6 +2548,17 @@ public sealed class RadarApp : IDisposable
         ("MapUniqueCastaway",          "#ff9933", false),
     };
 
+    // Default colour groups (#7), adopted from the plugin's Map Styles. Seeded once (AtlasGroupsSeeded).
+    private static readonly (string Name, string Color, string[] Maps)[] DefaultAtlasGroups =
+    {
+        ("Citadels", "#e0b341", new[] { "The Copper Citadel", "The Iron Citadel", "The Stone Citadel" }),
+        ("Halls",    "#e0b341", new[] { "The Matriarch Halls", "The Patriarch Halls" }),
+        ("Uniques",  "#ff9933", new[] { "Untainted Paradise", "Castaway", "The Fractured Lake",
+            "The Ezomyte Megaliths", "Moment of Zen", "The Viridian Wildwood" }),
+        ("Expedition", "#fff0d9", new[] { "Sprawling Jungle", "Secluded Temple", "Obscure Island",
+            "Mournful Cliffside", "Moor of Fallen Skies" }),
+    };
+
     /// <summary>One-time seed of the built-in "Map Targets" preset (#6): Citadels/Halls/uniques, matched by
     /// exact internal MapId and resolved to live display names so rules stay editable in the dashboard.
     /// ADDITIVE: only adds a tag/colour if not already present — never clears or overrides user rules.
@@ -2578,6 +2595,17 @@ public sealed class RadarApp : IDisposable
 
         _settings.AtlasTargetsSeeded  = true;
         _settings.AtlasRulesInitialized = true; // locks out legacy Citadel-only re-seed too
+
+        // Seed colour groups (#7): only if not already seeded and the list is empty (additive guard).
+        if (!_settings.AtlasGroupsSeeded)
+        {
+            _settings.AtlasGroups ??= new List<AtlasMapGroup>();
+            if (_settings.AtlasGroups.Count == 0)
+                foreach (var (name, color, maps) in DefaultAtlasGroups)
+                    _settings.AtlasGroups.Add(new AtlasMapGroup { Name = name, Color = color, Maps = new List<string>(maps) });
+            _settings.AtlasGroupsSeeded = true;
+        }
+
         _settings.Save();
     }
 
@@ -2641,6 +2669,7 @@ public sealed class RadarApp : IDisposable
             ^ ((long)(_settings.AtlasArrowTags?.Count ?? 0) << 28)
             ^ ((long)sel.Count << 36)
             ^ (_settings.AtlasDrawAll ? 1L << 44 : 0L)
+            ^ ((long)(_settings.AtlasGroups?.Count ?? 0) << 45)   // #7: rebuild when group set changes
             ^ (_settings.AtlasHideCompleted ? 1L << 48 : 0L)
             ^ (_settings.AtlasHideAccessible ? 1L << 49 : 0L);
         long sig = viewSig * 2654435761L ^ inputSig;
@@ -2693,6 +2722,17 @@ public sealed class RadarApp : IDisposable
             if (!string.IsNullOrEmpty(nd.Kind) && nd.Kind != "Normal" && set.Contains(nd.Kind)) return nd.Kind;
             return null;
         }
+        // #7 colour groups: map display name → group colour (the first group containing it). A matched node
+        // with no per-rule colour falls back to its group colour. Built once per rebuild.
+        Dictionary<string, string>? groupColor = null;
+        if (_settings.AtlasGroups is { Count: > 0 } groups)
+        {
+            groupColor = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var grp in groups)
+                if (grp?.Maps is { Count: > 0 } && !string.IsNullOrEmpty(grp.Color))
+                    foreach (var m in grp.Maps)
+                        if (!string.IsNullOrWhiteSpace(m)) groupColor.TryAdd(m, grp.Color);
+        }
         var marks = new List<AtlasMark>(128);
         // Routing inputs gathered alongside the marks: grid→node ELEMENT (so the render thread re-reads each
         // route point's live relPos per frame), the tracked tiles to route to, and each tile's ring colour.
@@ -2727,7 +2767,8 @@ public sealed class RadarApp : IDisposable
             if (!_settings.AtlasDrawAll && !isTracked && !isNav && !isArrow) continue;
             var matched = mTrack ?? mNav ?? mArrow;
             var label = matched ?? (n.Tags is { Count: > 0 } ? n.Tags[0] : (string.IsNullOrEmpty(n.MapName) ? null : n.MapName));
-            string? color = matched != null && _settings.AtlasHighlightColors.TryGetValue(matched, out var c) ? c : null;
+            string? color = matched != null && _settings.AtlasHighlightColors.TryGetValue(matched, out var c) ? c
+                : (groupColor != null && !string.IsNullOrEmpty(n.MapName) && groupColor.TryGetValue(n.MapName, out var gc) ? gc : null);
             if (dyn != null)
             {
                 label = $"{dyn.Name} · {dyn.Gems.Count} dynasty gem{(dyn.Gems.Count == 1 ? "" : "s")}";
