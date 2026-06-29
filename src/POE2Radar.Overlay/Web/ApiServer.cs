@@ -886,6 +886,37 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/affix-nameplates":
+            {
+                if (ctx.Request.HttpMethod == "GET")
+                    Write(ctx, 200, JsonSerializer.Serialize(_settings.AffixNameplates, Json));
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                    if (TryParseAffixNameplates(ReadBody(ctx), out var an))
+                    {
+                        _settings.AffixNameplates = an; _settings.Save();
+                        Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, affixNameplates = an }, Json));
+                    }
+                    else Write(ctx, 400, JsonSerializer.Serialize(new { error = "bad body" }, Json));
+                }
+                else Write(ctx, 405, JsonSerializer.Serialize(new { error = "method" }, Json));
+                break;
+            }
+
+            case "/api/affix-catalog":
+            {
+                var cat = POE2Radar.Core.Game.MonsterAffixCatalog.Shared;
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                var items = new List<object>();
+                foreach (var kv in cat.Curated)
+                { seen.Add(kv.Key); items.Add(new { modId = kv.Key, name = kv.Value.Name, tier = kv.Value.Tier.ToString(), curated = true }); }
+                foreach (var id in _knownMods())
+                { if (!seen.Add(id)) continue; var info = cat.Resolve(id); items.Add(new { modId = id, name = info.Name, tier = info.Tier.ToString(), curated = false }); }
+                Write(ctx, 200, JsonSerializer.Serialize(new { affixes = items }, Json));
+                break;
+            }
+
             default:
                 Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found", path }, Json));
                 break;
@@ -1263,6 +1294,44 @@ public sealed class ApiServer : IDisposable
             return true;
         }
         catch (JsonException) { return false; }
+    }
+
+    /// <summary>Deserialize + sanitize a full <see cref="AffixNameplateSettings"/> from a posted JSON body.
+    /// Clamps MaxLines (1..10) and OffsetY (-200..200); coerces Tier to a valid value; validates colors;
+    /// sanitizes AlwaysShow/Hide lists (trim, drop empty, dedupe, cap 128, max 64 chars each).
+    /// Returns false on malformed JSON — never throws.</summary>
+    private static bool TryParseAffixNameplates(string body, out AffixNameplateSettings an)
+    {
+        an = new AffixNameplateSettings();
+        try
+        {
+            var p = JsonSerializer.Deserialize<AffixNameplateSettings>(body, Json);
+            if (p == null) return false;
+            p.MaxLines = Math.Clamp(p.MaxLines, 1, 10);
+            p.OffsetY = Math.Clamp(p.OffsetY, -200f, 200f);
+            p.Tier = p.Tier is "All" or "NotableAndAbove" or "Deadly" ? p.Tier : "Deadly";
+            p.DeadlyColor = ValidHexOr(p.DeadlyColor, "#FF3333");
+            p.NotableColor = ValidHexOr(p.NotableColor, "#FF9900");
+            p.MinorColor = ValidHexOr(p.MinorColor, "#AAAAAA");
+            p.AlwaysShow = SanitizeStringList(p.AlwaysShow);
+            p.Hide = SanitizeStringList(p.Hide);
+            an = p;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    private static List<string> SanitizeStringList(List<string>? raw)
+    {
+        var outp = new List<string>(); var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var x in raw ?? new List<string>())
+        {
+            var t = (x ?? "").Trim();
+            if (t.Length is 0 or > 64) continue;
+            if (seen.Add(t)) outp.Add(t);
+            if (outp.Count >= 128) break;
+        }
+        return outp;
     }
 
     /// <summary>The navigation selection as a list of {id, slot} objects (for the GET/POST payloads).</summary>
