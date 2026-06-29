@@ -201,7 +201,7 @@ public sealed class ApiServer : IDisposable
                     poiCount = s.Entities.Count(e => e.Poi),
                     landmarkCount = s.Landmarks.Count,
                     counts,
-                    worldMs = s.WorldMs, renderMs = s.RenderMs, fps = s.Fps,
+                    worldMs = s.WorldMs, renderMs = s.RenderMs, fps = s.Fps, rpmPerSec = s.RpmPerSec,
                     healthState = s.Health.ToString().ToLowerInvariant(),
                     healthMessage = s.HealthMessage,
                     // Runeshape monoliths in the area (slot count + anchor + priced reward set) for the
@@ -1856,7 +1856,8 @@ public sealed record RadarState(
     HealthState Health = HealthState.Searching,
     string? HealthMessage = null,
     // Campaign GPS cross-zone instruction for the dashboard banner; null when off / no instruction.
-    string? CampaignGps = null)
+    string? CampaignGps = null,
+    float RpmPerSec = 0)
 {
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,

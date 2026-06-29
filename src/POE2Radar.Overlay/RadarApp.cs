@@ -217,6 +217,9 @@ public sealed class RadarApp : IDisposable
     private NumVec2 _worldPlayer;          // the world tick's current player grid (for off-thread replans)
     private volatile float _worldMs, _renderMs;  // last world-pass / render-frame durations (ms) — /state timers
     private volatile float _fps;                  // measured render FPS (effective, over a rolling window) — /state
+    private long _rpmSnapshot;
+    private long _rpmSnapshotAtTicks;   // Stopwatch.GetTimestamp() units
+    private volatile float _rpmPerSec;
     private int _autoHz = 144;                     // detected refresh of the monitor the game is on (FpsCap=0 → auto; 144 = pre-detection fallback)
     private bool _autoHzLogged;                     // log the first successful detection (proves it read the monitor, not the fallback)
     private DateTime _nextHzCheckUtc = DateTime.MinValue;
@@ -1102,7 +1105,8 @@ public sealed class RadarApp : IDisposable
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
             snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
-            Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps);
+            Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps,
+            RpmPerSec: _rpmPerSec);
 
         var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
@@ -1238,6 +1242,18 @@ public sealed class RadarApp : IDisposable
         // heal benefited monster bars; with split readers, _live must heal independently. Result discarded.
         _ = _live.PlayerVitals(localPlayer);
         _charLevel = _live.PlayerLevel(localPlayer);   // changes ~never; 30 Hz is plenty
+
+        // RPM rate: update the windowed reads/sec once per second (all three reader stacks; _atlas rides _reader).
+        var nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        var dt = (nowTicks - _rpmSnapshotAtTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
+        if (dt >= 1.0)
+        {
+            var cur = _reader.ReadCount + _readerRender.ReadCount + _readerApi.ReadCount;
+            _rpmPerSec = MemoryReader.ComputeRpmPerSec(cur - _rpmSnapshot, dt);
+            _rpmSnapshot = cur;
+            _rpmSnapshotAtTicks = nowTicks;
+        }
+
         _terrain ??= _live.Terrain(areaInstance);
         _entities = _live.Entities(areaInstance);
         // Atlas census: catalog EVERY distinct entity for naming/coverage. Runs on the PRE-cull list

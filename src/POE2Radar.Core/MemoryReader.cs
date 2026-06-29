@@ -31,6 +31,11 @@ public sealed class MemoryReader
     public long BytesRead => Interlocked.Read(ref _readBytes);
     public long FailedReads => Interlocked.Read(ref _failedReads);
 
+    /// <summary>Compute reads/sec from a cumulative-count delta over an elapsed window.
+    /// Returns 0 for a non-positive window. Pure — unit-tested.</summary>
+    public static float ComputeRpmPerSec(long delta, double elapsedSeconds)
+        => elapsedSeconds > 0 ? (float)(delta / elapsedSeconds) : 0f;
+
     /// <summary>Read a single blittable struct value from the target process.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public unsafe T ReadStruct<T>(nint address) where T : unmanaged
