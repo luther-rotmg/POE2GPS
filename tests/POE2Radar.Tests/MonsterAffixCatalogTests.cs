@@ -8,8 +8,9 @@ public class MonsterAffixCatalogTests
 
     [Fact] public void Resolve_prettifies_unknown_id()
     {
-        var a = MonsterAffixCatalog.Shared.Resolve("MonsterExtraFast1");
-        Assert.Equal("Extra Fast", a.Name);
+        // "MonsterExtraFast99" is NOT in poe2_monster_mod_names.json → hits Prettify fallback
+        var a = MonsterAffixCatalog.Shared.Resolve("MonsterExtraFast99");
+        Assert.Equal("Extra Fast 99", a.Name);   // Strip "Monster", split camelCase+digit → "Extra Fast 99"
         Assert.Equal(AffixTier.Minor, a.Tier);   // uncurated → Minor
     }
 
@@ -44,9 +45,21 @@ public class MonsterAffixCatalogTests
 
     [Fact] public void Select_dedupes_by_name_and_orders_deadly_first()
     {
-        // two ids resolving to the same prettified name collapse to one line
-        var lines = MonsterAffixCatalog.Shared.Select(new[] { "MonsterExtraFast1", "MonsterExtraFast1" },
+        // two ids resolving to the same prettified name collapse to one line (dedup)
+        var lines = MonsterAffixCatalog.Shared.Select(new[] { "MonsterExtraFast99", "MonsterExtraFast99" },
             F(AffixTier.Minor, max: 4));
         Assert.Single(lines);
+    }
+
+    [Fact] public void Select_orders_deadly_before_minor()
+    {
+        // MonsterVolatile1 = curated Deadly; MonsterExtraFast99 = uncurated → Minor
+        // Deadly must sort before Minor regardless of input order
+        var lines = MonsterAffixCatalog.Shared.Select(
+            new[] { "MonsterExtraFast99", "MonsterVolatile1" },
+            F(AffixTier.Minor, max: 4));
+        Assert.Equal(2, lines.Count);
+        Assert.Equal(AffixTier.Deadly, lines[0].Tier);
+        Assert.Equal(AffixTier.Minor, lines[1].Tier);
     }
 }
