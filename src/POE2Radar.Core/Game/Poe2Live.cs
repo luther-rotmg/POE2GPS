@@ -1084,11 +1084,14 @@ public sealed class Poe2Live
     private bool TryReadMapElement(nint el, out bool visible, out float shiftX, out float shiftY, out float zoom)
     {
         visible = false; shiftX = shiftY = zoom = 0;
-        if (!_reader.TryReadStruct<float>(el + Poe2.MapUiElement.DefaultShift + 4, out var dsy) || dsy != -20f) return false;
-        _reader.TryReadStruct<float>(el + Poe2.MapUiElement.Shift, out shiftX);
-        _reader.TryReadStruct<float>(el + Poe2.MapUiElement.Shift + 4, out shiftY);
-        _reader.TryReadStruct<float>(el + Poe2.MapUiElement.Zoom, out zoom);
-        visible = IsVisible(el);
+        if (_reader.TryReadBytes(el, _mapBody) < _mapBody.Length) return false;
+        // DefaultShift.y guard (must be -20) — same gate as before, now from the buffer
+        if (BitConverter.ToSingle(_mapBody, Poe2.MapUiElement.DefaultShift + 4) != -20f) return false;
+        shiftX = BitConverter.ToSingle(_mapBody, Poe2.MapUiElement.Shift);
+        shiftY = BitConverter.ToSingle(_mapBody, Poe2.MapUiElement.Shift + 4);
+        zoom   = BitConverter.ToSingle(_mapBody, Poe2.MapUiElement.Zoom);
+        var flags = BitConverter.ToUInt32(_mapBody, Poe2.UiElement.Flags);
+        visible = (flags & (1u << Poe2.UiElement.FlagVisibleBit)) != 0;   // mirror IsVisible's exact bit test
         return true;
     }
 
