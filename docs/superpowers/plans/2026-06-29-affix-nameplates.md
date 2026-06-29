@@ -355,31 +355,47 @@ git commit -m "feat(radar): world-thread BuildAffixSpecs + publish AffixSpecs in
 
 ---
 
-## Task 4: RenderContext plumbing
+## Task 4: AffixNameplateTarget frame + RenderContext plumbing
 
-**Files:** Modify `src/POE2Radar.Overlay/Overlay/RenderContext.cs` (two trailing optional params) and `src/POE2Radar.Overlay/RadarApp.cs` (the `Tick()` RenderContext construction ~line 1193).
+**Files:** Modify `src/POE2Radar.Overlay/RadarApp.cs` (new `AffixNameplateTarget` type beside `HpBarTarget`; new `_affixFrame` field; build it in `Tick()` from `snap.AffixSpecs`) and `src/POE2Radar.Overlay/Overlay/RenderContext.cs` (two trailing optional params).
 
-**Interfaces produced (consumed by Task 5):** `RenderContext.AffixSpecs` (`IReadOnlyList<AffixNameplateSpec>?`) and `RenderContext.AffixNameplates` (`Config.AffixNameplateSettings?`).
+**This mirrors the proven HP-bar render path EXACTLY** (the world-thread `AffixNameplateSpec` from Task 3 STAYS private — no visibility change): `snap.AffixSpecs` → `Tick()` reads each mob's live world pos via `_liveRender.TryLiveBarAt` and builds a reusable `_affixFrame` of `AffixNameplateTarget` → `RenderContext.AffixTargets` → the renderer (Task 5) just projects the pre-read world pos. This is identical to `snap.HpSpecs → _hpFrame (HpBarTarget) → ctx.HpBarTargets`.
 
-- [ ] **Step 1: Add two trailing optional parameters** to the `RenderContext` record (after `ZoneSummaryHud`, so all existing call sites still compile):
+**Interfaces produced (consumed by Task 5):** `AffixNameplateTarget(POE2Radar.Core.Game.Vector3 World, AffixLine[] Lines)` (mirror `HpBarTarget`'s visibility/location); `RenderContext.AffixTargets` (`IReadOnlyList<AffixNameplateTarget>?`) and `RenderContext.AffixNameplates` (`Config.AffixNameplateSettings?`).
+
+- [ ] **Step 1: Define `AffixNameplateTarget`.** Find `HpBarTarget`'s definition (the accessible render-target type carried by `RenderContext.HpBarTargets`) and add an analogous type right beside it, SAME visibility + namespace/location:
 ```csharp
-    IReadOnlyList<AffixNameplateSpec>?    AffixSpecs         = null,
+... AffixNameplateTarget(POE2Radar.Core.Game.Vector3 World, AffixLine[] Lines);
+```
+Use the Core blittable `Vector3` (exactly what `TryLiveBarAt` outputs) and `AffixLine` from `POE2Radar.Core.Game`.
+
+- [ ] **Step 2: Build the per-frame target list in `Tick()`.** Find the existing `_hpFrame` reusable-list field and its build loop in `Tick()` (it `_hpFrame.Clear()`s, loops `snap.HpSpecs`, calls `_liveRender.TryLiveBarAt(spec.Render, spec.Life, out var w, ...)`, adds `HpBarTarget`s). Add a sibling field `private readonly List<AffixNameplateTarget> _affixFrame = new();` and, immediately after the `_hpFrame` loop, an analogous loop (life arg = 0 → position only, skips the HP read):
+```csharp
+_affixFrame.Clear();
+if (snap.AffixSpecs is { Count: > 0 } affixSpecs && _settings.AffixNameplates.Enabled)
+{
+    foreach (var spec in affixSpecs)
+        if (_liveRender.TryLiveBarAt(spec.Render, 0, out var w, out _, out _))
+            _affixFrame.Add(new AffixNameplateTarget(w, spec.Lines));
+}
+```
+Match the EXACT `_hpFrame` clear/guard idiom (e.g. if `_hpFrame` is only built inside an `in-game`/`worldFresh` block, place the `_affixFrame` build in the same block).
+
+- [ ] **Step 3: Add two trailing optional params to `RenderContext`** (after `ZoneSummaryHud`, so existing call sites compile):
+```csharp
+    IReadOnlyList<AffixNameplateTarget>?  AffixTargets       = null,
     Config.AffixNameplateSettings?        AffixNameplates    = null);
 ```
-`AffixNameplateSpec` is defined in `RadarApp.cs`; reference it as `RadarApp.AffixNameplateSpec` if it's nested/private, OR (cleaner) move `AffixNameplateSpec` to a shared visibility. **Decision: make `AffixNameplateSpec` an `internal` top-level record in `RadarApp.cs`'s namespace** (change `private readonly record struct` → `internal readonly record struct` and move it out of the class if it's nested) so `RenderContext` can name it. Confirm against the real `HpBarSpec` visibility — if `HpBarSpec` is already referenced by `RenderContext` (it carries `HpBarTarget`), follow that exact pattern.
-
-- [ ] **Step 2: Wire the construction** in `Tick()` (RadarApp.cs ~line 1193, where the `RenderContext(...)` is built from `snap`). Add the two named args at the end:
+- [ ] **Step 4: Wire the `Tick()` RenderContext construction** — mirror exactly how `HpBarTargets: _hpFrame` is passed; add the two named args:
 ```csharp
-    AffixSpecs: worldFresh ? snap.AffixSpecs : null,
+    AffixTargets: _affixFrame,
     AffixNameplates: _settings.AffixNameplates,
 ```
-(`worldFresh` is the existing zone-load guard used for `HpBarTargets`/`ItemLabels`.)
-
-- [ ] **Step 3: Build Overlay.** `dotnet build src/POE2Radar.Overlay/POE2Radar.Overlay.csproj -c Release` → 0/0.
-- [ ] **Step 4: Commit.**
+- [ ] **Step 5: Build Overlay.** `dotnet build src/POE2Radar.Overlay/POE2Radar.Overlay.csproj -c Release` → 0/0.
+- [ ] **Step 6: Commit.**
 ```bash
-git add src/POE2Radar.Overlay/Overlay/RenderContext.cs src/POE2Radar.Overlay/RadarApp.cs
-git commit -m "feat(render): carry AffixSpecs + AffixNameplateSettings in RenderContext"
+git add src/POE2Radar.Overlay/RadarApp.cs src/POE2Radar.Overlay/Overlay/RenderContext.cs
+git commit -m "feat(render): AffixNameplateTarget frame + carry it in RenderContext (HP-bar pattern)"
 ```
 
 ---
@@ -388,7 +404,7 @@ git commit -m "feat(render): carry AffixSpecs + AffixNameplateSettings in Render
 
 **Files:** Modify `src/POE2Radar.Overlay/Overlay/OverlayRenderer.cs` (new `DrawAffixNameplates` method; one call in `Render()` ~line 130).
 
-**Interfaces consumed:** `RenderContext.AffixSpecs`, `RenderContext.AffixNameplates`, `RenderContext.CameraMatrix`; `_liveRender.TryLiveBarAt(render, 0, out world, out _, out _)`. `_tf` (12pt Consolas), `_bPanel`, `_bStyle` brushes.
+**Interfaces consumed:** `RenderContext.AffixTargets` (already world-positioned in Tick — Task 4), `RenderContext.AffixNameplates`, `RenderContext.CameraMatrix`. `_tf` (12pt Consolas), `_bPanel`, `_bStyle` brushes. NO `TryLiveBarAt` call in the renderer — the world pos is pre-read in Tick.
 
 - [ ] **Step 1: Add `DrawAffixNameplates`.** Copy the camera-projection block **verbatim** from `DrawNameplates` (the index layout is non-standard — `cw` uses `m[3]/m[7]/m[11]/m[15]`, `cx` uses `m[0]/m[4]/m[8]/m[12]`, `cy` uses `m[1]/m[5]/m[9]/m[13]`):
 ```csharp
@@ -396,15 +412,15 @@ private void DrawAffixNameplates(ID2D1RenderTarget rt, RenderContext ctx)
 {
     var cfg = ctx.AffixNameplates;
     if (cfg is null || !cfg.Enabled) return;
-    if (ctx.CameraMatrix is not { } m || ctx.AffixSpecs is not { Count: > 0 } specs) return;
+    if (ctx.CameraMatrix is not { } m || ctx.AffixTargets is not { Count: > 0 } targets) return;
     float W = ctx.WindowWidth, H = ctx.WindowHeight;
     var deadly  = ColorFromHex(cfg.DeadlyColor,  ColItemText);
     var notable = ColorFromHex(cfg.NotableColor, ColItemText);
     var minor   = ColorFromHex(cfg.MinorColor,   ColItemText);
     const float lineH = 15f;
-    foreach (var spec in specs)
+    foreach (var t in targets)
     {
-        if (!_liveRender.TryLiveBarAt(spec.Render, 0, out var w, out _, out _)) continue;
+        var w = t.World;
         var cw = w.X*m[3] + w.Y*m[7] + w.Z*m[11] + m[15];
         if (cw <= 0.0001f) continue;
         var cxp = w.X*m[0] + w.Y*m[4] + w.Z*m[8] + m[12];
@@ -413,7 +429,7 @@ private void DrawAffixNameplates(ID2D1RenderTarget rt, RenderContext ctx)
         var sy = (0.5f - cyp/cw/2f) * H;
         if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
 
-        var lines = spec.Lines;
+        var lines = t.Lines;
         if (lines.Length == 0) continue;
         var longest = 0; foreach (var l in lines) if (l.Name.Length > longest) longest = l.Name.Length;
         float panelW = MathF.Max(60f, 4.5f * longest + 8f);
