@@ -184,6 +184,7 @@ public sealed class RadarApp : IDisposable
     // same reason HP bars re-read per frame).
     private readonly record struct ItemLabelSpec(nint Render, string Name, string Value, bool Highlight, bool ShowName);
     private readonly List<ItemLabel> _itemFrame = new();   // render-thread scratch (rebuilt per frame)
+    private readonly record struct AffixNameplateSpec(nint Render, AffixLine[] Lines);
     private IReadOnlyList<Poe2Live.Landmark> _landmarks = Array.Empty<Poe2Live.Landmark>(); // world only
     private Poe2Live.TerrainData? _terrain;                 // world only
     private int _charLevel;                                 // world only (published in the snapshot)
@@ -204,13 +205,14 @@ public sealed class RadarApp : IDisposable
         Poe2Live.TerrainData? Terrain,
         IReadOnlyList<HpBarSpec> HpSpecs,
         IReadOnlyList<ItemLabelSpec> ItemLabels,
+        IReadOnlyList<AffixNameplateSpec> AffixSpecs,
         IReadOnlyList<SelectedPath> SelectedPaths,
         IReadOnlyList<LegendEntry> Legend,
         IReadOnlyList<string> SelectedSnapshot)
     {
         public static readonly WorldSnapshot Empty = new(
             false, 0, 0, "", 0, Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), null,
-            Array.Empty<HpBarSpec>(), Array.Empty<ItemLabelSpec>(), Array.Empty<SelectedPath>(),
+            Array.Empty<HpBarSpec>(), Array.Empty<ItemLabelSpec>(), Array.Empty<AffixNameplateSpec>(), Array.Empty<SelectedPath>(),
             Array.Empty<LegendEntry>(), Array.Empty<string>());
     }
     private volatile WorldSnapshot _world = WorldSnapshot.Empty;
@@ -1353,6 +1355,9 @@ public sealed class RadarApp : IDisposable
         // Name labels for already-named ground drops (read-only; no economy lookups).
         var itemLabels = BuildItemLabels();
 
+        // Affix nameplates for elite monsters (shares the _resolveCache populated above).
+        var affixSpecs = BuildAffixSpecs();
+
         // Atlas F10 route — ReadNodes is cheap when the atlas is closed (it gates on the atlas
         // panel's visible bit before any whole-tree scan), so this is safe each world tick. Publishes
         // its own _atlasRender bundle.
@@ -1460,7 +1465,7 @@ public sealed class RadarApp : IDisposable
 
         // Publish the whole immutable world snapshot atomically for the render thread.
         _world = new WorldSnapshot(true, areaHash, areaLevel, areaCode, _charLevel,
-            _entities, _landmarks, _terrain, hpSpecs, itemLabels, _selectedPaths, _legend, _selectedSnapshot);
+            _entities, _landmarks, _terrain, hpSpecs, itemLabels, affixSpecs, _selectedPaths, _legend, _selectedSnapshot);
     }
 
     /// <summary>
@@ -1587,6 +1592,46 @@ public sealed class RadarApp : IDisposable
             labels.Add(new ItemLabelSpec(render, name, "", false, ShowName: true));
         }
         return labels;
+    }
+
+    /// <summary>
+    /// Build the affix-nameplate spec list (world rate): for each elite monster whose rarity is enabled
+    /// in AffixNameplates settings, call <see cref="MonsterAffixCatalog.Select"/> to filter its mod list
+    /// down to displayable <see cref="AffixLine"/>s, capture the Render component address, and emit a spec.
+    /// Shares the _resolveCache populated earlier this tick by BuildHpSpecs.
+    /// </summary>
+    private List<AffixNameplateSpec> BuildAffixSpecs()
+    {
+        var specs = new List<AffixNameplateSpec>();
+        var cfg = _settings.AffixNameplates;
+        if (!cfg.Enabled) return specs;
+        var threshold = cfg.Tier switch
+        {
+            "All" => AffixTier.Minor,
+            "NotableAndAbove" => AffixTier.Notable,
+            _ => AffixTier.Deadly,
+        };
+        var filter = new AffixFilter(threshold,
+            new HashSet<string>(cfg.AlwaysShow), new HashSet<string>(cfg.Hide),
+            cfg.DisplayAll, Math.Clamp(cfg.MaxLines, 1, 10));
+        foreach (var e in _entities)
+        {
+            if (e.Category != Poe2Live.EntityCategory.Monster) continue;
+            var on = e.Rarity switch
+            {
+                Poe2Live.Rarity.Magic  => cfg.ShowOnMagic,
+                Poe2Live.Rarity.Rare   => cfg.ShowOnRare,
+                Poe2Live.Rarity.Unique => cfg.ShowOnUnique,
+                _                      => false,
+            };
+            if (!on) continue;
+            if (e.ModList.Count == 0) continue;
+            var lines = MonsterAffixCatalog.Shared.Select(e.ModList, filter);
+            if (lines.Count == 0) continue;
+            if (!_live.TryBarComponents(e.Address, out var render, out _)) continue;
+            specs.Add(new AffixNameplateSpec(render, System.Linq.Enumerable.ToArray(lines)));
+        }
+        return specs;
     }
 
     /// <summary>Parse a "#RRGGBB" hex colour to packed 0xFFRRGGBB once (opacity = 1, matching the old
