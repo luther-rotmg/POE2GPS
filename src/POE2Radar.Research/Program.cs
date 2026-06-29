@@ -1631,9 +1631,32 @@ static int RunXp(ProcessHandle process, MemoryReader reader)
 //
 //   Usage:  <Research.exe> --quest            baseline (save 0x5000 bytes of ServerDataStructure)
 //            <Research.exe> --quest --diff     diff current vs baseline; print changed dwords
+// ── Quest region record (used in both baseline save and diff) ────────────────────────────────
+// Each record describes a captured memory region. The "label" is a human-readable tag used
+// in diff output; "sdsVecOff" / "vecElemIdx" / "objAddr" track the provenance chain so the
+// diff can emit per-candidate labels like "vec@SDS+0xC0 elem[7] obj@0x.... +0x18".
+//
+// File format (magic "POE2QST2", version byte 2):
+//   [0..7]   magic  "POE2QST2"  (8 bytes)
+//   [8]      version byte (= 2)
+//   [9..16]  SDS base address (u64 LE)
+//   [17..20] region count (u32 LE)
+//   for each region:
+//     [0..7]  address (u64 LE)
+//     [8..11] len (u32 LE)
+//     [12..]  label length (u16 LE) + label UTF-8
+//     [..]    raw bytes (len bytes)
+//   (regions are contiguous, no padding)
 static int RunQuest(ProcessHandle process, MemoryReader reader, bool diff)
 {
-    const int Window = 0x5000;   // covers the +0x3030 known-lead with margin
+    const int SdsWindow      = 0x5000;   // Region 0: SDS header scan window
+    const int VecScanLimit   = 0x0600;   // Only detect vectors in the first 0x600 bytes of SDS
+    const int MaxVecCapBytes = 0x4000;   // Per-vector element array cap
+    const int ObjCapBytes    = 0x0200;   // Per-object capture size
+    const int MaxObjsTotal   = 2048;     // Total object regions cap
+    const int MaxElemsPerVec = 256;      // Element follow-cap per vector
+    const long MaxTotalBytes = 4 * 1024 * 1024; // 4 MB total cap
+
     var snapPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "poe2_quest_baseline.bin");
 
     var (_, _, ai, _) = ResolveChain(process, reader);
@@ -1643,7 +1666,6 @@ static int RunQuest(ProcessHandle process, MemoryReader reader, bool diff)
     Console.WriteLine($"AreaInstance 0x{ai:X}  ServerData(+0x598) 0x{serverData:X}");
     if (serverData == 0) { Console.Error.WriteLine("ServerData null — wrong offset or not in game."); return 1; }
 
-    // Resolve ServerDataStructure via the same helper used by --inventory.
     var sdStruct = ResolveServerDataStruct(reader, serverData);
     if (sdStruct == 0) { Console.Error.WriteLine("Could not resolve ServerDataStructure (PlayerServerData vec at ServerData+0x48)."); return 1; }
     Console.WriteLine($"ServerDataStructure 0x{sdStruct:X}");
@@ -1651,80 +1673,203 @@ static int RunQuest(ProcessHandle process, MemoryReader reader, bool diff)
     // ── DIFF mode ──────────────────────────────────────────────────────────────
     if (diff)
     {
-        if (!System.IO.File.Exists(snapPath))
+        byte[] raw;
+        try { raw = System.IO.File.ReadAllBytes(snapPath); }
+        catch { Console.Error.WriteLine("No baseline found — run --quest first."); return 1; }
+
+        // Validate magic + version
+        if (raw.Length < 21 ||
+            raw[0] != 'P' || raw[1] != 'O' || raw[2] != 'E' || raw[3] != '2' ||
+            raw[4] != 'Q' || raw[5] != 'S' || raw[6] != 'T' || raw[7] != '2' ||
+            raw[8] != 2)
         {
-            Console.Error.WriteLine("No baseline found — run --quest first.");
+            Console.Error.WriteLine("Baseline file has wrong magic/version — re-run --quest to create a fresh baseline.");
             return 1;
         }
-        var raw = System.IO.File.ReadAllBytes(snapPath);
-        if (raw.Length < 8 + 4)
-        {
-            Console.Error.WriteLine("Baseline file too small / stale — re-run --quest.");
-            return 1;
-        }
-        var baseAddr = (nint)BitConverter.ToInt64(raw, 0);
-        var baseline = raw[8..];
 
-        // Read current window.
-        var cur = new byte[baseline.Length];
-        var got = reader.TryReadBytes(sdStruct, cur);
-        var n = Math.Min(got, baseline.Length);
-
-        Console.WriteLine($"Diffing {n} bytes (SDS baseline=0x{baseAddr:X}, current=0x{sdStruct:X})");
-        Console.WriteLine("(churn filter: dwords whose containing 8-byte qword looks like a heap pointer in either snapshot are skipped)");
+        var baselineSdsAddr = (nint)BitConverter.ToInt64(raw, 9);
+        var regionCount     = (int)BitConverter.ToUInt32(raw, 17);
+        Console.WriteLine($"Baseline SDS base: 0x{baselineSdsAddr:X}  Current SDS base: 0x{sdStruct:X}  Regions: {regionCount}");
+        Console.WriteLine("(churn filter: dwords whose aligned 8-byte qword looks like a 64-bit pointer in either snapshot are skipped)");
         Console.WriteLine();
 
-        var candidates = 0;
-        var churned    = 0;
-        var total      = 0;
+        int pos = 21;
+        int regionsDiffed  = 0;
+        int regionsSkipped = 0;
+        int totalChanged   = 0;
+        int totalCandidates = 0;
 
-        for (var off = 0; off + 4 <= n; off += 4)
+        for (var ri = 0; ri < regionCount; ri++)
         {
-            var before = BitConverter.ToUInt32(baseline, off);
-            var after  = BitConverter.ToUInt32(cur,      off);
-            if (before == after) continue;
-            total++;
+            if (pos + 14 > raw.Length) break;
+            var regionAddr = (nint)BitConverter.ToInt64(raw, pos);      pos += 8;
+            var regionLen  = (int)BitConverter.ToUInt32(raw, pos);      pos += 4;
+            var labelLen   = (int)BitConverter.ToUInt16(raw, pos);      pos += 2;
+            var label      = System.Text.Encoding.UTF8.GetString(raw, pos, labelLen); pos += labelLen;
+            var baseline   = raw.AsSpan(pos, Math.Min(regionLen, raw.Length - pos)).ToArray(); pos += regionLen;
 
-            // Pointer-churn filter: read the containing aligned 8-byte qword from both snapshots.
-            // If either qword is > 0xFFFFFFFF it looks like a 64-bit heap/module pointer — skip.
-            var qOff = off & ~7;   // align down to 8
-            var qBefore = (qOff + 8 <= baseline.Length) ? BitConverter.ToUInt64(baseline, qOff) : 0UL;
-            var qAfter  = (qOff + 8 <= cur.Length)      ? BitConverter.ToUInt64(cur,      qOff) : 0UL;
-            if (qBefore > 0xFFFF_FFFFUL || qAfter > 0xFFFF_FFFFUL)
+            // Re-read the same address from live process
+            var cur = new byte[baseline.Length];
+            var got = reader.TryReadBytes(regionAddr, cur);
+            if (got < 4)
             {
-                churned++;
+                Console.WriteLine($"  (region {label} @0x{regionAddr:X} no longer readable — skipped)");
+                regionsSkipped++;
                 continue;
             }
 
-            // Candidate — print it.
-            var line = $"  SDS+0x{off:X4} : 0x{before:X8} -> 0x{after:X8}   ({before} -> {after})";
-            if (before == 0 && after != 0) line += "  <<< flag SET";
-            else if (before != 0 && after == 0) line += "  <<< flag CLEARED";
-            if (off == 0x3030) line += "  <<< KNOWN QUEST-FLAG LEAD";
-            Console.WriteLine(line);
-            candidates++;
+            regionsDiffed++;
+            var n = Math.Min(got, baseline.Length);
+
+            for (var off = 0; off + 4 <= n; off += 4)
+            {
+                var before = BitConverter.ToUInt32(baseline, off);
+                var after  = BitConverter.ToUInt32(cur,      off);
+                if (before == after) continue;
+                totalChanged++;
+
+                // Pointer-churn filter: if the containing aligned 8-byte qword looks like a 64-bit
+                // heap pointer in either snapshot, skip — that's a relocated allocation address.
+                var qOff    = off & ~7;
+                var qBefore = (qOff + 8 <= baseline.Length) ? BitConverter.ToUInt64(baseline, qOff) : 0UL;
+                var qAfter  = (qOff + 8 <= cur.Length)      ? BitConverter.ToUInt64(cur,      qOff) : 0UL;
+                if (qBefore > 0xFFFF_FFFFUL || qAfter > 0xFFFF_FFFFUL) continue;
+
+                // Emit candidate
+                var line = $"  {label} +0x{off:X4} : 0x{before:X8} -> 0x{after:X8}  ({before} -> {after})";
+                if (before == 0 && after != 0) line += "  <<< flag SET";
+                else if (before != 0 && after == 0) line += "  <<< flag CLEARED";
+                // Highlight the known SDS+0x3030 lead when it falls in Region 0
+                if (ri == 0 && off == 0x3030) line += "  <<< KNOWN QUEST-FLAG LEAD";
+                Console.WriteLine(line);
+                totalCandidates++;
+            }
         }
 
         Console.WriteLine();
-        Console.WriteLine($"Summary: {total} dwords changed total; {churned} skipped as pointer churn; {candidates} candidates.");
-        if (candidates == 0)
-            Console.WriteLine("Zero candidates — either no quest step was completed between runs, or the flag lies outside the 0x5000 window.");
+        Console.WriteLine($"Summary: {regionsDiffed} regions diffed, {regionsSkipped} skipped (unreadable), " +
+                          $"{totalChanged} dwords changed total, {totalCandidates} candidates after churn filter.");
+        if (totalCandidates == 0)
+            Console.WriteLine("Zero candidates — either no quest step was completed between runs, the flag " +
+                              "lies outside the captured regions, or it only changed pointer-sized fields (churn-filtered).");
         return 0;
     }
 
     // ── BASELINE mode ──────────────────────────────────────────────────────────
-    var buf = new byte[Window];
-    var read = reader.TryReadBytes(sdStruct, buf);
-    Console.WriteLine($"Read 0x{read:X} bytes from ServerDataStructure.");
+    // Collect a list of (address, label, bytes) region records.
+    var regions = new System.Collections.Generic.List<(nint Addr, string Label, byte[] Data)>();
 
+    // Region 0: SDS header window
+    var sdsHeaderBuf = new byte[SdsWindow];
+    var sdsRead = reader.TryReadBytes(sdStruct, sdsHeaderBuf);
+    if (sdsRead < 16) { Console.Error.WriteLine("Could not read SDS header bytes."); return 1; }
+    regions.Add((sdStruct, "SDS-header", sdsHeaderBuf[..sdsRead]));
+    Console.WriteLine($"Region 0 (SDS-header): read 0x{sdsRead:X} bytes from 0x{sdStruct:X}");
+
+    // Detect std::vector<8-byte> candidates in SDS[0x0000..0x0600]
+    // A plausible heap pointer: value > 0x10000, < 0x7FF000000000, not in the game module
+    // range (we accept all user-mode non-null addresses as "plausible" — the module range
+    // exclusion is hard to compute portably and the count/span checks are the real guard).
+    static bool IsPlausibleHeapPtr(ulong v) =>
+        v > 0x10000UL && v < 0x7FF0_0000_0000UL;
+
+    var vecOffsets = new System.Collections.Generic.List<(int SdsOff, nint Begin, nint End, int ElemCount)>();
+    var scanLimit  = Math.Min(VecScanLimit, sdsRead - 16);
+    for (var o = 0; o + 16 <= scanLimit; o += 8)
+    {
+        var begin = (ulong)BitConverter.ToInt64(sdsHeaderBuf, o);
+        var end   = (ulong)BitConverter.ToInt64(sdsHeaderBuf, o + 8);
+        if (!IsPlausibleHeapPtr(begin) || !IsPlausibleHeapPtr(end)) continue;
+        if (end <= begin) continue;
+        var span = end - begin;
+        if (span % 8 != 0) continue;
+        var count = (long)(span / 8);
+        if (count is < 1 or > 4096) continue;
+        vecOffsets.Add((o, (nint)begin, (nint)end, (int)count));
+    }
+
+    Console.WriteLine($"Detected {vecOffsets.Count} std::vector candidate(s) in SDS+0x0000..+0x{scanLimit:X}:");
+    foreach (var (so, vb, ve, vc) in vecOffsets)
+        Console.WriteLine($"  SDS+0x{so:X4}  begin=0x{vb:X}  end=0x{ve:X}  count={vc}");
+
+    long totalBytes = sdsRead;
+    var seenObjAddrs = new System.Collections.Generic.HashSet<nint>();
+    int objRegionCount = 0;
+
+    foreach (var (sdsOff, vecBegin, vecEnd, elemCount) in vecOffsets)
+    {
+        // Capture the element array (capped at MaxVecCapBytes)
+        var capLen  = (int)Math.Min((long)(vecEnd - vecBegin), MaxVecCapBytes);
+        var elemBuf = new byte[capLen];
+        var elemRead = reader.TryReadBytes(vecBegin, elemBuf);
+        if (elemRead < 8) continue; // nothing readable
+
+        var vecLabel = $"vec@SDS+0x{sdsOff:X4}[{elemCount}]";
+        regions.Add((vecBegin, vecLabel, elemBuf[..elemRead]));
+        totalBytes += elemRead;
+
+        // Follow elements if they look like heap pointers (pointer array)
+        var followCount = Math.Min(elemCount, MaxElemsPerVec);
+        var allPointers = true;
+        // Quick check: does at least one element look like a pointer?
+        // (We'll re-check per-element below anyway)
+        for (var ei = 0; ei < Math.Min(followCount, elemRead / 8); ei++)
+        {
+            var ep = (ulong)BitConverter.ToInt64(elemBuf, ei * 8);
+            if (!IsPlausibleHeapPtr(ep)) { allPointers = false; break; }
+        }
+
+        if (!allPointers) continue; // scalar array — don't follow
+
+        for (var ei = 0; ei < followCount && ei * 8 + 8 <= elemRead; ei++)
+        {
+            if (objRegionCount >= MaxObjsTotal) break;
+            if (totalBytes >= MaxTotalBytes) break;
+
+            var ep = (nint)BitConverter.ToInt64(elemBuf, ei * 8);
+            if (!IsPlausibleHeapPtr((ulong)ep)) continue;
+            if (!seenObjAddrs.Add(ep)) continue; // dedup
+
+            var objBuf  = new byte[ObjCapBytes];
+            var objRead = reader.TryReadBytes(ep, objBuf);
+            if (objRead < 4) continue;
+
+            var objLabel = $"vec@SDS+0x{sdsOff:X4} elem[{ei}] obj@0x{ep:X}";
+            regions.Add((ep, objLabel, objBuf[..objRead]));
+            totalBytes += objRead;
+            objRegionCount++;
+        }
+    }
+
+    Console.WriteLine($"Object regions captured: {objRegionCount}  Total captured: {totalBytes / 1024} KB  Total regions: {regions.Count}");
+
+    // ── Persist baseline ────────────────────────────────────────────────────────
+    // Format: magic(8) + version(1) + sdsBase(8) + regionCount(4) + regions...
+    // Each region: address(8) + len(4) + labelLen(2) + label(labelLen) + bytes(len)
     try
     {
-        using var fs = System.IO.File.Create(snapPath);
-        // Prepend the 8-byte ServerDataStructure base address so the diff can report absolute offsets.
-        fs.Write(BitConverter.GetBytes((long)sdStruct));
-        fs.Write(buf, 0, read);
+        using var fs = new System.IO.FileStream(snapPath, System.IO.FileMode.Create, System.IO.FileAccess.Write);
+        using var bw = new System.IO.BinaryWriter(fs, System.Text.Encoding.UTF8, leaveOpen: false);
+
+        bw.Write(new byte[] { (byte)'P',(byte)'O',(byte)'E',(byte)'2',
+                               (byte)'Q',(byte)'S',(byte)'T',(byte)'2' });
+        bw.Write((byte)2);                  // version
+        bw.Write((long)sdStruct);           // SDS base (8 bytes)
+        bw.Write((uint)regions.Count);      // region count (4 bytes)
+
+        foreach (var (addr, label, data) in regions)
+        {
+            bw.Write((long)addr);
+            bw.Write((uint)data.Length);
+            var labelBytes = System.Text.Encoding.UTF8.GetBytes(label);
+            bw.Write((ushort)labelBytes.Length);
+            bw.Write(labelBytes);
+            bw.Write(data);
+        }
+
+        Console.WriteLine();
         Console.WriteLine($"BASELINE SAVED: {snapPath}");
-        Console.WriteLine($"  Base: 0x{sdStruct:X}   Bytes: {read} (0x{read:X})");
+        Console.WriteLine($"  SDS base: 0x{sdStruct:X}  Regions: {regions.Count}  File size: {fs.Length / 1024} KB");
     }
     catch (Exception ex)
     {
@@ -1733,8 +1878,7 @@ static int RunQuest(ProcessHandle process, MemoryReader reader, bool diff)
     }
 
     Console.WriteLine();
-    Console.WriteLine("Now COMPLETE your quest step in-game, then run:");
-    Console.WriteLine("    --quest --diff");
+    Console.WriteLine("BASELINE SAVED. Complete ONE quest objective in-game (pick up / kill / reach), then run --quest --diff.");
     return 0;
 }
 
