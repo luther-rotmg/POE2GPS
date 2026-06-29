@@ -3,6 +3,16 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.11.0] — 2026-06-28
+### Changed
+- **Performance v2 — fewer memory reads per tick** (still strictly read-only; *no change to what the overlay reads or draws*): a second optimization pass aimed at ReadProcessMemory syscalls/sec on the world hot path.
+  - **One bucket read per new monster instead of ~6** — each entity's components (render / position / life / rarity / minimap-icon / chest) now resolve in a single pass. The biggest per-pack reduction.
+  - **Cached, slowly-refreshed hostility** — friend/foe is read once per monster and re-checked about once a second (so enemy↔friendly conversions still flip), instead of every tick — a large saving on dense maps.
+  - **Cached opened chests**, **one bulk read for the minimap element** (was 5 reads/frame), **bulk mod reads**, and the world thread's **player vital-offset latch** no longer re-reads three vitals every tick.
+  - **Fewer allocations** — the per-tick entity list is reused (triple-buffered), the terrain unpack buffer is pooled via `ArrayPool`, and mod de-duplication is now O(n).
+### Added
+- **`rpmPerSec` in `/state`** — a live reads/sec readout (next to `worldMs` / `renderMs`) so you can watch the footprint yourself.
+
 ## [0.10.0] — 2026-06-28
 ### Added
 - **Custom keybinds** — remap the keyboard hotkeys (F6/F7/F9/F10/F12 and the Ctrl+Alt cycle/menu/reset binds) from a new **Keybinds** card in Settings. Still 100% read-only — the overlay only *reads* the keys you choose, never sends input. (Controller R3/L3 and the slot-jump digits stay fixed.)
