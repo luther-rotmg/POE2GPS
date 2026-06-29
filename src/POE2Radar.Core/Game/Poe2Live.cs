@@ -386,6 +386,15 @@ public sealed class Poe2Live
         if (mana >= 0) _manaOff = mana;
     }
 
+    /// <summary>World-thread entry point: resolve the Life component (cached) and run ONLY the
+    /// vital-offset latch (the side-effect that self-heals the Health offset backing monster HP reads).
+    /// Reads no VitalStruct values — no HP/Mana/ES syscalls. Call only from the instance's owning thread.</summary>
+    public void EnsurePlayerVitalOffsets(nint localPlayer)
+    {
+        if (localPlayer != _plLifeFor) { _plLifeFor = localPlayer; _plLife = ResolveComponent(localPlayer, "Life"); }
+        EnsureVitalOffsets(_plLife);
+    }
+
     /// <summary>
     /// Local player HP/mana as current vs. *unreserved* max (auras reserve part of the pool, so
     /// raw Max would understate the real % full). Drives the auto-flask thresholds. Returns null

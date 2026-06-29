@@ -1236,11 +1236,11 @@ public sealed class RadarApp : IDisposable
         var player = _live.PlayerGrid(localPlayer) ?? NumVec2.Zero;
         _worldPlayer = player;   // for off-thread replans (EnqueueReplan)
 
-        // Tick the player's vitals on THIS (world) reader too — not for the flask (that's on the render
+        // Run the vital-offset latch on THIS (world) reader — not for the flask (that's on the render
         // thread's _liveRender), but for the side effect: it self-heals _live's Health-offset (drift) which
-        // backs the monster HP reads in Entities()/ReadHp. Pre-split the one _live instance did both, so the
-        // heal benefited monster bars; with split readers, _live must heal independently. Result discarded.
-        _ = _live.PlayerVitals(localPlayer);
+        // backs the monster HP reads in Entities()/ReadHp. EnsurePlayerVitalOffsets does this with no
+        // VitalStruct reads (no HP/Mana/ES syscalls), saving 3 RPM calls per world tick.
+        _live.EnsurePlayerVitalOffsets(localPlayer);
         _charLevel = _live.PlayerLevel(localPlayer);   // changes ~never; 30 Hz is plenty
 
         // RPM rate: update the windowed reads/sec once per second (all three reader stacks; _atlas rides _reader).
