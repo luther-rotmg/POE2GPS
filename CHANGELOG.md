@@ -3,6 +3,15 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.12.0] — 2026-06-29
+### Added
+- ✨ **Affix nameplates** *(opt-in — off by default)* — see an elite monster's dangerous **modifiers floating right above its head**, on screen, **no mouse hover needed**. Each rare/unique shows *its own* affixes, color-coded by danger.
+  - 🎯 **Danger tiers** — a curated masterlist turns raw ids into readable names (`MonsterPhysicalDamageAura1` → "Physical Damage Aura") and ranks them **Deadly · Notable · Minor**; anything uncurated is auto-prettified, so nothing is ever missed.
+  - 🎛️ **Customizable filters** — pick a **tier threshold** (Deadly only · Deadly + Notable · All), add per-affix **Always-show / Hide** overrides, or flip **Display all** to show every affix. Choose which rarities count (Rare / Unique / Magic).
+  - Turn it on in **Settings → Affix nameplates** (ships collapsed). 100% read-only — it only reads mods PoE2 already exposes and draws text; never sends input.
+### Fixed
+- 🔧 **RuneStation offsets** re-validated for the 2026-06-25 patch (folded from upstream) — runeshape-monolith reads were stale (`ListenerSub 0x98→0xA0`, `RuneStride 0x6c→0x68`).
+
 ## [0.11.0] — 2026-06-28
 ### Changed
 - **Performance v2 — fewer memory reads per tick** (still strictly read-only; *no change to what the overlay reads or draws*): a second optimization pass aimed at ReadProcessMemory syscalls/sec on the world hot path.

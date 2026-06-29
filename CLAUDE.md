@@ -131,7 +131,11 @@ is rescaled by liveZoom/calibZoom each frame. See `resources/atlas-research-note
   `+0x00`, Slot `+0x08`. Item = Entity; Mods rarity `+0x94`/identified `+0x90`, affix vecs Implicit `+0xA0`/
   Explicit `+0xB8`/Enchant `+0xD0` (ModArrayStruct stride `0x40`, `+0x28` → Mods.dat row → first qword →
   UTF-16 internal mod id); Stack count `+0x18`; RenderItem art `+0x28`.
-- **Still TBD:** camera world→screen matrix (for world-space nameplates); friendly area Name string.
+- **Camera world→screen matrix (✓ solved & live):** `InGameState +0x368` → Camera `+0x1A0`, 64-byte
+  row-major Matrix4x4 (`Poe2Live.CameraMatrix`). Drives world-space HP bars, item labels, and affix
+  nameplates via `OverlayRenderer.DrawNameplates`/`DrawItemLabels`/`DrawAffixNameplates` (NOT a perspective
+  homography — direct `screen = project(world * M)` with this codebase's exact index layout).
+- **Still TBD:** friendly area Name string.
 
 ## Dependencies
 - `Vortice.Direct2D1` (overlay rendering). Targets `net10.0-windows`, x64.

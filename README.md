@@ -102,6 +102,7 @@ Pick your next objective, fast-cycle to the boss across the zone, pop the menu o
 ## 🗺️ Features
 
 - 🛰️ **Entity radar** — enemies, NPCs, chests, transitions, players, and POIs; optional world-space HP bars; dangerous rare/magic mods flagged.
+- 🩸 **Affix nameplates** *(opt-in, off by default)* — floats an elite monster's dangerous **modifiers above its head**, on screen, no hover — color-coded by danger (**Deadly · Notable · Minor**) from a curated masterlist (anything new is auto-named). Filter by **tier threshold**, add per-affix **Always-show / Hide**, or **Display all**; choose which rarities. Read-only — reads the mods PoE2 already exposes and draws text.
 - 🧱 **Terrain + map overlay** — the walkable-terrain mask and entity dots, projected onto the in-game map.
 - 📍 **Tile landmarks** — boss arenas, transitions, reward rooms, surfaced the moment you enter a zone, with community-curated names.
 - 🧭 **Navigation** — pick any landmark/POI/entity and get a smoothed A* route drawn to it (on the map, or as world waypoints). Multi-select, each its own color. **Cycle** the active target hands-free — keyboard (`Ctrl+Alt+]`/`[`) or **[fully from your controller](#-full-controller-support--no-keyboard-needed)** (R3/L3 to step, hold to fast-cycle). A saved **auto-nav** pattern list re-selects matching targets on zone entry. **Draw-only — never sends input to the game.**
