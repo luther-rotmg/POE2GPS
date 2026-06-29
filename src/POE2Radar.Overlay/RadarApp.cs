@@ -2524,6 +2524,63 @@ public sealed class RadarApp : IDisposable
         };
     }
 
+    // Built-in "Map Targets" preset (#6) — high-value maps to ring/route/arrow on first open, matched by
+    // exact internal MapId (reliable via the maps.json layer). On=true → seeded as an active default;
+    // off targets are not seeded (reserved for future dashboard discovery). Ported from Sikaka v0.16.0.
+    private static readonly (string Code, string Color, bool On)[] BuiltInAtlasTargets =
+    {
+        ("MapUberBoss_StoneCitadel",   "#e0b341", true),   // Citadel gold
+        ("MapUberBoss_IronCitadel",    "#e0b341", true),
+        ("MapUberBoss_CopperCitadel",  "#e0b341", true),
+        ("MapMothersoul_Male",         "#e0b341", true),   // Halls
+        ("MapMothersoul_Female",       "#e0b341", true),
+        ("MapDerelictMansion",         "#058f3b", true),   // green specials
+        ("MapCavernCity",              "#058f3b", true),
+        ("MapVaalVault",               "#058f3b", true),
+        ("MapUberBoss_JadeCitadel",    "#058f3b", true),
+        ("MapUniqueUntaintedParadise", "#ff9933", false),  // orange uniques (off by default — not seeded)
+        ("MapUniqueCastaway",          "#ff9933", false),
+    };
+
+    /// <summary>One-time seed of the built-in "Map Targets" preset (#6): Citadels/Halls/uniques, matched by
+    /// exact internal MapId and resolved to live display names so rules stay editable in the dashboard.
+    /// ADDITIVE: only adds a tag/colour if not already present — never clears or overrides user rules.
+    /// Gated on <see cref="Poe2Atlas.AllTagsResolved"/> so the full node set is available. Sets
+    /// <see cref="RadarSettings.AtlasTargetsSeeded"/> + <see cref="RadarSettings.AtlasRulesInitialized"/>
+    /// and saves; subsequent calls are no-ops via the guard in BuildAtlasMarks.</summary>
+    private void SeedAtlasDefaults(IReadOnlyList<Poe2Atlas.AtlasNodeLive> nodes)
+    {
+        if (!_atlas.AllTagsResolved) return;
+
+        // Resolve each built-in MapId to its live display name (so dashboard rules use the friendly name).
+        var byCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var n in nodes)
+            if (!string.IsNullOrEmpty(n.MapCode) && !string.IsNullOrEmpty(n.MapName))
+                byCode.TryAdd(n.MapCode, n.MapName);
+
+        // Ensure lists are initialized (they should be, but guard against null from older configs).
+        _settings.AtlasHighlightTags ??= new List<string>();
+        _settings.AtlasNavTags       ??= new List<string>();
+        _settings.AtlasArrowTags     ??= new List<string>();
+
+        static void AddOnce(List<string> list, string name) { if (!list.Contains(name)) list.Add(name); }
+
+        foreach (var (code, color, on) in BuiltInAtlasTargets)
+        {
+            if (!on || !byCode.TryGetValue(code, out var name)) continue;
+            AddOnce(_settings.AtlasHighlightTags, name); // ring
+            AddOnce(_settings.AtlasNavTags,        name); // + auto-route
+            AddOnce(_settings.AtlasArrowTags,      name); // + off-screen arrow
+            // Additive colour: only write if no user-defined colour for this map already exists.
+            if (!_settings.AtlasHighlightColors.ContainsKey(name))
+                _settings.AtlasHighlightColors[name] = color;
+        }
+
+        _settings.AtlasTargetsSeeded  = true;
+        _settings.AtlasRulesInitialized = true; // locks out legacy Citadel-only re-seed too
+        _settings.Save();
+    }
+
     /// <summary>Read the live atlas nodes and rebuild the highlight marks + F10 route, publishing them as a
     /// single immutable <see cref="AtlasRender"/> the render thread reads lock-free. Runs on the world thread.
     /// Cheap when the atlas is closed (ReadNodes returns empty via its visibility gate). Rides over transient
@@ -2611,6 +2668,14 @@ public sealed class RadarApp : IDisposable
                 _settings.AtlasRulesInitialized = true;
                 _settings.Save();
             }
+        }
+
+        // One-time "Map Targets" preset (#6): additively seed Citadels/Halls/uniques by exact MapId,
+        // resolved to live display names so they're editable in the dashboard. Runs independently of the
+        // legacy Citadel seed above — the additive "only if absent" guard ensures no double-entry conflict.
+        if (!_settings.AtlasTargetsSeeded && _atlas.AllTagsResolved)
+        {
+            SeedAtlasDefaults(nodes);
         }
 
         // A node matches a rule set if its map name or one of its content tags is in the set; returns the

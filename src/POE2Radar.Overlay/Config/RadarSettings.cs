@@ -123,6 +123,9 @@ public sealed class RadarSettings
     // Seeded-defaults guard: false until the atlas rules have been initialized once (either by seeding
     // the Citadel defaults when nodes are first read, or by any dashboard edit). Stops re-seeding.
     public bool AtlasRulesInitialized { get; set; }
+    // Guard for the built-in "Map Targets" preset (#6): set true after SeedAtlasDefaults runs once
+    // (gated on AllTagsResolved). Never re-seeds — user edits from the dashboard persist independently.
+    public bool AtlasTargetsSeeded { get; set; }
     // DEBUG: draw EVERY atlas node (overriding the highlight-only rule) — for offset/coverage diagnostics.
     // Off by default: normally only nodes matching AtlasHighlightTags (or manually selected) are drawn.
     public bool AtlasDrawAll { get; set; } = false;
