@@ -1386,97 +1386,232 @@ static int RunInfo(ProcessHandle process, MemoryReader reader)
     return 0;
 }
 
-// ── XP: brute-scan the Player component for the current Experience field ──
-// Experience is a large monotonically-increasing uint64 (≈4.25e9 at level 100, so < 5e9 total).
-// The Level field is confirmed at Player+0x204. XP should be nearby; scan 0x1F0..0x300 in 8-byte
-// steps, print candidates (0 < value < 5_000_000_000), then repeat 3× with 5-second sleeps so
-// the field that INCREASES while mobs die is flagged. Kill a mob or two between passes.
+// ── XP: locate the player's current Experience field ──────────────────────────────────────────────
+// Experience is a large monotonically-increasing uint (≈4.25e9 at level 100).  It lives in the
+// SERVER-SIDE ServerDataStructure (same chain as --inventory), NOT in the in-zone Player component.
+// This probe scans BOTH:
+//
+//   PRIMARY:  ServerDataStructure +0x000..+0x4000 (4-byte dword scan, plausible XP range)
+//   FALLBACK: Player component     +0x1F0..+0x300  (original scan, kept for reference)
+//
+// Run 3 passes with 5-second sleeps between them.  KILL A MONSTER between passes — XP only changes
+// on kills.  Any dword whose value strictly INCREASED is tagged <<< XP candidate (increased).
 //
 //   Usage:  <Research.exe> --xp   (with PoE2 running, character in-game)
 static int RunXp(ProcessHandle process, MemoryReader reader)
 {
-    const ulong XpMax = 5_000_000_000UL;   // level-100 XP ceiling (≈4.25e9), generous headroom
-    const int   StartOff = 0x1F0;
-    const int   EndOff   = 0x300;
-    const int   Passes   = 3;
-    const int   SleepMs  = 5000;
+    // XP range: must be > 100 000 (excludes tiny scalars) and < 4 200 000 000 (level-100 ceiling).
+    const uint  XpMin    = 100_000U;
+    const uint  XpMax    = 4_200_000_000U;
+    // Float heuristic: skip dwords whose bit pattern is a "normal" finite IEEE-754 float in [0.01, 1e6].
+    // This cuts noise from floats that happen to be in-range as integers.
+    static bool LooksLikeFloat(uint bits)
+    {
+        // Reinterpret bits as float: finite, non-negative, and in the "boring scalar" band.
+        if ((bits & 0x7F800000u) == 0x7F800000u) return false; // inf / NaN — keep as int candidate
+        var f = BitConverter.UInt32BitsToSingle(bits);
+        return f >= 0.01f && f <= 1_000_000f;
+    }
 
+    const int   SdsStartOff = 0x000;
+    const int   SdsEndOff   = 0x4000;
+    const int   PlrStartOff = 0x1F0;
+    const int   PlrEndOff   = 0x300;
+    const int   Passes      = 3;
+    const int   SleepMs     = 5000;
+
+    // ── Resolve chain ──────────────────────────────────────────────────────────────────────────────
     var (_, _, ai, lp) = ResolveChain(process, reader);
     if (ai == 0 || lp == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
     Console.WriteLine($"AreaInstance 0x{ai:X}  LocalPlayer 0x{lp:X}");
 
-    var pc = ResolveComponentAddr(reader, lp, "Player");
-    if (pc == 0) { Console.Error.WriteLine("Player component not found on LocalPlayer."); return 1; }
-    Console.WriteLine($"Player component @ 0x{pc:X}");
-
-    // Sanity-check: read the known Level byte at +0x204.
-    reader.TryReadStruct<byte>(pc + 0x204, out var level);
-    Console.WriteLine($"  Level @ +0x204 = {level}  (expected 1–100; if 0 the chain may have drifted)");
+    // ── PRIMARY: ServerDataStructure ──────────────────────────────────────────────────────────────
     Console.WriteLine();
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
+    Console.WriteLine("  PRIMARY SCAN — ServerDataStructure (server-side XP lives here)");
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
 
-    // Collect candidate offsets from first pass, then track per-pass values for delta analysis.
-    var candidates = new List<int>();
-    var history    = new Dictionary<int, ulong[]>();  // off -> value per pass
+    var serverData = SafePtr(reader, ai + Poe2.AreaInstance.ServerDataPtr);
+    Console.WriteLine($"ServerData (+0x{Poe2.AreaInstance.ServerDataPtr:X}) = 0x{serverData:X}");
 
+    nint sdStruct = 0;
+    if (serverData == 0)
+    {
+        Console.WriteLine("  WARNING: ServerData null — skipping SDS scan (is character in-game?).");
+    }
+    else
+    {
+        sdStruct = ResolveServerDataStruct(reader, serverData);
+        if (sdStruct == 0)
+            Console.WriteLine("  WARNING: Could not resolve ServerDataStructure — skipping SDS scan.");
+        else
+            Console.WriteLine($"ServerDataStructure = 0x{sdStruct:X}  (scanning +0x{SdsStartOff:X}..+0x{SdsEndOff:X} in 4-byte steps)");
+    }
+
+    // Per-offset history for SDS scan: key = dword offset, value = uint[Passes].
+    var sdsCandidates = new List<int>();
+    var sdsHistory    = new Dictionary<int, uint[]>();
+
+    // ── FALLBACK: Player component ────────────────────────────────────────────────────────────────
+    Console.WriteLine();
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
+    Console.WriteLine("  FALLBACK SCAN — Player component (original scan; expected to miss XP)");
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
+
+    var pc = ResolveComponentAddr(reader, lp, "Player");
+    if (pc == 0)
+        Console.WriteLine("  Player component not found on LocalPlayer.");
+    else
+    {
+        reader.TryReadStruct<byte>(pc + 0x204, out var level0);
+        Console.WriteLine($"Player component = 0x{pc:X}   Level @ +0x204 = {level0}");
+    }
+
+    var plrCandidates = new List<int>();
+    var plrHistory    = new Dictionary<int, ulong[]>();
+
+    // ── Multi-pass loop ───────────────────────────────────────────────────────────────────────────
     for (var pass = 0; pass < Passes; pass++)
     {
         if (pass > 0)
         {
-            Console.WriteLine($"  [sleeping {SleepMs / 1000}s — kill a mob or two now]");
+            Console.WriteLine();
+            Console.WriteLine("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+            Console.WriteLine("!!!  ALT-TAB TO THE GAME AND KILL A MONSTER NOW                     !!!");
+            Console.WriteLine("!!!  (experience ONLY changes on a kill — stand still = no signal)  !!!");
+            Console.WriteLine($"!!!  You have {SleepMs / 1000} seconds.  Go!                                        !!!");
+            Console.WriteLine("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
             Thread.Sleep(SleepMs);
-            // Re-resolve the chain each pass in case the reader's cached state shifts.
+            Console.WriteLine("  [resuming — re-resolving chain...]");
+
             var (_, _, ai2, lp2) = ResolveChain(process, reader);
-            if (ai2 == 0 || lp2 == 0) { Console.Error.WriteLine("Chain lost between passes."); break; }
-            pc = ResolveComponentAddr(reader, lp2, "Player");
-            if (pc == 0) { Console.Error.WriteLine("Player component lost between passes."); break; }
-        }
+            if (ai2 == 0 || lp2 == 0) { Console.Error.WriteLine("Chain lost between passes — aborting."); break; }
 
-        Console.WriteLine($"── Pass {pass + 1}/{Passes}  (Player component @ 0x{pc:X}) ──");
-
-        for (var off = StartOff; off <= EndOff; off += 8)
-        {
-            if (!reader.TryReadStruct<ulong>((nint)(pc + off), out var val)) continue;
-            if (val == 0 || val >= XpMax) continue;
-
-            if (pass == 0)
+            if (sdStruct != 0)
             {
-                candidates.Add(off);
-                history[off] = new ulong[Passes];
+                // Re-resolve SDS to be safe (zone change would invalidate it).
+                var sd2 = SafePtr(reader, ai2 + Poe2.AreaInstance.ServerDataPtr);
+                var sds2 = sd2 != 0 ? ResolveServerDataStruct(reader, sd2) : 0;
+                if (sds2 == 0)
+                    Console.WriteLine("  WARNING: Could not re-resolve ServerDataStructure on this pass.");
+                else
+                    sdStruct = sds2;
             }
 
-            if (history.TryGetValue(off, out var hist))
+            if (pc != 0)
             {
-                hist[pass] = val;
-                Console.WriteLine($"  +0x{off:X3} = {val,15:N0}");
+                pc = ResolveComponentAddr(reader, lp2, "Player");
+                if (pc == 0) Console.WriteLine("  WARNING: Player component lost on this pass.");
             }
         }
 
         Console.WriteLine();
+        Console.WriteLine($"── Pass {pass + 1}/{Passes} ──────────────────────────────────────────────────────");
+
+        // -- SDS dword scan --
+        if (sdStruct != 0)
+        {
+            Console.WriteLine($"  [SDS] ServerDataStructure 0x{sdStruct:X}  scanning +0x{SdsStartOff:X}..+0x{SdsEndOff:X}");
+            var sdsHits = 0;
+            for (var off = SdsStartOff; off <= SdsEndOff; off += 4)
+            {
+                if (!reader.TryReadStruct<uint>((nint)(sdStruct + off), out var val)) continue;
+                if (val < XpMin || val > XpMax) continue;
+                if (LooksLikeFloat(val)) continue;
+
+                if (pass == 0)
+                {
+                    sdsCandidates.Add(off);
+                    sdsHistory[off] = new uint[Passes];
+                }
+
+                if (sdsHistory.TryGetValue(off, out var hist))
+                {
+                    hist[pass] = val;
+                    Console.WriteLine($"    SDS+0x{off:X4} = {val,14:N0}");
+                    sdsHits++;
+                }
+            }
+            if (sdsHits == 0 && pass == 0)
+                Console.WriteLine("    (no dwords in XP range found in SDS — confirm character is in-game with some XP)");
+        }
+
+        // -- Player component ulong scan (fallback) --
+        if (pc != 0)
+        {
+            Console.WriteLine($"  [PLR] Player component 0x{pc:X}  scanning +0x{PlrStartOff:X}..+0x{PlrEndOff:X}");
+            for (var off = PlrStartOff; off <= PlrEndOff; off += 8)
+            {
+                if (!reader.TryReadStruct<ulong>((nint)(pc + off), out var val)) continue;
+                if (val == 0 || val >= 5_000_000_000UL) continue;
+
+                if (pass == 0)
+                {
+                    plrCandidates.Add(off);
+                    plrHistory[off] = new ulong[Passes];
+                }
+
+                if (plrHistory.TryGetValue(off, out var hist))
+                {
+                    hist[pass] = val;
+                    Console.WriteLine($"    PLR+0x{off:X3} = {val,14:N0}");
+                }
+            }
+        }
     }
 
-    // Delta report — flag offsets whose value strictly increased across ALL consecutive passes.
-    if (Passes >= 2 && candidates.Count > 0)
+    // ── Delta reports ─────────────────────────────────────────────────────────────────────────────
+    Console.WriteLine();
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
+    Console.WriteLine("  DELTA REPORT — ServerDataStructure candidates");
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
+    if (sdsCandidates.Count == 0)
     {
-        Console.WriteLine("── Delta report ──");
-        foreach (var off in candidates)
+        Console.WriteLine("  No SDS candidates recorded (SDS unavailable or no dwords in XP range).");
+    }
+    else
+    {
+        foreach (var off in sdsCandidates)
         {
-            var hist = history[off];
-            var strictlyIncreased = true;
+            var hist = sdsHistory[off];
+            var anyIncrease = false;
             for (var p = 1; p < Passes; p++)
-                if (hist[p] <= hist[p - 1]) { strictlyIncreased = false; break; }
+                if (hist[p] > hist[p - 1]) { anyIncrease = true; break; }
+
+            var deltas = string.Join("  ", Enumerable.Range(1, Passes - 1)
+                .Select(p => $"Δ{p}={(int)(hist[p] - hist[p - 1]):+#;-#;0}"));
+            var tag = anyIncrease ? "  <<< XP candidate (increased)" : "";
+            Console.WriteLine($"  SDS+0x{off:X4}  pass1={hist[0],12:N0}  {deltas}{tag}");
+        }
+    }
+
+    Console.WriteLine();
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
+    Console.WriteLine("  DELTA REPORT — Player component candidates (fallback)");
+    Console.WriteLine("════════════════════════════════════════════════════════════════════════");
+    if (plrCandidates.Count == 0)
+    {
+        Console.WriteLine("  No Player-component candidates (component unavailable or none in range).");
+    }
+    else
+    {
+        foreach (var off in plrCandidates)
+        {
+            var hist = plrHistory[off];
+            var anyIncrease = false;
+            for (var p = 1; p < Passes; p++)
+                if (hist[p] > hist[p - 1]) { anyIncrease = true; break; }
 
             var deltas = string.Join("  ", Enumerable.Range(1, Passes - 1)
                 .Select(p => $"Δ{p}={(long)(hist[p] - hist[p - 1]):+#;-#;0}"));
-            var tag = strictlyIncreased ? "  <<< XP candidate (increased)" : "";
-            Console.WriteLine($"  +0x{off:X3}  pass1={hist[0],12:N0}  {deltas}{tag}");
+            var tag = anyIncrease ? "  <<< XP candidate (increased)" : "";
+            Console.WriteLine($"  PLR+0x{off:X3}  pass1={hist[0],12:N0}  {deltas}{tag}");
         }
     }
-    else if (candidates.Count == 0)
-    {
-        Console.WriteLine("No candidates found in range 0x1F0..0x300 (0 < value < 5e9).");
-        Console.WriteLine("Check that you are in-game with a character loaded, or widen the scan range.");
-    }
 
+    Console.WriteLine();
+    Console.WriteLine("Tip: the SDS <<< XP candidate(s) are your target offset(s).");
+    Console.WriteLine("     Commit confirmed offset to Poe2Offsets.cs as ServerDataStructure.Experience.");
     return 0;
 }
 
