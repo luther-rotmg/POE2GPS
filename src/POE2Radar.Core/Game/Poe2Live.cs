@@ -47,6 +47,13 @@ public sealed class Poe2Live
     private int _itemReadBudget;
     private const int ItemReadBudgetPerPass = 12;
     private nint _entCacheKey;   // AreaInstance address the entity caches were built for
+    // Triple-buffer: world thread fills one, publishes it (volatile swap), then fills the next.
+    // 3 buffers ensure the just-published list is not refilled for 2 more world ticks (~66 ms),
+    // far exceeding one render frame (~7 ms), so the render thread can never iterate a buffer
+    // being refilled. See task-9-brief.md for the full concurrency argument.
+    private readonly List<EntityDot>[] _entityBufs =
+        { new List<EntityDot>(256), new List<EntityDot>(256), new List<EntityDot>(256) };
+    private int _entityBufIdx;
 
     // Reused across Entities() calls (tick thread only) to avoid per-tick allocations. The std::map
     // walk reads each 48-byte node in ONE ReadProcessMemory (fields are contiguous), not 5 syscalls.
@@ -452,7 +459,9 @@ public sealed class Poe2Live
         _reactionTick++;
         if (ShouldRefreshReaction(_reactionTick, ReactionRefreshTicks)) _reaction.Clear();
 
-        var dots = new List<EntityDot>(256);
+        _entityBufIdx = (_entityBufIdx + 1) % 3;
+        var dots = _entityBufs[_entityBufIdx];
+        dots.Clear();
         var head = Ptr(areaInstance + Poe2.AreaInstance.AwakeEntities);
         _reader.TryReadStruct<int>(areaInstance + Poe2.AreaInstance.AwakeEntities + 8, out var size);
         if (head == 0 || size <= 0 || size > 100000) return dots;
