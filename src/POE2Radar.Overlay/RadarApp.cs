@@ -2583,7 +2583,9 @@ public sealed class RadarApp : IDisposable
             ^ ((long)(_settings.AtlasHighlightTags?.Count ?? 0) << 20)
             ^ ((long)(_settings.AtlasArrowTags?.Count ?? 0) << 28)
             ^ ((long)sel.Count << 36)
-            ^ (_settings.AtlasDrawAll ? 1L << 44 : 0L);
+            ^ (_settings.AtlasDrawAll ? 1L << 44 : 0L)
+            ^ (_settings.AtlasHideCompleted ? 1L << 48 : 0L)
+            ^ (_settings.AtlasHideAccessible ? 1L << 49 : 0L);
         long sig = viewSig * 2654435761L ^ inputSig;
         sig = sig * 1000003L ^ (curGrid?.GetHashCode() ?? 0);                       // re-solve routes as the player moves
         sig = sig * 1000003L ^ (_settings.AtlasAutoRoute ? 1L : 0L) ^ ((long)_settings.AtlasAutoRouteMaxHops << 1);
@@ -2651,6 +2653,10 @@ public sealed class RadarApp : IDisposable
             var isTracked = selected || mTrack != null || dyn != null;   // Highlight (ring)
             var isNav = mNav != null || dyn != null;                     // Nav-to (route line)
             var isArrow = mArrow != null || dyn != null;                 // Arrow (off-screen pointer)
+            // Completion/accessibility filters: applied before the highlight gate so they suppress even
+            // tracked nodes (the user explicitly asked to hide them).
+            if (_settings.AtlasHideCompleted && n.Completed) continue;
+            if (_settings.AtlasHideAccessible && n.Accessible && !n.Completed) continue;
             // ONLY highlighted/nav/arrow maps are drawn (the point: surface content the game hides).
             // AtlasDrawAll debug overrides this to draw every node.
             if (!_settings.AtlasDrawAll && !isTracked && !isNav && !isArrow) continue;

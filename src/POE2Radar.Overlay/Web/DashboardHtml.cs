@@ -522,6 +522,18 @@ internal static class DashboardHtml
             <!-- active rules (removable chips) -->
             <div id="atlasActive" style="margin:0 0 8px"></div>
 
+            <!-- atlas view filters -->
+            <div class="controls" style="gap:14px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <label class="sw"><input type="checkbox" data-set="atlasHideCompleted"><span class="track"></span><span class="knob"></span></label>
+                Hide completed maps
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <label class="sw"><input type="checkbox" data-set="atlasHideAccessible"><span class="track"></span><span class="knob"></span></label>
+                Hide accessible-only maps
+              </label>
+            </div>
+
             <!-- group filter + search -->
             <div class="controls" style="gap:6px;margin:0 0 8px;flex-wrap:wrap">
               <button class="chip on" data-group="all">All</button>
@@ -911,7 +923,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   if(activeTab==='settings'){ loadSettings(); loadKeybinds(); loadQuickStart(); loadAffixCatalog(); }
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
-  if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); }
+  if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); loadSettings(); }
   if(activeTab==='director') loadDirector();
   if(activeTab==='entatlas') loadEntAtlas();
   if(activeTab==='gear') loadGear();

@@ -1060,6 +1060,8 @@ public sealed class ApiServer : IDisposable
         groundItems = _settings.GroundItems, // ground-item value overlay (enabled / highlight threshold / league)
         contributeUrl = _settings.ContributeUrl,
         highlightDynastyMaps = _settings.HighlightDynastyMaps,
+        atlasHideCompleted   = _settings.AtlasHideCompleted,
+        atlasHideAccessible  = _settings.AtlasHideAccessible,
         sessionHudEnabled        = _settings.SessionHud.Enabled,
         sessionHudShowPace       = _settings.SessionHud.ShowPace,
         sessionHudShowZoneContext= _settings.SessionHud.ShowZoneContext,
@@ -1142,6 +1144,8 @@ public sealed class ApiServer : IDisposable
                     if (TryParseGroundItems(p.Value, out var gi)) { _settings.GroundItems = gi; applied.Add(p.Name); }
                     break;
                 case "highlightDynastyMaps" when TryBool(p.Value, out var b): _settings.HighlightDynastyMaps = b; applied.Add(p.Name); break;
+                case "atlasHideCompleted"   when TryBool(p.Value, out var b): _settings.AtlasHideCompleted = b; applied.Add(p.Name); break;
+                case "atlasHideAccessible"  when TryBool(p.Value, out var b): _settings.AtlasHideAccessible = b; applied.Add(p.Name); break;
                 case "sessionHudEnabled" when TryBool(p.Value, out var b): _settings.SessionHud.Enabled = b; applied.Add(p.Name); break;
                 case "sessionHudShowPace" when TryBool(p.Value, out var b): _settings.SessionHud.ShowPace = b; applied.Add(p.Name); break;
                 case "sessionHudShowZoneContext" when TryBool(p.Value, out var b): _settings.SessionHud.ShowZoneContext = b; applied.Add(p.Name); break;

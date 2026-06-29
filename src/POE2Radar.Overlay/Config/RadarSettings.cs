@@ -141,6 +141,10 @@ public sealed class RadarSettings
     public int AtlasAutoRouteMaxHops { get; set; } = 0;
     // Draw a biome-coloured border around tracked map labels on the open Atlas (richer in-game info). On by default.
     public bool AtlasShowBiomeBorder { get; set; } = true;
+    // Filter: hide completed (run) maps from the atlas overlay — declutters heavily-run atlases. On by default.
+    public bool AtlasHideCompleted { get; set; } = true;
+    // Filter: hide accessible-only (adjacent but not tracked) maps. Off by default (too aggressive for first-time users).
+    public bool AtlasHideAccessible { get; set; } = false;
 
     // One-time guard: false until the default "Abyss Lightless (Void)" monster display rule has been
     // seeded into display_rules.json. Set true after seeding so a user who deletes the rule keeps it gone.
