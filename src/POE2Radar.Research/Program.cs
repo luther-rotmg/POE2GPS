@@ -7548,10 +7548,10 @@ static int RunPreload(ProcessHandle process, MemoryReader reader)
         .Select(p => p.Path).Distinct().OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
     Console.WriteLine();
     Console.WriteLine($"CONTENT-SIGNAL paths (Monsters / Chests / League / MiscObjects): {contentPaths.Count}");
-    foreach (var p in contentPaths.Take(150))
+    foreach (var p in contentPaths.Take(500))
         Console.WriteLine($"  {p}");
-    if (contentPaths.Count > 150)
-        Console.WriteLine($"  ... (+{contentPaths.Count - 150} more)");
+    if (contentPaths.Count > 500)
+        Console.WriteLine($"  ... (+{contentPaths.Count - 500} more)");
 
     // All Metadata/ paths (confirms we're reading real asset paths).
     var metaPaths = allPaths
@@ -7584,59 +7584,61 @@ static List<(string Path, int AreaCount)> TryWalkFileRootBuckets(
     const int FileInfoAreaCountOff   = 0x40; // int AreaChangeCount within FileInfoValueStruct
 
     var paths = new List<(string, int)>();
+    int[] entrySizes = [0x18, 0x08, 0x10]; // FilesPointerStructure is 0x18; others are fallback
 
+    // Walk ONE bucket's node vector with a given entry size; returns its readable paths.
+    List<(string, int)> WalkBucket(nint first, long rangeBytes, int entrySize)
+    {
+        var result = new List<(string, int)>();
+        var entryCount = rangeBytes / entrySize;
+        if (entryCount <= 0 || entryCount > 500_000) return result;
+        for (long ei = 0; ei < entryCount; ei++)
+        {
+            var nodeAddr = first + (nint)(ei * entrySize);
+            var filesPtr = SafePtr(reader, nodeAddr + NodeFilesPointerOffset); // node+0x08 → FilesPointer
+            if (filesPtr == 0) continue;
+            var name = ReadStdWString(reader, filesPtr + FileInfoNameOffset);   // FileInfo+0x08 → StdWString
+            if (name.Length < 4) continue;
+            reader.TryReadStruct<int>(filesPtr + FileInfoAreaCountOff, out var areaCount); // FileInfo+0x40
+            if (name.Contains('/') || name.Contains('.'))
+                result.Add((name.Split('@')[0], areaCount));
+        }
+        return result;
+    }
+
+    // Determine the node entry size ONCE from the first valid bucket, then walk ALL 16 buckets
+    // and ACCUMULATE. (The first revision replaced-with-best + early-exited on the first bucket
+    // that had Metadata/ paths, so it only ever read ~1/16 of the loaded files.)
+    var chosenEntrySize = 0;
     for (var bi = 0; bi < TotalBuckets; bi++)
     {
-        // Each bucket is at fileRoot + bi * bucketStride.
         var bucketBase = fileRoot + (nint)(bi * bucketStride);
+        if (!reader.TryReadStruct<nint>(bucketBase,        out var first)) continue;
+        if (!reader.TryReadStruct<nint>(bucketBase + 0x08, out var last))  continue;
 
-        // Read as StdVector<node*>: {First, Last, End}.
-        if (!reader.TryReadStruct<nint>(bucketBase,          out var first)) continue;
-        if (!reader.TryReadStruct<nint>(bucketBase + 0x08,   out var last))  continue;
-
-        // Sanity-check the vector extents.
         var firstU = (ulong)first;
         var lastU  = (ulong)last;
         if (firstU < 0x10000 || firstU > 0x7FFFFFFFFFFF) continue; // must be user-mode
         if (lastU  < firstU)  continue;                              // last < first = garbage
         var rangeBytes = (long)(lastU - firstU);
-        if (rangeBytes > 8L * 1024 * 1024) continue;                 // >8 MB of nodes = garbage
+        if (rangeBytes <= 0 || rangeBytes > 16L * 1024 * 1024) continue; // >16 MB of nodes = garbage
 
-        // Try node entry sizes of 8, 16, 24 bytes.
-        // In practice a node is a pointer (8) or a small struct.
-        // We pick the entry size that yields the most plausible strings.
-        int[] entrySizes = [0x18, 0x08, 0x10]; // 24, 8, 16
-        foreach (var entrySize in entrySizes)
+        if (chosenEntrySize == 0)
         {
-            var entryCount = rangeBytes / entrySize;
-            if (entryCount <= 0 || entryCount > 100_000) continue;
-
-            var bucketPaths = new List<(string, int)>();
-            for (long ei = 0; ei < entryCount; ei++)
+            // pick the entry size that yields the most plausible strings for this first bucket
+            var best = new List<(string, int)>(); var bestSize = 0x18;
+            foreach (var es in entrySizes)
             {
-                var nodeAddr = first + (nint)(ei * entrySize);
-                // node+0x08 → FilesPointer.
-                var filesPtr = SafePtr(reader, nodeAddr + NodeFilesPointerOffset);
-                if (filesPtr == 0) continue;
-
-                // FileInfoValueStruct+0x08 → StdWString Name.
-                var name = ReadStdWString(reader, filesPtr + FileInfoNameOffset);
-                if (name.Length < 4) continue; // skip empty/junk strings
-
-                // FileInfoValueStruct+0x40 → int AreaChangeCount.
-                reader.TryReadStruct<int>(filesPtr + FileInfoAreaCountOff, out var areaCount);
-
-                // Accept paths that look like real PoE2 asset paths (contain '/' or '.').
-                if (name.Contains('/') || name.Contains('.'))
-                    bucketPaths.Add((name.Split('@')[0], areaCount));
+                var trial = WalkBucket(first, rangeBytes, es);
+                if (trial.Count > best.Count) { best = trial; bestSize = es; }
             }
-
-            if (bucketPaths.Count > paths.Count)
-            {
-                paths = bucketPaths;
-                if (paths.Any(p => p.Item1.Contains("Metadata/", StringComparison.OrdinalIgnoreCase)))
-                    return paths; // early-exit: confirmed real asset paths
-            }
+            if (best.Count == 0) continue; // this bucket gave nothing — try the next before committing
+            chosenEntrySize = bestSize;
+            paths.AddRange(best);
+        }
+        else
+        {
+            paths.AddRange(WalkBucket(first, rangeBytes, chosenEntrySize));
         }
     }
 
