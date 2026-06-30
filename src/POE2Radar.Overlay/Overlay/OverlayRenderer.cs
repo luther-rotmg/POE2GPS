@@ -178,6 +178,12 @@ public sealed class OverlayRenderer : IDisposable
               h3 = ctx.AtlasShearY, h4 = ctx.AtlasScaleY, h5 = ctx.AtlasOffY,
               h6 = ctx.AtlasPersX, h7 = ctx.AtlasPersY;
         NumVec2 Proj(NumVec2 p) { var w = h6 * p.X + h7 * p.Y + 1f; if (MathF.Abs(w) < 1e-6f) w = 1f; return new NumVec2((h0 * p.X + h1 * p.Y + h2) / w, (h3 * p.X + h4 * p.Y + h5) / w); }
+        // Off-screen (culled) atlas nodes report NOISY relPos, so segments touching them wobble and their
+        // chevrons spin in random directions. Gate on projected screen position: draw a line only when a
+        // segment is at least partly on-screen, and chevrons only when BOTH endpoints are on-screen (so the
+        // arrow direction is trustworthy). W/H from the context; margins keep edge-crossing routes visible.
+        float W = ctx.WindowWidth, H = ctx.WindowHeight;
+        bool On(NumVec2 p, float m) => p.X >= -m && p.X <= W + m && p.Y >= -m && p.Y <= H + m;
 
         var dark = new Color4(0f, 0f, 0f, 0.6f);
         var bright = new Color4(0.235f, 0.86f, 1f, 0.95f);   // cyan
@@ -185,24 +191,60 @@ public sealed class OverlayRenderer : IDisposable
         var gold = new Color4(0.878f, 0.702f, 0.255f, 1f);
 
         // ── Auto-routes (improvement 1): one polyline per tracked tile, in its rule colour, with a hop chip
-        // at the target. Drawn UNDER the manual F10 route + the marks. ──
+        // at the target + directional chevrons (#4). Drawn UNDER the manual F10 route + the marks. ──
         if (hasAuto)
         {
-            foreach (var ar in autos!)
+            // #4 per-edge interleaving: routes from the accessible frontier share their first segments
+            // constantly, so a shared edge gets each route's chevrons at a distinct phase slot — overlapping
+            // colours stay visible instead of the last-drawn one overpainting. Keyed by canvas-space coords.
+            var edgeRoutes = new Dictionary<(long, long, long, long), List<int>>();
+            for (var ri = 0; ri < autos!.Count; ri++)
             {
+                if (autos[ri].Points is not { Count: >= 2 } rp) continue;
+                for (var i = 1; i < rp.Count; i++)
+                {
+                    var k = AtlasEdgeKey(rp[i - 1], rp[i]);
+                    if (!edgeRoutes.TryGetValue(k, out var l)) edgeRoutes[k] = l = new List<int>();
+                    l.Add(ri);
+                }
+            }
+            float spacingMul = MathF.Max(1.5f, ctx.AtlasRouteArrowSpacing);
+            const float chevron = 7f;
+            float spacing = chevron * spacingMul;
+            for (var ri = 0; ri < autos!.Count; ri++)
+            {
+                var ar = autos[ri];
                 if (ar.Points is not { Count: >= 2 } rp) continue;
                 // Softer + thinner than the manual F10 route: auto-routes are ambient guides to every tracked
                 // tile, so they shouldn't dominate the screen as a thick web. Lower alpha + lighter underlay.
                 var col = string.IsNullOrEmpty(ar.Color) ? new Color4(0.235f, 0.86f, 1f, 0.65f) : ParseColor(ar.Color, 0.65f);
                 var pts = new NumVec2[rp.Count];
                 for (var i = 0; i < rp.Count; i++) pts[i] = Proj(rp[i]);
-                _bStyle!.Color = new Color4(0f, 0f, 0f, 0.4f); for (var i = 1; i < pts.Length; i++) rt.DrawLine(pts[i - 1], pts[i], _bStyle, 3f);
-                _bStyle.Color = col; for (var i = 1; i < pts.Length; i++) rt.DrawLine(pts[i - 1], pts[i], _bStyle, 1.75f);
-                // Hop-count chip at the target end.
+                for (var i = 1; i < pts.Length; i++)
+                {
+                    var a = pts[i - 1]; var b = pts[i];
+                    if (!On(a, 64f) && !On(b, 64f)) continue;   // fully off-screen segment → skip (relPos is noise)
+                    _bStyle!.Color = new Color4(0f, 0f, 0f, 0.4f); rt.DrawLine(a, b, _bStyle, 3f);
+                    _bStyle.Color = col; rt.DrawLine(a, b, _bStyle, 1.75f);
+                    if (!On(a, 0f) || !On(b, 0f)) continue;     // chevron direction only trustworthy fully on-screen
+                    var key = AtlasEdgeKey(rp[i - 1], rp[i]);
+                    float phase = 0.5f;
+                    if (edgeRoutes.TryGetValue(key, out var sh) && sh.Count > 0)
+                    {
+                        var local = sh.IndexOf(ri); if (local < 0) local = 0;
+                        phase = (local + 0.5f) / sh.Count;
+                    }
+                    var carry = spacing * phase;   // reset per segment so the phase is honoured on every edge
+                    DrawAtlasChevrons(rt, a, b, col, chevron, spacing, ref carry);
+                }
+                // Hop-count chip at the target end (only when the target is on-screen).
                 var tgt = pts[^1];
-                string ht = ar.Hops.ToString();
-                rt.FillRectangle(new Vortice.RawRectF(tgt.X - 11f, tgt.Y - 26f, tgt.X + 11f, tgt.Y - 10f), _bPanel!);
-                rt.DrawText(ht, _tf!, new Rect(tgt.X - 9f, tgt.Y - 26f, tgt.X + 11f, tgt.Y - 10f), _bText!, DrawTextOptions.Clip);
+                if (On(tgt, 0f))
+                {
+                    string ht = ar.Hops.ToString();
+                    rt.FillRectangle(new Vortice.RawRectF(tgt.X - 11f, tgt.Y - 26f, tgt.X + 11f, tgt.Y - 10f), _bPanel!);
+                    rt.DrawText(ht, _tf!, new Rect(tgt.X - 9f, tgt.Y - 26f, tgt.X + 11f, tgt.Y - 10f), _bText!, DrawTextOptions.Clip);
+                }
             }
         }
 
@@ -211,9 +253,17 @@ public sealed class OverlayRenderer : IDisposable
             // Graph polyline: dark underlay then bright line (cheap outline for contrast over the atlas), hop dots.
             var pts = new NumVec2[route.Count];
             for (var i = 0; i < route.Count; i++) pts[i] = Proj(route[i]);
-            _bStyle!.Color = dark; for (var i = 1; i < pts.Length; i++) rt.DrawLine(pts[i - 1], pts[i], _bStyle, 7f);
-            _bStyle.Color = bright; for (var i = 1; i < pts.Length; i++) rt.DrawLine(pts[i - 1], pts[i], _bStyle, 3.5f);
-            _bStyle.Color = bright; for (var i = 1; i < pts.Length - 1; i++) rt.DrawEllipse(new Ellipse(pts[i], 4f, 4f), _bStyle, 2f);
+            float mspacing = 9f * MathF.Max(1.5f, ctx.AtlasRouteArrowSpacing);
+            for (var i = 1; i < pts.Length; i++)
+            {
+                var a = pts[i - 1]; var b = pts[i];
+                if (!On(a, 64f) && !On(b, 64f)) continue;   // fully off-screen segment → skip (relPos is noise)
+                _bStyle!.Color = dark; rt.DrawLine(a, b, _bStyle, 7f);
+                _bStyle.Color = bright; rt.DrawLine(a, b, _bStyle, 3.5f);
+                if (!On(a, 0f) || !On(b, 0f)) continue;     // chevrons + hop dots only when fully on-screen
+                if (i < pts.Length - 1) rt.DrawEllipse(new Ellipse(b, 4f, 4f), _bStyle, 2f);
+                var carry = mspacing * 0.5f; DrawAtlasChevrons(rt, a, b, dark, 9f, mspacing, ref carry);
+            }
         }
         else if (start is { } sa && end is { } eb)
         {
@@ -311,6 +361,42 @@ public sealed class OverlayRenderer : IDisposable
                 rt.DrawText(label, _tf!, new Rect(lx, ly, lx + lw + 40f, ly + 18f), _bText!, DrawTextOptions.Clip);
             }
         }
+    }
+
+    /// <summary>Lay stroked arrowhead chevrons (a row of "&gt;" pointing a→b) at <paramref name="spacing"/>
+    /// intervals along the segment (#4). <paramref name="carry"/> holds the leftover distance into the next
+    /// segment so spacing stays even across a multi-segment route. Ported from the GameHelper2 Atlas plugin's
+    /// DrawChevrons (filled triangles → stroked chevrons here, cheaper in Direct2D and reads the same).</summary>
+    private void DrawAtlasChevrons(ID2D1RenderTarget rt, NumVec2 a, NumVec2 b, Color4 color, float size, float spacing, ref float carry)
+    {
+        var d = b - a;
+        float len = d.Length();
+        if (len < 1e-3f) { return; }
+        var dir = d / len;
+        var perp = new NumVec2(-dir.Y, dir.X);
+        float half = size * 0.5f;
+        _bStyle!.Color = color;
+        float t = carry;
+        while (t < len)
+        {
+            var p = a + dir * t;
+            var tip = p + dir * half;
+            var baseMid = p - dir * half;
+            rt.DrawLine(tip, baseMid + perp * half, _bStyle, 1.5f);
+            rt.DrawLine(tip, baseMid - perp * half, _bStyle, 1.5f);
+            t += spacing;
+        }
+        carry = t - len;
+    }
+
+    /// <summary>Direction-independent key for a route edge (canvas-space endpoints rounded to int), so a
+    /// segment shared by two routes hashes the same regardless of which way each route walks it (#4).</summary>
+    private static (long, long, long, long) AtlasEdgeKey(NumVec2 a, NumVec2 b)
+    {
+        long ax = (long)MathF.Round(a.X), ay = (long)MathF.Round(a.Y);
+        long bx = (long)MathF.Round(b.X), by = (long)MathF.Round(b.Y);
+        bool aFirst = ax < bx || (ax == bx && ay <= by);
+        return aFirst ? (ax, ay, bx, by) : (bx, by, ax, ay);
     }
 
     // Atlas biome index (0..12) → border colour (improvement 2). Order matches the dashboard BIOMES list:

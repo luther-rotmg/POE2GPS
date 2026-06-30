@@ -1088,6 +1088,7 @@ public sealed class ApiServer : IDisposable
         firstRunSeen             = _settings.FirstRunSeen,
         // Atlas colour groups (#7): the full group list so the dashboard can render + edit them.
         atlasGroups              = _settings.AtlasGroups,
+        atlasRouteArrowSpacing   = _settings.AtlasRouteArrowSpacing,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -1178,6 +1179,7 @@ public sealed class ApiServer : IDisposable
                 case "atlasGroups" when p.Value.ValueKind == JsonValueKind.Array:
                     if (TryParseAtlasGroups(p.Value, out var atlasGrps)) { _settings.AtlasGroups = atlasGrps; _settings.AtlasGroupsSeeded = true; applied.Add(p.Name); }
                     break;
+                case "atlasRouteArrowSpacing" when TryFloat(p.Value, out var f): _settings.AtlasRouteArrowSpacing = Math.Clamp(f, 2f, 60f); applied.Add(p.Name); break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }

@@ -237,4 +237,6 @@ public sealed record RenderContext(
     // from the world tick's AffixNameplateSpec list (same HP-bar pattern: world reads live pos each frame).
     // Null/empty → none drawn. Settings mirrored so the renderer needs no settings reference. ──
     IReadOnlyList<AffixNameplateTarget>?  AffixTargets       = null,
-    Config.AffixNameplateSettings?        AffixNameplates    = null);
+    Config.AffixNameplateSettings?        AffixNameplates    = null,
+    // Directional chevron spacing along atlas route lines (in chevron-heights). Default 8f matches upstream.
+    float                                 AtlasRouteArrowSpacing = 8f);

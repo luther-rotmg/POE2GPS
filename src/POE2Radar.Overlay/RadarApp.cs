@@ -1212,7 +1212,8 @@ public sealed class RadarApp : IDisposable
                 : null,
             ZoneSummaryHud: _settings.ZoneSummary,
             AffixTargets: _affixFrame,
-            AffixNameplates: _settings.AffixNameplates);
+            AffixNameplates: _settings.AffixNameplates,
+            AtlasRouteArrowSpacing: _settings.AtlasRouteArrowSpacing);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.

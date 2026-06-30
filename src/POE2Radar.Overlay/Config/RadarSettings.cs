@@ -153,6 +153,9 @@ public sealed class RadarSettings
     public bool AtlasHideCompleted { get; set; } = true;
     // Filter: hide accessible-only (adjacent but not tracked) maps. Off by default (too aggressive for first-time users).
     public bool AtlasHideAccessible { get; set; } = false;
+    // Directional chevron spacing along atlas route lines (#5): distance (in chevron-heights) between arrowheads.
+    // Smaller = denser arrows; larger = more spaced out. Clamped 2–60. Default 8 matches upstream spacing.
+    public float AtlasRouteArrowSpacing { get; set; } = 8f;
 
     // One-time guard: false until the default "Abyss Lightless (Void)" monster display rule has been
     // seeded into display_rules.json. Set true after seeding so a user who deletes the rule keeps it gone.
