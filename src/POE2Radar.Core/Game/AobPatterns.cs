@@ -65,9 +65,36 @@ public static class AobPatterns
             Description: "PoE2 GameStates global slot (GameHelper2 'Game States')"),
     ];
 
-    // Future root objects can be added here in the same form:
-    //
-    // public static readonly Pattern[] FileRootRefs = [];
+    /// <summary>
+    /// Patterns that RIP-reference the global pointer slot for the FileRoot object.
+    /// The FileRoot holds PoE2's loaded-files list (asset paths the engine loaded for the
+    /// current zone) — the data source for the upcoming "Preload Alert" feature.
+    ///
+    /// AOB: <c>48 8B 0D ^ ?? ?? ?? ?? E8 ?? ?? ?? ?? E8</c>
+    /// Instruction: <c>mov rcx, [rip+rel32]</c> (48 8B 0D + rel32 = 7 bytes).
+    /// The trailing <c>E8 … E8</c> suffix makes it unique among the many 48 8B 0D hits.
+    ///
+    /// Source: GameHelper2 StaticOffsetsPatterns.cs — same upstream this codebase tracks.
+    ///
+    /// IMPORTANT: <c>48 8B 0D</c> is very common in PoE.exe. This pattern will produce
+    /// MULTIPLE matches. <see cref="POE2Radar.Research.RunPreload"/> handles all candidates,
+    /// hex-dumps each FileRoot for manual verification, and reports which one yields real
+    /// Metadata/ asset paths from the loaded-files walk.
+    ///
+    /// Re-validate per patch via: <c>pwsh probes/_run.ps1 preload</c>
+    /// </summary>
+    public static readonly Pattern[] FileRootRefs =
+    [
+        new Pattern(
+            Bytes: new byte?[] {
+                0x48, 0x8B, 0x0D, null, null, null, null,
+                0xE8, null, null, null, null,
+                0xE8
+            },
+            DispOffset:  3,   // rel32 starts right after 48 8B 0D
+            InstrLen:    7,   // mov rcx,[rip+rel32] — 3-byte opcode + 4-byte displacement
+            Description: "File Root global slot — GameHelper2 AOB (48 8B 0D ^ rel32 E8.. E8)"),
+    ];
 
     /// <summary>
     /// Pattern that locates a <b>field-offset</b> within a struct, by matching an instruction

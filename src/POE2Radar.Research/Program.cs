@@ -153,6 +153,9 @@ if (HasFlag(args, "--xp"))
 if (HasFlag(args, "--quest"))
     return RunQuest(process, reader, HasFlag(args, "--diff"));
 
+if (HasFlag(args, "--preload"))
+    return RunPreload(process, reader);
+
 if (HasFlag(args, "--presence"))
     return RunPresence(process, reader, HasFlag(args, "--diff"));
 
@@ -7337,6 +7340,288 @@ static int RunChainProbe(ProcessHandle process, MemoryReader reader)
     Console.WriteLine($"AreaInstance : 0x{areaInstance:X16}");
     Console.WriteLine($"LocalPlayer  : 0x{localPlayer:X16}  ({ReadEntityMetadata(reader, localPlayer)})");
     return 0;
+}
+
+// ── Preload: discover PoE2's loaded-files list (FileRoot) ──────────────────────────────────────────
+//
+// PURPOSE
+//   The upcoming "Preload Alert" feature previews a zone's mechanic content (Breach, Ritual,
+//   Strongbox, etc.) from the asset paths the engine loaded before the player can see them.
+//   This probe validates we can:
+//     1. Find the FileRoot global slot via AOB scan.
+//     2. Resolve the FileRoot heap address.
+//     3. Walk its 16-bucket hashtable to enumerate loaded FileInfoValueStruct paths.
+//
+// ARCHITECTURE (GameHelper2 source)
+//   FileRoot → array of 16 LoadedFilesRootObject buckets, each an MS-STL unordered_map.
+//   Each hashtable node: node+0x00=Useless0, node+0x08=FilesPointer, node+0x10=Useless1.
+//   FilesPointer → FileInfoValueStruct { +0x08 StdWString Name; +0x40 int AreaChangeCount }.
+//   GameHelper2 filters to paths where AreaChangeCount == <area counter>. POE2GPS has no
+//   such counter (only AreaHash at AreaInstance+0x11C). The probe therefore PRINTS the
+//   +0x40 value per node so we can identify the discriminator from live data.
+//
+// UNCERTAIN ASPECTS THIS PROBE RESOLVES
+//   • The exact bucket-array stride is NOT documented. The probe treats each bucket as a
+//     StdVector {First, Last, End} (same as ComponentLookUp) and tries entry strides of
+//     8, 16, and 24 bytes per node slot.
+//   • The AOB "48 8B 0D … E8 … E8" is common → multiple candidates. We cap at 8 and test
+//     each, reporting which yields recognisable Metadata/ paths.
+//
+// READING IT IN THE OUTPUT
+//   - If any candidate prints "Metadata/" paths → that slot address IS the FileRoot.
+//   - AreaChangeCount distribution (the +0x40 int) tells you which value == "current zone".
+//   - Hex-dump of FileRoot+0x000..+0x100 lets you adjust offsets if the walk finds nothing.
+static int RunPreload(ProcessHandle process, MemoryReader reader)
+{
+    // ── Step 1: resolve game chain, print anchors + AreaHash ─────────────────────────────
+    var (_, igs, ai, lp) = ResolveChain(process, reader);
+    if (ai == 0)
+    {
+        Console.Error.WriteLine("Could not resolve in-game chain (are you in game?).");
+        return 1;
+    }
+
+    reader.TryReadStruct<uint>(ai + Poe2.AreaInstance.CurrentAreaHash, out var areaHash);
+    Console.WriteLine($"InGameState  : 0x{igs:X16}");
+    Console.WriteLine($"AreaInstance : 0x{ai:X16}");
+    Console.WriteLine($"LocalPlayer  : 0x{lp:X16}");
+    Console.WriteLine($"AreaHash     : 0x{areaHash:X8}  (uint @ AreaInstance+0x{Poe2.AreaInstance.CurrentAreaHash:X})");
+    Console.WriteLine();
+
+    // ── Step 2: AOB scan for FileRoot global slot candidates ─────────────────────────────
+    if (AobPatterns.FileRootRefs.Length == 0)
+    {
+        Console.Error.WriteLine("AobPatterns.FileRootRefs is empty — no patterns to scan.");
+        return 1;
+    }
+
+    // ScanForResolvedAddresses already does RIP-relative resolution; each returned address
+    // is a data-section slot that holds the FileRoot heap pointer.
+    var allSlots = new List<nint>();
+    foreach (var pat in AobPatterns.FileRootRefs)
+        allSlots.AddRange(AobScanner.ScanForResolvedAddresses(process, reader, pat));
+
+    // Deduplicate — the same slot may be referenced by multiple instructions.
+    var uniqueSlots = allSlots.Distinct().ToList();
+    Console.WriteLine($"FileRoot AOB scan: {allSlots.Count} raw hits → {uniqueSlots.Count} unique slot(s).");
+    Console.WriteLine("(Many matches expected — 48 8B 0D is common; we test each candidate.)");
+    Console.WriteLine();
+
+    if (uniqueSlots.Count == 0)
+    {
+        Console.Error.WriteLine("No AOB matches at all — pattern may need updating for this patch.");
+        return 1;
+    }
+
+    // ── Step 3 + 4: per-candidate: hex-dump FileRoot + attempt bucket walk ───────────────
+    // Collect all paths from every candidate so we can report a combined distribution.
+    var allPaths   = new List<(string Path, int AreaCount, nint SlotAddr)>();
+    var cap        = Math.Min(uniqueSlots.Count, 8);
+    var anyCandidateFoundPaths = false;
+
+    Console.WriteLine($"Testing {cap} of {uniqueSlots.Count} candidate slot(s) (cap=8):");
+    Console.WriteLine(new string('=', 72));
+
+    for (var ci = 0; ci < cap; ci++)
+    {
+        var slotAddr = uniqueSlots[ci];
+        Console.WriteLine();
+        Console.WriteLine($"[Candidate {ci + 1}/{cap}]  slot=0x{slotAddr:X16}");
+
+        // Deref the slot → FileRoot object address.
+        var fileRoot = SafePtr(reader, slotAddr);
+        if (fileRoot == 0)
+        {
+            Console.WriteLine("  -> slot is null or out of user-mode range; skipping.");
+            continue;
+        }
+        Console.WriteLine($"  -> FileRoot obj @ 0x{fileRoot:X16}");
+
+        // ── 3a: hex-dump first 0x100 bytes so we can see the bucket-array structure ──────
+        // Printed regardless of whether the walk succeeds; gives raw data to adjust offsets.
+        Console.WriteLine("  Hex dump FileRoot[0x000..0x0FF]  (16 qwords, formatted +0xNN: 0x..):");
+        var dumpBuf = new byte[0x100];
+        var dumpRead = reader.TryReadBytes(fileRoot, dumpBuf.AsSpan());
+        if (dumpRead < 8)
+        {
+            Console.WriteLine("    <read failed — address not mapped>");
+            continue;
+        }
+        for (var di = 0; di < Math.Min(dumpRead, 0x100); di += 8)
+        {
+            var qw = BitConverter.ToUInt64(dumpBuf, di);
+            Console.WriteLine($"    +0x{di:X2}: 0x{qw:X16}");
+        }
+
+        // ── 3b: attempt the documented bucket walk ───────────────────────────────────────
+        // FileRoot = array of 16 LoadedFilesRootObject buckets.
+        // Hypothesis: each bucket is a StdVector { nint First, nint Last, nint End } (24 bytes).
+        // We also try stride=8 and stride=16 in case our hypothesis is off.
+        Console.WriteLine();
+        Console.WriteLine("  Walking 16-bucket array (GameHelper2 layout):");
+
+        var candidatePaths = new List<(string Path, int AreaCount)>();
+
+        // Try multiple bucket-stride hypotheses.  The one that yields Metadata/ strings wins.
+        int[] bucketStrides = [24, 16, 32]; // StdVector(24) first; fall back to smaller/larger
+        foreach (var bucketStride in bucketStrides)
+        {
+            var trialPaths = TryWalkFileRootBuckets(reader, fileRoot, bucketStride);
+            if (trialPaths.Count > candidatePaths.Count)
+                candidatePaths = trialPaths;
+            if (candidatePaths.Any(p => p.Path.Contains("Metadata/", StringComparison.OrdinalIgnoreCase)))
+                break; // found a working stride — no need to try others
+        }
+
+        Console.WriteLine($"  -> bucket walk yielded {candidatePaths.Count} path(s).");
+
+        if (candidatePaths.Count == 0)
+        {
+            Console.WriteLine("  -> No readable paths from this candidate.");
+            continue;
+        }
+
+        anyCandidateFoundPaths = true;
+        foreach (var (p, ac) in candidatePaths)
+            allPaths.Add((p, ac, slotAddr));
+
+        // Per-candidate quick summary (avoid flooding when there are many candidates).
+        var metadataCount = candidatePaths.Count(p => p.Path.Contains("Metadata/", StringComparison.OrdinalIgnoreCase));
+        Console.WriteLine($"  -> {metadataCount}/{candidatePaths.Count} start with 'Metadata/'.");
+    }
+
+    // ── Step 5: aggregate results ────────────────────────────────────────────────────────
+    Console.WriteLine();
+    Console.WriteLine(new string('=', 72));
+    Console.WriteLine($"TOTAL paths collected across all candidates: {allPaths.Count}");
+
+    if (allPaths.Count == 0)
+    {
+        Console.WriteLine();
+        Console.WriteLine("AOB resolved OK but walk produced no asset strings.");
+        Console.WriteLine("See hex dumps above to adjust struct layout (bucket stride / node offsets).");
+        Console.WriteLine("Next step: compare FileRoot hex dump qwords to expected GameHelper2 shapes.");
+        return 0;
+    }
+
+    // AreaChangeCount distribution: the +0x40 int is the discriminator for "current zone".
+    // Print a histogram so we can identify which value corresponds to the current area.
+    var areaCountHist = allPaths
+        .GroupBy(p => p.AreaCount)
+        .OrderByDescending(g => g.Count())
+        .ToList();
+    Console.WriteLine();
+    Console.WriteLine($"AreaChangeCount (+0x40) value distribution  (AreaHash=0x{areaHash:X8}):");
+    foreach (var g in areaCountHist.Take(10))
+        Console.WriteLine($"  value 0x{g.Key:X8} ({g.Key,10}) → {g.Count(),6} path(s)");
+    if (areaCountHist.Count > 10)
+        Console.WriteLine($"  … (+{areaCountHist.Count - 10} more distinct values)");
+
+    // Sample of ~30 paths total.
+    Console.WriteLine();
+    Console.WriteLine("Sample paths (up to 30):");
+    foreach (var (path, ac, slot) in allPaths.Take(30))
+        Console.WriteLine($"  [slot=0x{slot:X} +0x40={ac}] {path}");
+    if (allPaths.Count > 30)
+        Console.WriteLine($"  … (+{allPaths.Count - 30} more)");
+
+    // Grep for StrongBox specifically (Preload Alert headline case).
+    Console.WriteLine();
+    var strongboxPaths = allPaths
+        .Where(p => p.Path.Contains("Metadata/Chests/StrongBox", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+    Console.WriteLine($"StrongBox paths (Metadata/Chests/StrongBox): {strongboxPaths.Count}");
+    foreach (var (path, ac, _) in strongboxPaths.Take(20))
+        Console.WriteLine($"  [+0x40={ac}] {path}");
+
+    // All Metadata/ paths (confirms we're reading real asset paths).
+    var metaPaths = allPaths
+        .Where(p => p.Path.Contains("Metadata/", StringComparison.OrdinalIgnoreCase))
+        .ToList();
+    Console.WriteLine();
+    Console.WriteLine($"All 'Metadata/' paths: {metaPaths.Count}/{allPaths.Count}");
+    if (metaPaths.Count > 0)
+        Console.WriteLine("  -> Confirmed reading real PoE2 asset paths. FileRoot walk is WORKING.");
+    else
+        Console.WriteLine("  -> No Metadata/ paths found — paths may be junk or wrong layout.");
+
+    return anyCandidateFoundPaths ? 0 : 1;
+}
+
+// Helper: attempt the LoadedFilesRootObject bucket walk for one FileRoot candidate.
+// bucketStride: byte size of each bucket entry (hypothesis — we try 24/16/32).
+// Returns the list of (path, areaChangeCount) pairs successfully read.
+static List<(string Path, int AreaCount)> TryWalkFileRootBuckets(
+    MemoryReader reader, nint fileRoot, int bucketStride)
+{
+    // FileRoot layout (GameHelper2): TotalCount = 0x10 (16 buckets).
+    // Hypothesis: the bucket array starts at fileRoot+0x00 with each bucket being a
+    // StdVector { nint First, nint Last, nint End } = 24 bytes (= stride 24).
+    // Each node in the vector: { +0x00 Useless0, +0x08 FilesPointer, +0x10 Useless1 }.
+    // FilesPointer → FileInfoValueStruct { +0x08 StdWString Name; +0x40 int AreaChangeCount }.
+    const int TotalBuckets = 16;
+    const int NodeFilesPointerOffset = 0x08; // offset within node to the FilesPointer
+    const int FileInfoNameOffset     = 0x08; // StdWString Name within FileInfoValueStruct
+    const int FileInfoAreaCountOff   = 0x40; // int AreaChangeCount within FileInfoValueStruct
+
+    var paths = new List<(string, int)>();
+
+    for (var bi = 0; bi < TotalBuckets; bi++)
+    {
+        // Each bucket is at fileRoot + bi * bucketStride.
+        var bucketBase = fileRoot + (nint)(bi * bucketStride);
+
+        // Read as StdVector<node*>: {First, Last, End}.
+        if (!reader.TryReadStruct<nint>(bucketBase,          out var first)) continue;
+        if (!reader.TryReadStruct<nint>(bucketBase + 0x08,   out var last))  continue;
+
+        // Sanity-check the vector extents.
+        var firstU = (ulong)first;
+        var lastU  = (ulong)last;
+        if (firstU < 0x10000 || firstU > 0x7FFFFFFFFFFF) continue; // must be user-mode
+        if (lastU  < firstU)  continue;                              // last < first = garbage
+        var rangeBytes = (long)(lastU - firstU);
+        if (rangeBytes > 8L * 1024 * 1024) continue;                 // >8 MB of nodes = garbage
+
+        // Try node entry sizes of 8, 16, 24 bytes.
+        // In practice a node is a pointer (8) or a small struct.
+        // We pick the entry size that yields the most plausible strings.
+        int[] entrySizes = [0x18, 0x08, 0x10]; // 24, 8, 16
+        foreach (var entrySize in entrySizes)
+        {
+            var entryCount = rangeBytes / entrySize;
+            if (entryCount <= 0 || entryCount > 100_000) continue;
+
+            var bucketPaths = new List<(string, int)>();
+            for (long ei = 0; ei < entryCount; ei++)
+            {
+                var nodeAddr = first + (nint)(ei * entrySize);
+                // node+0x08 → FilesPointer.
+                var filesPtr = SafePtr(reader, nodeAddr + NodeFilesPointerOffset);
+                if (filesPtr == 0) continue;
+
+                // FileInfoValueStruct+0x08 → StdWString Name.
+                var name = ReadStdWString(reader, filesPtr + FileInfoNameOffset);
+                if (name.Length < 4) continue; // skip empty/junk strings
+
+                // FileInfoValueStruct+0x40 → int AreaChangeCount.
+                reader.TryReadStruct<int>(filesPtr + FileInfoAreaCountOff, out var areaCount);
+
+                // Accept paths that look like real PoE2 asset paths (contain '/' or '.').
+                if (name.Contains('/') || name.Contains('.'))
+                    bucketPaths.Add((name.Split('@')[0], areaCount));
+            }
+
+            if (bucketPaths.Count > paths.Count)
+            {
+                paths = bucketPaths;
+                if (paths.Any(p => p.Item1.Contains("Metadata/", StringComparison.OrdinalIgnoreCase)))
+                    return paths; // early-exit: confirmed real asset paths
+            }
+        }
+    }
+
+    return paths;
 }
 
 // ── Vitals: dump the local player's Life component for per-patch re-validation ──

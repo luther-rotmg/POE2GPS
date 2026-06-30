@@ -27,6 +27,7 @@ $map = @{
   questdiff= @{ probes=@('--quest --diff');  long=$false; doThis='Run this AFTER you complete the quest step (diffs against the baseline).' }
   watch    = @{ probes=@('--watch');                                long=$true;  doThis='Leave this running, then walk through 2-3 ZONE CHANGES.' }
   metadata = @{ probes=@('--rune-dump');                            long=$false; doThis='Stand near the mechanic whose audio cue did NOT fire.' }
+  preload  = @{ probes=@('--preload');                              long=$false; doThis='Be standing in a zone that has a visible league mechanic (a Breach, Ritual, Expedition, Strongbox, etc.) loaded.' }
 }
 
 if (-not $map.ContainsKey($Label)) {
