@@ -36,9 +36,18 @@ if (-not $map.ContainsKey($Label)) {
 }
 $info = $map[$Label]
 
-# --- build once if the exe isn't there yet -------------------------------------
-if (-not (Test-Path $exe)) {
-    Write-Host 'First run only: building the Research probes (~15s, no game needed)...' -ForegroundColor Yellow
+# --- build if the exe is missing OR any source .cs is newer than it ------------
+# (rebuild-on-change so iterating a probe never silently runs a stale exe)
+$needBuild = -not (Test-Path $exe)
+if (-not $needBuild) {
+    $exeTime = (Get-Item $exe).LastWriteTimeUtc
+    $srcDirs = @((Join-Path $repo 'src\POE2Radar.Research'), (Join-Path $repo 'src\POE2Radar.Core'))
+    $newest  = Get-ChildItem -Path $srcDirs -Recurse -Include *.cs -ErrorAction SilentlyContinue |
+               Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+    if ($newest -and $newest.LastWriteTimeUtc -gt $exeTime) { $needBuild = $true }
+}
+if ($needBuild) {
+    Write-Host 'Building the Research probes (source changed; ~15s, no game needed)...' -ForegroundColor Yellow
     dotnet build $csproj -c Release
     if (-not (Test-Path $exe)) {
         Write-Host 'Build failed. Copy the red error text and tell Claude.' -ForegroundColor Red

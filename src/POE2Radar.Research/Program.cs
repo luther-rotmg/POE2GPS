@@ -7463,7 +7463,10 @@ static int RunPreload(ProcessHandle process, MemoryReader reader)
         var candidatePaths = new List<(string Path, int AreaCount)>();
 
         // Try multiple bucket-stride hypotheses.  The one that yields Metadata/ strings wins.
-        int[] bucketStrides = [24, 16, 32]; // StdVector(24) first; fall back to smaller/larger
+        // 0x38 (56) is the CONFIRMED stride from the first in-game run's hex dump — the FileRoot
+        // structure repeats every 0x38 bytes (StdVector{First,Last,End} @ +0x00 then 4 hash-fields).
+        // Keep the old guesses as fallback in case the layout shifts on a future patch.
+        int[] bucketStrides = [0x38, 24, 16, 32];
         foreach (var bucketStride in bucketStrides)
         {
             var trialPaths = TryWalkFileRootBuckets(reader, fileRoot, bucketStride);
@@ -7533,6 +7536,22 @@ static int RunPreload(ProcessHandle process, MemoryReader reader)
     Console.WriteLine($"StrongBox paths (Metadata/Chests/StrongBox): {strongboxPaths.Count}");
     foreach (var (path, ac, _) in strongboxPaths.Take(20))
         Console.WriteLine($"  [+0x40={ac}] {path}");
+
+    // CONTENT-SIGNAL paths for the Preload Alert catalog: monsters / chests / league objects.
+    // These are the paths the catalog matches against — dumping them lets us add rules for the
+    // exact mechanic the player was standing next to (and catch StrongBox / league chest paths).
+    var contentPaths = allPaths
+        .Where(p => p.Path.Contains("/Monsters/", StringComparison.OrdinalIgnoreCase)
+                 || p.Path.Contains("/Chests/",   StringComparison.OrdinalIgnoreCase)
+                 || p.Path.Contains("League",     StringComparison.OrdinalIgnoreCase)
+                 || p.Path.Contains("MiscellaneousObjects", StringComparison.OrdinalIgnoreCase))
+        .Select(p => p.Path).Distinct().OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+    Console.WriteLine();
+    Console.WriteLine($"CONTENT-SIGNAL paths (Monsters / Chests / League / MiscObjects): {contentPaths.Count}");
+    foreach (var p in contentPaths.Take(150))
+        Console.WriteLine($"  {p}");
+    if (contentPaths.Count > 150)
+        Console.WriteLine($"  ... (+{contentPaths.Count - 150} more)");
 
     // All Metadata/ paths (confirms we're reading real asset paths).
     var metaPaths = allPaths
