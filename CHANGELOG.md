@@ -3,6 +3,17 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.13.0] — 2026-06-29
+### Added — 🌌 **Atlas QoL** *(a 7-part upgrade to the Atlas overlay)*
+- 👁️ **Content icons on fogged maps** *(on by default)* — the game hides a map's content art until you reveal the tile. POE2GPS now stamps the **content glyph** (🌀 Breach · 💀 Boss · 🔮 Essence · ⛏️ Expedition · 🩸 Ritual · 📦 Strongbox · …) **right on the fogged node**, so you can see *what's out there* **before** committing a single point. 15 crisp built-in icons; size + on/off in **Settings**.
+- 🎯 **Built-in Map Targets** *(seeded once, additively)* — a fresh install now **highlights the maps that matter out of the box** — every **Citadel**, the **Halls**, and key uniques — ring + route + off-screen arrow, zero setup. Purely additive: your own rules are never touched.
+- 🎨 **Colour groups** — define a named, coloured set (e.g. *Citadels* → gold, *Uniques* → orange) and **every member map recolours together**. Add / edit / remove groups live from the **Atlas** dashboard tab.
+- 🧹 **Hide filters** — **Hide completed** *(on)* sweeps run maps off the overlay, and **Hide accessible-only** *(off)* declutters the adjacent frontier — so the Atlas shows what's *left to do*, not what's done.
+- 🗂️ **Data-driven map intel** — a bundled GGG-data layer resolves each node's **display name · type · content tags** (`unique` · `lineage` · `arbiter` · …), powering a new **Type** filter axis and richer tooltips.
+- ➡️ **Directional route chevrons** — auto-routes and your **F10** path now draw **arrowheads** showing travel direction; overlapping routes **interleave** so each stays readable.
+- 🩹 **Off-screen route fix** *(correctness)* — route segments no longer **jitter / wobble** when a node sits off-screen (off-screen positions are noisy, so those segments are now cleanly culled).
+- 🛡️ **Still 100% read-only.** Everything above only **reads** atlas memory the game already exposes + bundled static data, and **draws**. No pricing, no trade, no input — same compliance bar as always.
+
 ## [0.12.0] — 2026-06-29
 ### Added
 - ✨ **Affix nameplates** *(opt-in — off by default)* — see an elite monster's dangerous **modifiers floating right above its head**, on screen, **no mouse hover needed**. Each rare/unique shows *its own* affixes, color-coded by danger.
