@@ -58,6 +58,7 @@ public sealed class OverlayRenderer : IDisposable
 
     private readonly OverlayWindow _window;
     private TerrainBitmap? _terrain;
+    private AtlasIconCache? _atlasIcons;   // #5: decoded atlas content-icon bitmaps (lazy per render target)
 
     // Per-icon-name geometry, built lazily from the SVG IconLibrary and cached for the renderer's
     // lifetime. A name that can't be resolved/parsed is mapped to the Circle geometry so something
@@ -98,6 +99,7 @@ public sealed class OverlayRenderer : IDisposable
         _bPath     = rt.CreateSolidColorBrush(PathPalette[0]);
         _bStyle    = rt.CreateSolidColorBrush(ColText);
         _tf = _window.DWriteFactory.CreateTextFormat("Consolas", null, FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 12f, "en-us");
+        _atlasIcons = new AtlasIconCache();   // decode embedded atlas content PNGs once (#5)
         _ready = true;
     }
 
@@ -349,6 +351,15 @@ public sealed class OverlayRenderer : IDisposable
                                : new Color4(0.43f, 0.91f, 0.53f, 0.85f);
                 rt.DrawEllipse(new Ellipse(c, 11f, 11f), _bStyle, 2f);
             }
+            // #5 content icons: drawn in a row above the node, but ONLY on FOGGED nodes (the game already
+            // renders its own content icons on revealed ones, so we'd double up). Tracked rings + icons can
+            // co-exist on a fogged tracked node. Ring radius below mirrors the ring drawn above.
+            if (ctx.AtlasContentIcons && !n.Visible && n.ContentIcons is { Count: > 0 } && _atlasIcons != null)
+            {
+                float ringR = (n.Selected || n.Arrow) ? 12f : (n.Nav ? 9f : 0f);
+                DrawAtlasContentIcons(rt, n.ContentIcons, sx, sy - ringR, ctx.AtlasContentIconSize);
+            }
+
             var label = n.Label ?? (n.IconType > 0 ? n.IconType.ToString() : null);
             if (label != null)
             {
@@ -360,6 +371,30 @@ public sealed class OverlayRenderer : IDisposable
                 rt.FillRectangle(new Vortice.RawRectF(lx - 4f, ly - 1f, lx + lw, ly + 17f), _bPanel!);
                 rt.DrawText(label, _tf!, new Rect(lx, ly, lx + lw + 40f, ly + 18f), _bText!, DrawTextOptions.Clip);
             }
+        }
+    }
+
+    /// <summary>Draw a centered row of content icons (#5) above a node. <paramref name="cx"/> is the node's
+    /// screen X; <paramref name="topY"/> is the node ring's top — icons sit just above it. Square cells of
+    /// <paramref name="iconH"/> px; only basenames present in the cache draw. A dark backing keeps the row
+    /// readable over the busy atlas art. Called only for FOGGED nodes (the game draws its own on revealed ones).</summary>
+    private void DrawAtlasContentIcons(ID2D1RenderTarget rt, IReadOnlyList<string> basenames, float cx, float topY, float iconH)
+    {
+        if (iconH < 6f) iconH = 6f;
+        var cnt = 0;
+        foreach (var bn in basenames) if (_atlasIcons!.Get(rt, bn) != null) cnt++;
+        if (cnt == 0) return;
+        const float gap = 3f;
+        float totalW = cnt * iconH + (cnt - 1) * gap;
+        float ix = cx - totalW * 0.5f;
+        float iy = topY - iconH - 5f;
+        rt.FillRectangle(new Vortice.RawRectF(ix - 3f, iy - 2f, ix + totalW + 3f, iy + iconH + 2f), _bPanel!);
+        foreach (var bn in basenames)
+        {
+            var bmp = _atlasIcons!.Get(rt, bn);
+            if (bmp == null) continue;
+            rt.DrawBitmap(bmp, 1f, BitmapInterpolationMode.Linear, new Rect(ix, iy, ix + iconH, iy + iconH));
+            ix += iconH + gap;
         }
     }
 
@@ -1276,5 +1311,6 @@ public sealed class OverlayRenderer : IDisposable
         _geoCache.Clear();
         _tf?.Dispose();
         _terrain?.Dispose();
+        _atlasIcons?.Dispose();
     }
 }

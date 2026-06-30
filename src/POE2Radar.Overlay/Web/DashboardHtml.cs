@@ -532,6 +532,15 @@ internal static class DashboardHtml
                 <label class="sw"><input type="checkbox" data-set="atlasHideAccessible"><span class="track"></span><span class="knob"></span></label>
                 Hide accessible-only maps
               </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <label class="sw"><input type="checkbox" data-set="atlasShowContentIcons"><span class="track"></span><span class="knob"></span></label>
+                Show content icons on fogged nodes
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+                Icon size
+                <input type="number" data-set="atlasContentIconSize" min="8" max="64" step="1" style="width:54px;padding:2px 4px">
+                px
+              </label>
             </div>
 
             <!-- group filter + search -->

@@ -156,6 +156,11 @@ public sealed class RadarSettings
     // Directional chevron spacing along atlas route lines (#5): distance (in chevron-heights) between arrowheads.
     // Smaller = denser arrows; larger = more spaced out. Clamped 2–60. Default 8 matches upstream spacing.
     public float AtlasRouteArrowSpacing { get; set; } = 8f;
+    // #5 on-node content icons: draw content-type PNG glyphs (Breach/Boss/Essence/…) on FOGGED atlas nodes.
+    // The game draws its own icons on REVEALED nodes — this surfaces what's hidden on un-revealed maps.
+    // Size is the icon cell height in pixels (clamped 8–64). On by default.
+    public bool AtlasShowContentIcons { get; set; } = true;
+    public float AtlasContentIconSize { get; set; } = 26f;
 
     // One-time guard: false until the default "Abyss Lightless (Void)" monster display rule has been
     // seeded into display_rules.json. Set true after seeding so a user who deletes the rule keeps it gone.

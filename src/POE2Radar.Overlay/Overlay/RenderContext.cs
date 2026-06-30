@@ -61,7 +61,8 @@ public readonly record struct AtlasMark(
     bool Selected, bool HasContent, bool Visited, bool Unlocked,
     int Biome, int IconType,
     string? Label = null, string? Color = null,
-    bool Arrow = false, bool Nav = false, nint Element = 0);
+    bool Arrow = false, bool Nav = false, nint Element = 0,
+    IReadOnlyList<string>? ContentIcons = null, bool Visible = false);
 
 /// <summary>One auto-route polyline from the player's current atlas node (or the accessible frontier) to a
 /// tracked target tile. <see cref="Points"/> are canvas-space node centers (relPos), projected with the
@@ -239,4 +240,8 @@ public sealed record RenderContext(
     IReadOnlyList<AffixNameplateTarget>?  AffixTargets       = null,
     Config.AffixNameplateSettings?        AffixNameplates    = null,
     // Directional chevron spacing along atlas route lines (in chevron-heights). Default 8f matches upstream.
-    float                                 AtlasRouteArrowSpacing = 8f);
+    float                                 AtlasRouteArrowSpacing = 8f,
+    // #5 on-node content icons: draw content-type glyphs on FOGGED atlas nodes (the game hides these).
+    // AtlasContentIcons mirrors AtlasShowContentIcons from settings; AtlasContentIconSize is the glyph size px.
+    bool                                  AtlasContentIcons = true,
+    float                                 AtlasContentIconSize = 26f);

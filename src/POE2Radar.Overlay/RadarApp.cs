@@ -1213,7 +1213,9 @@ public sealed class RadarApp : IDisposable
             ZoneSummaryHud: _settings.ZoneSummary,
             AffixTargets: _affixFrame,
             AffixNameplates: _settings.AffixNameplates,
-            AtlasRouteArrowSpacing: _settings.AtlasRouteArrowSpacing);
+            AtlasRouteArrowSpacing: _settings.AtlasRouteArrowSpacing,
+            AtlasContentIcons: _settings.AtlasShowContentIcons,
+            AtlasContentIconSize: _settings.AtlasContentIconSize);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
@@ -2677,6 +2679,7 @@ public sealed class RadarApp : IDisposable
         sig = sig * 1000003L ^ (_settings.AtlasAutoRoute ? 1L : 0L) ^ ((long)_settings.AtlasAutoRouteMaxHops << 1);
         sig = sig * 1000003L ^ (long)(_settings.AtlasNavTags?.Count ?? 0);          // re-solve when the nav set changes
         sig = sig * 1000003L ^ (long)(_settings.AtlasGroups?.Count ?? 0);           // re-solve when colour groups change
+        sig = sig * 1000003L ^ (_settings.AtlasShowContentIcons ? 1L : 0L);        // re-solve when content-icon toggle changes
         if (_builtAtlasOnce && _atlas.AllTagsResolved && sig == _lastAtlasSig)
             return;   // view + inputs unchanged → marks/route stay frozen (off-screen arrows don't jitter)
         _lastAtlasSig = sig; _builtAtlasOnce = true;
@@ -2765,11 +2768,26 @@ public sealed class RadarApp : IDisposable
             // tracked nodes (the user explicitly asked to hide them).
             if (_settings.AtlasHideCompleted && n.Completed) continue;
             if (_settings.AtlasHideAccessible && n.Accessible && !n.Completed) continue;
-            // ONLY highlighted/nav/arrow maps are drawn (the point: surface content the game hides).
-            // AtlasDrawAll debug overrides this to draw every node.
-            if (!_settings.AtlasDrawAll && !isTracked && !isNav && !isArrow) continue;
+            // #5 on-node content icons: resolve this node's content tags to icon asset basenames. Drawn on
+            // tracked nodes and, crucially, on FOGGED nodes the game hides icons on (surfacing what's hidden).
+            IReadOnlyList<string>? contentIcons = null;
+            if (_settings.AtlasShowContentIcons && n.Tags is { Count: > 0 })
+            {
+                List<string>? ic = null;
+                foreach (var t in n.Tags)
+                    if (POE2Radar.Core.Game.AtlasMapData.Shared.ContentIcon(t) is { Length: > 0 } bn && (ic ??= new List<string>()).Contains(bn) == false)
+                        ic!.Add(bn);
+                contentIcons = ic;
+            }
+            // An untracked node still earns a mark when it's a FOGGED content node with a drawable icon (the
+            // renderer draws icons only for !Visible nodes), so we reveal content on un-revealed maps. Otherwise
+            // only highlighted/nav/arrow maps draw. AtlasDrawAll debug overrides this to draw every node.
+            bool foggedIconNode = contentIcons is { Count: > 0 } && !n.Visible;
+            if (!_settings.AtlasDrawAll && !isTracked && !isNav && !isArrow && !foggedIconNode) continue;
             var matched = mTrack ?? mNav ?? mArrow;
-            var label = matched ?? (n.Tags is { Count: > 0 } ? n.Tags[0] : (string.IsNullOrEmpty(n.MapName) ? null : n.MapName));
+            var label = matched ?? (isTracked || isNav || isArrow
+                ? (n.Tags is { Count: > 0 } ? n.Tags[0] : (string.IsNullOrEmpty(n.MapName) ? null : n.MapName))
+                : null);   // icon-only fogged marks carry no label (icons alone)
             string? color = matched != null && _settings.AtlasHighlightColors.TryGetValue(matched, out var c) ? c
                 : (groupColor != null && !string.IsNullOrEmpty(n.MapName) && groupColor.TryGetValue(n.MapName, out var gc) ? gc : null);
             if (dyn != null)
@@ -2784,7 +2802,8 @@ public sealed class RadarApp : IDisposable
                 AtlasGeometry.AtlasCentre(n.Y, n.H),
                 n.W, n.H,
                 isTracked, n.HasContent, n.Visited, n.Unlocked,
-                n.Biome, n.IconType, label, color, isArrow, isNav, n.Element));
+                n.Biome, n.IconType, label, color, isArrow, isNav, n.Element,
+                contentIcons, n.Visible));
         }
 
         // ── Auto-routing (improvement 1): "you are here" + a route to each tracked tile ──────────────
