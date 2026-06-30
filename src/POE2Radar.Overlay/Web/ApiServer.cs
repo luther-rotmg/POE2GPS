@@ -1325,8 +1325,13 @@ public sealed class ApiServer : IDisposable
                 var maps = new List<string>();
                 if (g.TryGetProperty("maps", out var mv) && mv.ValueKind == JsonValueKind.Array)
                     foreach (var m in mv.EnumerateArray())
-                        if (m.ValueKind == JsonValueKind.String && m.GetString() is { Length: > 0 } ms && maps.Count < 200)
-                            maps.Add(ms.Trim());
+                        if (m.ValueKind == JsonValueKind.String && m.GetString() is { } ms && maps.Count < 200)
+                        {
+                            var s = ms.Trim();
+                            if (string.IsNullOrWhiteSpace(s)) continue;
+                            if (s.Length > 64) s = s[..64];
+                            maps.Add(s);
+                        }
                 groups.Add(new AtlasMapGroup { Name = name, Color = color, Maps = maps });
                 if (groups.Count >= 32) break;
             }

@@ -2669,13 +2669,13 @@ public sealed class RadarApp : IDisposable
             ^ ((long)(_settings.AtlasArrowTags?.Count ?? 0) << 28)
             ^ ((long)sel.Count << 36)
             ^ (_settings.AtlasDrawAll ? 1L << 44 : 0L)
-            ^ ((long)(_settings.AtlasGroups?.Count ?? 0) << 45)   // #7: rebuild when group set changes
             ^ (_settings.AtlasHideCompleted ? 1L << 48 : 0L)
             ^ (_settings.AtlasHideAccessible ? 1L << 49 : 0L);
         long sig = viewSig * 2654435761L ^ inputSig;
         sig = sig * 1000003L ^ (curGrid?.GetHashCode() ?? 0);                       // re-solve routes as the player moves
         sig = sig * 1000003L ^ (_settings.AtlasAutoRoute ? 1L : 0L) ^ ((long)_settings.AtlasAutoRouteMaxHops << 1);
         sig = sig * 1000003L ^ (long)(_settings.AtlasNavTags?.Count ?? 0);          // re-solve when the nav set changes
+        sig = sig * 1000003L ^ (long)(_settings.AtlasGroups?.Count ?? 0);           // re-solve when colour groups change
         if (_builtAtlasOnce && _atlas.AllTagsResolved && sig == _lastAtlasSig)
             return;   // view + inputs unchanged → marks/route stay frozen (off-screen arrows don't jitter)
         _lastAtlasSig = sig; _builtAtlasOnce = true;
@@ -2720,6 +2720,8 @@ public sealed class RadarApp : IDisposable
             if (!string.IsNullOrEmpty(nd.MapName) && set.Contains(nd.MapName)) return nd.MapName;
             if (nd.Tags is { Count: > 0 }) foreach (var t in nd.Tags) if (set.Contains(t)) return t;
             if (!string.IsNullOrEmpty(nd.Kind) && nd.Kind != "Normal" && set.Contains(nd.Kind)) return nd.Kind;
+            if (!string.IsNullOrEmpty(nd.MapType) && set.Contains(nd.MapType)) return nd.MapType;
+            if (nd.MapDataTags is { Count: > 0 }) foreach (var t in nd.MapDataTags) if (set.Contains(t)) return t;
             return null;
         }
         // #7 colour groups: map display name → group colour (the first group containing it). A matched node
