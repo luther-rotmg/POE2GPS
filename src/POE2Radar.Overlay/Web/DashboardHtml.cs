@@ -541,6 +541,10 @@ internal static class DashboardHtml
                 <input type="number" data-set="atlasContentIconSize" min="8" max="64" step="1" style="width:54px;padding:2px 4px">
                 px
               </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+                Route arrow spacing
+                <input type="number" data-set="atlasRouteArrowSpacing" min="2" max="60" step="1" style="width:54px;padding:2px 4px">
+              </label>
             </div>
 
             <!-- group filter + search -->
