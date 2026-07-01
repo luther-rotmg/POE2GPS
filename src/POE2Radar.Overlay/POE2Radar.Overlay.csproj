@@ -13,7 +13,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- App version — bump per release and tag the repo to match (vX.Y.Z). UpdateChecker compares this
          to the latest GitHub release/tag so the user is told when they're out of date. -->
-    <Version>0.14.0</Version>
+    <Version>0.15.0</Version>
     <!-- Neutral binary metadata (identity hygiene): keep the PE version-info generic, no author/company
          strings baked in. The published exe is also string-scrubbed by scripts/scrub-strings.ps1. -->
     <Company></Company>

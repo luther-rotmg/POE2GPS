@@ -3,6 +3,16 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.15.0] — 2026-06-30
+### Added — 🧭 **Situational Awareness** *(two awareness upgrades)*
+- ➡️ **Off-screen entity arrows** *(on by default; seeded for Uniques + Bosses)* — when a notable monster is **off the edge of your screen**, an **arrow at the window border points right at it**, colour-matched to its rule — so you spot the unique/boss/pack **before it comes into view**. It's driven by your existing **display rules**: flip the new **"off-screen arrow"** checkbox on any rule to include it. Nearest-first with a **cap** so dense packs stay readable. Tune size / label / max in **⚙️ Settings → Entity Arrows**.
+- 📊 **Session HUD v2** — three new opt-in lines for the run tracker:
+  - 💀 **Kills (observed)** — a live tally by rarity (**N · M · R · U**), counted from monsters you watch die. *(Honest by design: it counts the kills it witnesses, so huge off-screen AoE clears read a touch low.)*
+  - 🗺️ **Maps/hr** — your map-zone throughput (town/hideout trips don't count).
+  - 📈 **XP-efficiency** — `your level − area level` (e.g. `+3` over-levelled · `−5` under-levelled), at a glance.
+  - Toggle them in **⚙️ Settings → Session HUD**; reset with **Ctrl+Alt+R** like the rest.
+- 🛡️ Both are **100% read-only** — built entirely on data the overlay already reads (**no new offsets**, no new reads). No input, no pricing.
+
 ## [0.14.0] — 2026-06-30
 ### Added — 🔮 **Preload Alert** *(opt-in — off by default · experimental)*
 - 🔮 **Know what's in the zone the moment you load in.** When you enter an area, POE2GPS reads the list of assets the game just loaded and calls out the **notable content waiting for you** — **pinnacle bosses** (Arbiters · Xesht · Kosis · Omniphobia · …), **league encounters** (Breach · Ritual · Expedition · Abyss · Incursion · Delirium · …), **Rogue/Conqueror exiles**, and **valuable chests** — as a tidy **corner panel**, tier-coloured 🔴 *pinnacle* · 🟠 *high* · 🟡 *mechanic* · 🔵 *interactable*.
