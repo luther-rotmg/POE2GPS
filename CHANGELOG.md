@@ -3,6 +3,12 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.17.0] — 2026-07-01
+### Added — 🛰️ **Remote Views** *(see your overlay from anywhere on your network)*
+- 🌐 **Remote Access (LAN)** *(opt-in — off by default)* — flip one toggle and the overlay's pages become reachable from **other devices on your network**: open `http://<your-ip>:7777/obs` on your **stream-capture PC**, or `…/map` on a **phone / tablet / Raspberry Pi**. **Writes stay locked to your machine** — a LAN device can **view**, but **nobody on your network can change your settings** (every settings write is still loopback-only; LAN peers get a `403`). Needs an **app restart** to apply, and Windows will ask to allow POE2GPS through the **firewall** the first time. The dashboard shows your live **LAN URLs** once it's on. *(Reads are unauthenticated over your LAN by design — only enable it on a network you trust.)*
+- 🗺️ **Web minimap** — a brand-new standalone page at `http://localhost:7777/map`: a clean **top-down radar** of the **walkable terrain + live dots (monsters by rarity · POI · friendlies) + your position**, centred on you and updating live. **Drop it fullscreen on a second monitor, a phone, or a Raspberry Pi below your main screen** and stop tabbing the in-game map open. Zoom with **+ / −**. Costs **nothing when nobody's viewing it** — it only does work while a browser has it open. Pair it with Remote Access above to run it on that Pi. 🥧
+- 🛡️ Both are **100% read-only** of the game — **no new offsets, no new memory reads**, no input, no pricing. They're just new *views* of data the overlay already reads; both default to **off / zero-cost**.
+
 ## [0.16.0] — 2026-06-30
 ### Added — 📡 **Streaming & Presence** *(two ways to share your session)*
 - 🎥 **OBS overlay** — a **transparent, stream-styled page** at `http://localhost:7777/obs`. Add it as a **Browser Source** in OBS and your session stats composite right over gameplay: session/zone timers, area + level, **kills** (N·M·R·U), **maps/hr**, **XP-efficiency**, next objective. Pick which widgets show + colour/opacity/scale/corner in **⚙️ Settings → OBS Overlay**. Built on the data the overlay already publishes — no new reads.
