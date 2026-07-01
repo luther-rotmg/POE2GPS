@@ -1274,7 +1274,9 @@ public sealed class RadarApp : IDisposable
             player = playerWorld is { } pw ? new NumVec2(pw.X / Poe2.WorldToGridRatio, pw.Y / Poe2.WorldToGridRatio) : NumVec2.Zero;
             map = _liveRender.ReadMap(inGameState, areaInstance);
             _cameraMatrix = (_settings.HpBarNormal || _settings.HpBarMagic || _settings.HpBarRare || _settings.HpBarUnique   // SR-5c
-                || _settings.AffixNameplates.Enabled || _settings.GroundItems.Enabled)
+                || _settings.AffixNameplates.Enabled || _settings.GroundItems.Enabled
+                || _settings.EntityArrows.Enabled    // DrawEntityArrows (SR-5 follow-up: was missing)
+                || snap.SelectedPaths.Count > 0)     // DrawPathsWorld — no feature flag; fires whenever a nav target is selected
                 ? _liveRender.CameraMatrix(inGameState) : null;
             if (_liveRender.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }
 
