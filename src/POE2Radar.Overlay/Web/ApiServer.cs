@@ -87,9 +87,7 @@ public sealed class ApiServer : IDisposable
     private volatile bool _running;
     private readonly bool _allowLanAccess;   // bound all-interfaces when true (opt-in LAN view)
     private readonly int _port;              // stored for /api/lan-info + loopback fallback
-#pragma warning disable CS0414  // Task 2 reads _lanBindFailed in /api/lan-info
     private volatile bool _lanBindFailed;    // true if http://+:port bind threw and we fell back to loopback
-#pragma warning restore CS0414
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -272,6 +270,16 @@ public sealed class ApiServer : IDisposable
                 Write(ctx, 200, JsonSerializer.Serialize(icons, Json));
                 break;
             }
+
+            case "/api/lan-info":
+                Write(ctx, 200, JsonSerializer.Serialize(new
+                {
+                    port = _port,
+                    bound = (_allowLanAccess && !_lanBindFailed) ? "lan" : "localhost",
+                    bindFailed = _lanBindFailed,
+                    addresses = LanAddresses(),
+                }, Json));
+                break;
 
             case "/landmarks":
             {
@@ -1094,6 +1102,7 @@ public sealed class ApiServer : IDisposable
         offX = _settings.OffX,
         offY = _settings.OffY,
         apiPort = _settings.ApiPort, // display only — changing it needs a restart
+        allowLanAccess = _settings.AllowLanAccess, // opt-in LAN view binding; needs a restart to apply
         styles = _settings.Styles,   // per-item icon shapes/colors/sizes + mechanic overrides
         hpBars = _settings.HpBars,   // monster HP-bar geometry (width/height/offset)
         terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
@@ -1263,6 +1272,7 @@ public sealed class ApiServer : IDisposable
                 case "audioAlertMechanic" when TryBool(p.Value, out var b): _settings.AudioAlertMechanic = b; applied.Add(p.Name); break;
                 case "audioToneMechanic"  when TryString(p.Value, out var s): _settings.AudioToneMechanic  = s.Trim(); applied.Add(p.Name); break;
                 case "firstRunSeen" when TryBool(p.Value, out var b): _settings.FirstRunSeen = b; applied.Add(p.Name); break;
+                case "allowLanAccess" when TryBool(p.Value, out var lan): _settings.AllowLanAccess = lan; applied.Add(p.Name); break;
                 // Atlas colour groups (#7): the dashboard re-POSTs the full array on edit.
                 case "atlasGroups" when p.Value.ValueKind == JsonValueKind.Array:
                     if (TryParseAtlasGroups(p.Value, out var atlasGrps)) { _settings.AtlasGroups = atlasGrps; _settings.AtlasGroupsSeeded = true; applied.Add(p.Name); }
@@ -2068,6 +2078,30 @@ public sealed class ApiServer : IDisposable
         v = 0; return false;
     }
 
+
+    /// <summary>Best-effort list of this machine's LAN IPv4 addresses (for the dashboard's "your LAN URL"
+    /// display). Skips loopback, down interfaces, and APIPA link-local (169.254.*). Never throws.</summary>
+    private static string[] LanAddresses()
+    {
+        var list = new List<string>();
+        try
+        {
+            foreach (var ni in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != System.Net.NetworkInformation.OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback) continue;
+                foreach (var ua in ni.GetIPProperties().UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) continue;
+                    var ip = ua.Address.ToString();
+                    if (ip.StartsWith("169.254", StringComparison.Ordinal)) continue; // APIPA link-local
+                    list.Add(ip);
+                }
+            }
+        }
+        catch { /* odd adapters can throw during enumeration — best-effort */ }
+        return list.ToArray();
+    }
 
     private static bool IsLoopbackHost(HttpListenerRequest req)
     {

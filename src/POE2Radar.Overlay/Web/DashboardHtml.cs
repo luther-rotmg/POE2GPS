@@ -979,6 +979,14 @@ internal static class DashboardHtml
             <div class="row" style="margin-top:4px"><div class="rl">Preview<small>live tokens from current /state</small></div>
               <span id="dpPreview" style="font-size:12px;color:var(--gold-bright);white-space:pre-wrap"></span></div>
           </div>
+          <div class="card collapsed" data-card="remote-lan">
+            <h3>Remote Access (LAN) <small class="tag">&middot; view from other devices</small></h3>
+            <div class="row"><div class="rl">Allow LAN access<small>let other devices on your network open /obs and /map (view-only &mdash; nobody on your LAN can change your settings). Needs an app restart to apply.</small></div>
+              <label class="sw"><input type="checkbox" data-set="allowLanAccess"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl hint-row">First connection: allow POE2GPS through Windows Firewall (inbound TCP on your API port) when Windows prompts. Reads are unauthenticated over your LAN &mdash; only enable this on a network you trust.</div></div>
+            <div class="row"><div class="rl">Your LAN URLs<small>open these from another device once LAN access is on + you&rsquo;ve restarted</small></div>
+              <span style="display:flex;flex-direction:column;gap:4px" id="lanUrls"><code style="font-size:12px;color:var(--ink-faint)">turn on LAN access + restart to see URLs</code></span></div>
+          </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
@@ -1104,7 +1112,7 @@ async function loadSettings(){
     obsOvr = s.obsOverlay || {};
     discordPres = s.discordPresence || {};
     renderHpBars(); renderTerrain(); renderGround();
-    renderEntityArrows(); renderObsOverlay(); renderDiscordPresence();
+    renderEntityArrows(); renderObsOverlay(); renderDiscordPresence(); renderLanInfo();
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
     if(window._syncDiagPanel) window._syncDiagPanel();
   }catch(e){}
@@ -2271,6 +2279,21 @@ function updateDiscordPreview(s){
   const dt=document.getElementById('dpDetailsTemplate');
   const st=document.getElementById('dpStateTemplate');
   prev.textContent=fmt(dt?.value||'{area}')+'\n'+fmt(st?.value||'Level {level} · {mapshr} maps/hr');
+}
+
+/* ── Remote Access (LAN) card ── */
+async function renderLanInfo(){
+  try{
+    const li=await getJSON('/api/lan-info');
+    const box=document.getElementById('lanUrls'); if(!box) return;
+    if(!li.addresses||!li.addresses.length){ box.innerHTML='<code style="font-size:12px;color:var(--ink-faint)">no LAN address detected</code>'; return; }
+    const note = li.bindFailed
+      ? '<small style="color:#f66">LAN bind failed &mdash; running loopback-only. Restart POE2GPS as administrator.</small>'
+      : (li.bound==='lan' ? '' : '<small style="color:var(--ink-faint)">LAN access is off &mdash; toggle it on above, then restart.</small>');
+    box.innerHTML = li.addresses.map(a=>
+      `<code style="font-size:12px;color:var(--gold-bright)">http://${a}:${li.port}/map</code>`+
+      `<code style="font-size:12px;color:var(--gold-bright)">http://${a}:${li.port}/obs</code>`).join('') + note;
+  }catch(e){}
 }
 
 /* ── affix nameplates card (own endpoint /api/affix-nameplates) ── */
