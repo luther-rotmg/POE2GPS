@@ -76,5 +76,26 @@ The published `WorldSnapshot` / `RadarState` / `AtlasRender` shapes are **unchan
 - Changing the published snapshot/API shapes.
 - Any new offset discovery.
 
+## Audit results — concrete reduction plan (produced 2026-07-01)
+
+The 5-region + synthesis audit workflow ran over the read layer. **Full ranked findings (17 reductions with per-site implementation sketches):** [`2026-07-01-perf-v3-audit-synthesis.md`](2026-07-01-perf-v3-audit-synthesis.md).
+
+**Headline baseline finding:** the dominant read cost by 10–100× is **`Poe2Atlas.ReadCanvasNodes` re-walking ~20,000 reads EVERY WorldTick (~30 Hz) while the Atlas is open — even when the freeze-signature is about to discard the result** (the sig is computed *after* the walk). ~600,000 reads/sec of pure waste while the atlas is open + static. Next: the render thread runs all reads at 60 Hz even when PoE2 is unfocused and the overlay draws nothing (~7,680 reads/sec wasted while tabbed out). Then feature-ungated reads that always run regardless of whether their feature is enabled.
+
+**The 11 SDD tasks (sequenced, invisible-safety first, biggest+safest first):**
+- **SR-1 (huge):** Static-atlas fast path — compute the freeze pre-signature BEFORE `ReadNodes()`; skip the ~20k-read canvas walk when unchanged. ~600k reads/sec while atlas open+static. (`RadarApp.UpdateAtlas`, `Poe2Atlas.ReadNodes/ReadCanvasNodes`)
+- **SR-2 (high):** Unfocused idle-slowdown — gate the render `if (inGame)` read block behind `realActive || _overlayHadContent` (one clear-frame, then skip). ~7,680 reads/sec while tabbed out. (`RadarApp.Tick`)
+- **SR-3:** Feature-gate `ReadMods` on `AffixNameplates.Enabled || HasModFilter` (Poe2Live `EnableModReads`).
+- **SR-4:** Feature-gate `ReadItemIdentity` on `GroundItems.Enabled || rule.AppliesToItems` (Poe2Live `EnableItemIdentityReads`).
+- **SR-5 (quick-wins batch):** (a) render `AreaHash` → use `snap.AreaHash`; (b) `PlayerGrid`+`PlayerWorld` single-read; (c) gate `CameraMatrix` on HP-bars/nameplates/item-labels enabled; (d) drop `EntityCategory.Player` from the `ReadHp` condition.
+- **SR-6 (quick-wins batch):** (a) permanent-cache `PlayerName`; (b) slow-refresh `PlayerLevel` to ~0.2 Hz; (c) gate/slow-refresh `PlayerVitals` on `EnableAutoFlask || ShowVitalsHud` (10 Hz HUD-only; full rate when auto-flask on).
+- **SR-7:** Atlas per-node feature gates — `iconType` child-walk on `AtlasShowContentIcons`; status reads on `AtlasAutoRoute || AtlasHideCompleted || AtlasHideAccessible`. ~330k + ~99k reads/sec when those atlas features off.
+- **SR-8:** POI `CompletedState` one-way cache in `ReadIcon` (mirrors `ReadChestOpened`) + 10-tick slow-refresh for live POIs.
+- **SR-9:** `ReadMonolith` static-data cache — live-read only the `Collected` flag (reuses SR-8). ~1,260 reads/sec when Monoliths on.
+- **SR-10:** Cull off-screen atlas marks before the render-thread `TryRelPos` loop. ~6,000 reads/sec while atlas open.
+- **SR-11:** Slow-refresh `CurrentNodeGrid` to ~1 Hz (after SR-1).
+
+Every task's deliverable is verified by the existing `rpmPerSec` (`/state`) counter dropping in the relevant scenario, with the touched feature smoke-tested identical. Auto-flask vitals stay full-rate when enabled (safety-critical). All invisible/imperceptible — no user-visible change.
+
 ## Version
-Ships as **v0.18.0 — Performance v3 (Stealth Reads)**. README badge stays `0.5.4`. SDD flow, gated on the audit workflow's concrete reduction list. Discord announcement drafted at release. The concrete task set is **appended to this spec** after the audit workflow runs (the inventory + ranked reductions), before writing the implementation plan.
+Ships as **v0.18.0 — Performance v3 (Stealth Reads)**. README badge stays `0.5.4`. SDD flow. Discord announcement drafted at release.
