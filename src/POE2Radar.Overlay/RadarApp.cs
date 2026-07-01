@@ -1278,7 +1278,7 @@ public sealed class RadarApp : IDisposable
         {
             _areaInstanceForApi = areaInstance; // for /api/tiles (read by _liveApi on the HTTP thread)
             _inGameStateForApi = inGameState;   // for /api/atlas + F10 route pick
-            _areaHash = snap.AreaHash;   // SR-5a: snapshot already carries it; saves one RPM read per frame
+            _areaHash = _liveRender.AreaHash(areaInstance);
 
             playerWorld = _liveRender.PlayerWorld(localPlayer);   // SR-5b: one Render read; derive grid from it
             player = playerWorld is { } pw ? new NumVec2(pw.X / Poe2.WorldToGridRatio, pw.Y / Poe2.WorldToGridRatio) : NumVec2.Zero;

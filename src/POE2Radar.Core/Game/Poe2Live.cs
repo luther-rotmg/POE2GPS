@@ -109,6 +109,7 @@ public sealed class Poe2Live
         _league = ""; _leagueFor = -1;
         _areaCode = ""; _areaCodeFor = -1;
         _plPlayer = 0; _plPlayerFor = 0;
+        _cachedPlayerName = null; _cachedPlayerNameFor = 0;
         // Additional per-entity/per-area caches not in the brief's explicit list:
         _plLife = 0; _plLifeFor = 0;
         _vitalOffsetsResolved = false;
@@ -292,13 +293,14 @@ public sealed class Poe2Live
     }
 
     private string? _cachedPlayerName;
-    /// <summary>Local character name (validated via StdWString @ Player+0x1B0). Permanently cached after first non-empty read — name never changes within a session.</summary>
+    private nint _cachedPlayerNameFor;
+    /// <summary>Local character name (validated via StdWString @ Player+0x1B0). Cached per localPlayer address — re-read on character switch.</summary>
     public string PlayerName(nint localPlayer)
     {
-        if (_cachedPlayerName != null) return _cachedPlayerName;
+        if (_cachedPlayerName != null && _cachedPlayerNameFor == localPlayer) return _cachedPlayerName;
         var c = PlayerComp(localPlayer);
         var name = c == 0 ? "" : ReadStdWString(c + Poe2.PlayerComponent.Name);
-        if (!string.IsNullOrEmpty(name)) _cachedPlayerName = name;
+        if (!string.IsNullOrEmpty(name)) { _cachedPlayerName = name; _cachedPlayerNameFor = localPlayer; }
         return name;
     }
 
@@ -582,7 +584,7 @@ public sealed class Poe2Live
             icon = ResolveComponent(entity, "MinimapIcon");
             _iconAddr[entity] = icon; // cache even if 0, to avoid re-walking non-POI entities
         }
-        if (icon == 0) { _iconState[entity] = (_iconTick, false, false); return (false, false); }
+        if (icon == 0) { return (false, false); }  // non-POI: no _iconState write (would mask a dynamic MinimapIcon acquisition)
         var complete = _reader.TryReadStruct<int>(icon + Poe2.MinimapIcon.CompletedState, out var s) && s != 0;
         if (complete) _completedPois.Add(entity);
         _iconState[entity] = (_iconTick, true, complete);
