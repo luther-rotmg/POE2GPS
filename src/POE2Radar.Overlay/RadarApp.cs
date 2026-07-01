@@ -192,6 +192,8 @@ public sealed class RadarApp : IDisposable
     private Poe2LoadedFiles? _loadedFiles;           // world thread; constructed after first settings check
     private PreloadTracker?  _preloadTracker;        // world thread; constructed from settings in ctor
     private List<PreloadHit>? _preloadFrame;         // world thread; null = nothing to show this zone
+    private readonly object _preloadLock = new();    // guards _preloadTracker._hits (Dictionary not thread-safe):
+                                                     // world-thread ObserveZone (write) vs API-thread Snapshot (read)
     private IReadOnlyList<Poe2Live.Landmark> _landmarks = Array.Empty<Poe2Live.Landmark>(); // world only
     private Poe2Live.TerrainData? _terrain;                 // world only
     private int _charLevel;                                 // world only (published in the snapshot)
@@ -746,7 +748,9 @@ public sealed class RadarApp : IDisposable
             }
 
             // Feed the tracker so it can update per-path zone-frequency counts.
-            var res = _preloadTracker.ObserveZone(matches.Select(m => m.path));
+            // Locked: ObserveZone mutates the tracker's Dictionary, which the API thread may read via Snapshot().
+            PreloadTracker.ZoneResult res;
+            lock (_preloadLock) res = _preloadTracker.ObserveZone(matches.Select(m => m.path));
 
             // Persist now (zone just started; tracker updated).
             SavePreloadFreq(_preloadTracker);
@@ -825,10 +829,16 @@ public sealed class RadarApp : IDisposable
     private object PreloadJson()
     {
         var frame = _preloadFrame;
-        var diag = _settings.PreloadAlert.Diagnostic && _preloadTracker != null
-            ? _preloadTracker.Snapshot().Select(kv => new { path = kv.Key, hits = kv.Value.hits, freq = kv.Value.freq })
-                              .OrderByDescending(x => x.freq).Take(400).ToArray<object>()
-            : null;
+        object[]? diag = null;
+        if (_settings.PreloadAlert.Diagnostic && _preloadTracker != null)
+        {
+            // Snapshot under the lock (it enumerates the tracker's Dictionary, which the world thread mutates
+            // in ObserveZone). The returned dictionary is a fresh copy, so the projection below is lock-free.
+            IReadOnlyDictionary<string, (int hits, double freq)> snap;
+            lock (_preloadLock) snap = _preloadTracker.Snapshot();
+            diag = snap.Select(kv => new { path = kv.Key, hits = kv.Value.hits, freq = kv.Value.freq })
+                       .OrderByDescending(x => x.freq).Take(400).ToArray<object>();
+        }
         return new
         {
             enabled = _settings.PreloadAlert.Enabled,
