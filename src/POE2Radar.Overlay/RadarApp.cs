@@ -1262,6 +1262,12 @@ public sealed class RadarApp : IDisposable
         var rit = _ritualRender;
         var mr = _monoRender;
 
+        // SR-10 follow-up: compute AtlasProjection() ONCE here, before the inGame block, so the atlas-mark
+        // cull (inside the block) and the RenderContext construction (outside the block) both use the SAME
+        // 8-coeff homography. Safe: AtlasProjection() depends only on _window.Height + _atlasZoom (fields),
+        // not on any inGame-block variable. Replaces the duplicate call that was after the inGame block.
+        var atlasProj = AtlasProjection();
+
         // SR-2: gate the per-frame render reads on focus so we don't burn ~7,680 RPM/sec while tabbed out.
         // _overlayHadContent ensures ONE final read+draw fires on focus-loss to clear any stale frame.
         // AlwaysShowOverlay keeps reads live for dashboard calibration even when unfocused.
@@ -1331,13 +1337,19 @@ public sealed class RadarApp : IDisposable
             {
                 // SR-10: cull off-screen marks before the TryRelPos read. Off-screen marks are never
                 // drawn, so using the baked position is invisible. The baked centre (m.X/m.Y) projects
-                // to screen via the same scale AtlasProjection() puts in h0/h4 (shear/offset/persp = 0),
-                // so sx = m.X * pscale, sy = m.Y * pscale — identical to the renderer's formula.
+                // to screen via the EXACT same homography the renderer uses (w = h6·x+h7·y+1,
+                // sx = (h0·x+h1·y+h2)/w, sy = (h3·x+h4·y+h5)/w) so the cull matches in BOTH the
+                // default (offset=0) and manually-calibrated (non-zero offset) modes.
                 // A 200 px margin prevents culling a mark that is panning onto screen mid-frame.
-                float pscale = (_window.Height > 0 ? _window.Height / 1600f : 0.675f) * (_atlasZoom > 0.01f ? _atlasZoom : 0.85f);
+                double bh0 = atlasProj[0], bh1 = atlasProj[1], bh2 = atlasProj[2],
+                       bh3 = atlasProj[3], bh4 = atlasProj[4], bh5 = atlasProj[5],
+                       bh6 = atlasProj[6], bh7 = atlasProj[7];
                 foreach (var m in ar.Marks)
                 {
-                    float bsx = m.X * pscale, bsy = m.Y * pscale;
+                    double bw = bh6 * m.X + bh7 * m.Y + 1.0;
+                    if (Math.Abs(bw) < 1e-6) bw = 1e-6;  // guard degenerate perspective
+                    float bsx = (float)((bh0 * m.X + bh1 * m.Y + bh2) / bw);
+                    float bsy = (float)((bh3 * m.X + bh4 * m.Y + bh5) / bw);
                     bool onScreen = bsx > -200 && bsx < _window.Width + 200 && bsy > -200 && bsy < _window.Height + 200;
                     _atlasMarkFrame.Add(
                         onScreen && m.Element != 0 && _liveRender.TryRelPos(m.Element, out var mx, out var my)
@@ -1425,7 +1437,7 @@ public sealed class RadarApp : IDisposable
         var realActive = renderActive;   // SR-2: reuse focus check computed before the read block (avoids a second GetForegroundWindow call)
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
         var drawActive = realActive || _settings.AlwaysShowOverlay;
-        var atlasProj = AtlasProjection(); // resolution-correct (auto from window height) or manual calib
+        // atlasProj already computed above (hoisted before the atlas-mark cull loop); reused here.
         var ctx = new RenderContext(
             InGame: inGame,
             Active: drawActive,
