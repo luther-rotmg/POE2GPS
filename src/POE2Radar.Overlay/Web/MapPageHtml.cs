@@ -22,8 +22,8 @@ internal static class MapPageHtml
   const RC={Normal:'#b9b9c0',Magic:'#6a8bff',Rare:'#ffd52e',Unique:'#ff7a1a'}; // monster rarity palette
   function fit(){ cv.width=innerWidth; cv.height=innerHeight; }
   addEventListener('resize',fit); fit();
-  document.getElementById('zi').onclick=()=>scale=Math.min(16,scale+1);
-  document.getElementById('zo').onclick=()=>scale=Math.max(1,scale-1);
+  document.getElementById('zi').onclick=()=>{ scale=Math.min(16,scale+1); draw(); };
+  document.getElementById('zo').onclick=()=>{ scale=Math.max(1,scale-1); draw(); };
   async function j(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;return r.json();}
   function buildTerrain(b64,w,h){
     const bin=atob(b64), off=document.createElement('canvas'); off.width=w; off.height=h;
