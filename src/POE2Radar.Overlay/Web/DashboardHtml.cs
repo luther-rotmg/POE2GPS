@@ -987,6 +987,16 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Your LAN URLs<small>open these from another device once LAN access is on + you&rsquo;ve restarted</small></div>
               <span style="display:flex;flex-direction:column;gap:4px" id="lanUrls"><code style="font-size:12px;color:var(--ink-faint)">turn on LAN access + restart to see URLs</code></span></div>
           </div>
+          <div class="card collapsed" data-card="web-minimap">
+            <h3>Web Minimap <small class="tag">&middot; second-screen map</small></h3>
+            <div class="row"><div class="rl">Standalone minimap page<small>walkable terrain + live dots + your position &mdash; drop it fullscreen on a second monitor, phone, or Raspberry Pi</small></div>
+              <span style="display:flex;gap:6px;align-items:center">
+                <a class="addbtn" href="/map" target="_blank" style="width:auto;text-decoration:none">Open</a>
+                <code id="mapUrl" style="font-size:12px;color:var(--gold-bright)">/map</code>
+                <button class="addbtn" id="mapCopyUrl" style="width:auto">Copy</button>
+              </span></div>
+            <div class="row"><div class="rl hint-row">Only does work while a browser has it open &mdash; it costs nothing when nobody's viewing. Turn on Remote Access (LAN) above to open it from another device.</div></div>
+          </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
@@ -1113,6 +1123,7 @@ async function loadSettings(){
     discordPres = s.discordPresence || {};
     renderHpBars(); renderTerrain(); renderGround();
     renderEntityArrows(); renderObsOverlay(); renderDiscordPresence(); renderLanInfo();
+    const mc=document.getElementById('mapCopyUrl'); if(mc) mc.onclick=()=>{ navigator.clipboard.writeText(location.origin+'/map').catch(()=>{}); const t=mc.textContent; mc.textContent='Copied!'; setTimeout(()=>mc.textContent=t,1200); };
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
     if(window._syncDiagPanel) window._syncDiagPanel();
   }catch(e){}

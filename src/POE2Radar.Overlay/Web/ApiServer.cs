@@ -208,6 +208,10 @@ public sealed class ApiServer : IDisposable
                 WriteHtml(ctx, ObsOverlayHtml.Page);
                 break;
 
+            case "/map":
+                WriteHtml(ctx, MapPageHtml.Page);
+                break;
+
             case "/health":
                 Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, inGame = s.InGame }, Json));
                 break;
