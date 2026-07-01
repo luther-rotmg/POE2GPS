@@ -40,12 +40,6 @@ public sealed class Poe2Atlas
 
     public Poe2Atlas(MemoryReader reader) => _reader = reader;
 
-    /// <summary>Set by RadarApp before ReadNodes: skip the per-node content-icon child-walk when the
-    /// content-icon overlay is off, and skip the accessible/completed status reads when no route/hide
-    /// filter needs them. Both feed the freeze-signature, so toggling them rebuilds correctly.</summary>
-    public bool ShowContentIcons { get; set; } = true;
-    public bool NeedNodeStatus { get; set; } = true;
-
     /// <summary>One map archetype: its internal code ("MapSteppe"), display name ("Steppe"), an id
     /// (tracks roughly with tier/level), and the address of its parsed runtime object.</summary>
     public readonly record struct MapType(int Id, string Code, string Name, string Kind, long ParsedObj, long IdStr);
@@ -331,8 +325,12 @@ public sealed class Poe2Atlas
     /// <summary>Read the live atlas node list. Atlas nodes are all children of one canvas container; we
     /// detect the node element-class + canvas once (BFS, vtable-grouped) and cache them, then each call
     /// just reads the canvas's children (cheap). Re-detects (throttled) if the cache goes stale or the
-    /// atlas hasn't been opened yet. Returns empty when not in/near the Atlas.</summary>
-    public List<AtlasNodeLive> ReadNodes(nint inGameState)
+    /// atlas hasn't been opened yet. Returns empty when not in/near the Atlas.
+    /// <para><paramref name="showContentIcons"/> gates the per-node sigil-icon child-walk;
+    /// <paramref name="needNodeStatus"/> gates the accessible/completed DataStorage derefs. Pass
+    /// <c>true, true</c> when full node data is required (API / F10); pass the overlay settings bools
+    /// for the world-tick path so stealth-read savings are preserved.</para></summary>
+    public List<AtlasNodeLive> ReadNodes(nint inGameState, bool showContentIcons, bool needNodeStatus)
     {
         var nodes = new List<AtlasNodeLive>();
         var uiRoot = Ptr(inGameState + Poe2.InGameState.UiRoot);
@@ -347,7 +345,7 @@ public sealed class Poe2Atlas
                 if (HierarchicallyVisible(_nodeCanvas))
                 {
                     _hiddenTicks = 0;
-                    if (ReadCanvasNodes(_nodeCanvas, nodes)) return nodes;
+                    if (ReadCanvasNodes(_nodeCanvas, nodes, showContentIcons, needNodeStatus)) return nodes;
                     // read failed → ReadCanvasNodes already Invalidated; fall through to re-detect.
                 }
                 else
@@ -376,14 +374,14 @@ public sealed class Poe2Atlas
             // (Re)detect — throttled so even with the gate open we don't BFS 50k elements every tick.
             if (_nodeRetry++ % 30 != 0) return nodes;
             if (!DetectNodeClass(uiRoot)) return nodes;
-            if (HierarchicallyVisible(_nodeCanvas)) ReadCanvasNodes(_nodeCanvas, nodes);
+            if (HierarchicallyVisible(_nodeCanvas)) ReadCanvasNodes(_nodeCanvas, nodes, showContentIcons, needNodeStatus);
             return nodes;
         }
     }
 
     /// <summary>Read the cached canvas's children, keeping those of the node class. Returns false (and
     /// invalidates the cache) if the canvas no longer looks right, forcing a re-detect.</summary>
-    private bool ReadCanvasNodes(nint canvas, List<AtlasNodeLive> outNodes)
+    private bool ReadCanvasNodes(nint canvas, List<AtlasNodeLive> outNodes, bool showContentIcons, bool needNodeStatus)
     {
         var first = Ptr(canvas + Poe2.UiElement.Children);
         if (first == 0 || !_reader.TryReadStruct<nint>(canvas + Poe2.UiElement.ChildrenEnd, out var last)) { Invalidate(); return false; }
@@ -416,7 +414,7 @@ public sealed class Poe2Atlas
             // The node's content/icon TYPE lives on a nested sigil-icon child (content int 1..~50);
             // walk first-children a few levels to find it. Lets us classify + match nodes to in-game icons.
             var iconType = 0;
-            if (ShowContentIcons)
+            if (showContentIcons)
             {
                 var d = el;
                 for (var lvl = 0; lvl < 5 && d != 0; lvl++)
@@ -429,7 +427,7 @@ public sealed class Poe2Atlas
             // *(node+DataStorage)+DataModel → status byte +0x2CF (bit0 accessible, bit1 completed). This is
             // the route SOURCE frontier ("maps you can run right now"). Cheap (2 derefs + 1 byte).
             bool accessible = false, completed = false;
-            if (NeedNodeStatus)
+            if (needNodeStatus)
             {
                 var storage = Ptr(el + Poe2.AtlasNode.DataStorage);
                 if (storage != 0)

@@ -321,10 +321,10 @@ if (HasFlag(args, "--atlas-readnodes"))
     if (igs2 == 0) { Console.Error.WriteLine("no chain."); return 1; }
     var sw = System.Diagnostics.Stopwatch.StartNew();
     var atlas = new POE2Radar.Core.Game.Poe2Atlas(reader);
-    var nodes = atlas.ReadNodes(igs2);   // first call may BFS-detect
-    if (nodes.Count == 0) { Thread.Sleep(200); nodes = atlas.ReadNodes(igs2); }
+    var nodes = atlas.ReadNodes(igs2, true, true);   // first call may BFS-detect
+    if (nodes.Count == 0) { Thread.Sleep(200); nodes = atlas.ReadNodes(igs2, true, true); }
     var t1 = sw.ElapsedMilliseconds;
-    var n2 = atlas.ReadNodes(igs2);      // cached fast path
+    var n2 = atlas.ReadNodes(igs2, true, true);      // cached fast path
     Console.WriteLine($"ReadNodes: {nodes.Count} nodes (first {t1}ms, cached {sw.ElapsedMilliseconds - t1}ms). " +
         $"visible={n2.Count(n => n.Visible)} hasContent={n2.Count(n => n.HasContent)} unvisited={n2.Count(n => !n.Visited)} unlocked={n2.Count(n => n.Unlocked)}");
     Console.WriteLine("biome histogram: " + string.Join(" ", n2.GroupBy(n => n.Biome).OrderBy(g => g.Key).Select(g => $"{g.Key}:{g.Count()}")));
@@ -5524,7 +5524,7 @@ static int RunAtlasCorr(ProcessHandle process, MemoryReader reader, bool solve, 
 
     Win.GetCursorPos(out var cur); double cx = cur.X, cy = cur.Y;
     var atlas = new POE2Radar.Core.Game.Poe2Atlas(reader);
-    var nodes = atlas.ReadNodes(igs); for (var w = 0; nodes.Count == 0 && w < 30; w++) { Thread.Sleep(100); nodes = atlas.ReadNodes(igs); }
+    var nodes = atlas.ReadNodes(igs, true, true); for (var w = 0; nodes.Count == 0 && w < 30; w++) { Thread.Sleep(100); nodes = atlas.ReadNodes(igs, true, true); }
     var vis = nodes.Where(n => n.Visible).ToList();
     nint bestEl = 0; double bestD = 1e18, brx = 0, bry = 0;
     foreach (var n in vis)
@@ -5654,8 +5654,8 @@ static int RunAtlasFindPos(ProcessHandle process, MemoryReader reader)
     Console.WriteLine($"cursor=({cx},{cy})  screen={winW}x{winH}  uiscale={ui:F3}  design-cursor=({dx:F0},{dy:F0})");
 
     var atlas = new POE2Radar.Core.Game.Poe2Atlas(reader);
-    var nodes = atlas.ReadNodes(igs);
-    for (var w = 0; nodes.Count == 0 && w < 30; w++) { Thread.Sleep(100); nodes = atlas.ReadNodes(igs); }
+    var nodes = atlas.ReadNodes(igs, true, true);
+    for (var w = 0; nodes.Count == 0 && w < 30; w++) { Thread.Sleep(100); nodes = atlas.ReadNodes(igs, true, true); }
     var vis = nodes.Where(n => n.Visible).ToList();
     Console.WriteLine($"{vis.Count} visible nodes; scanning each element + its child chain [0..0x800] for a float pair ≈ cursor (±12px, window/design, also as top-left)...");
 

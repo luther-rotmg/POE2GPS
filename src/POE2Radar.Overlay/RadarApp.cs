@@ -2114,7 +2114,7 @@ public sealed class RadarApp : IDisposable
         double curX = pt.X / scaleX, curY = pt.Y / scaleY; // cursor in canvas/relPos units
 
         Poe2Atlas.AtlasNodeLive? bestIn = null, bestAny = null; double bdIn = 1e18, bdAny = 1e18;
-        foreach (var n in _atlas.ReadNodes(_inGameStateForApi))
+        foreach (var n in _atlas.ReadNodes(_inGameStateForApi, true, true))
         {
             // Consider EVERY node (not just the local-Visible ones): the game leaves the visible bit OFF for
             // undiscovered / fog-of-war tiles even though it draws them at a valid relPos, so filtering it made
@@ -2811,7 +2811,7 @@ public sealed class RadarApp : IDisposable
         // Anchor the scan to the live game-heap slab (the catalog shares the arena with AreaInstance).
         var d = _atlas.Read(_lastAreaInstance);
         // Live node graph (atlas nodes are UiElements) — summary + the locally-visible highlight set.
-        var nodes = _inGameStateForApi != 0 ? _atlas.ReadNodes(_inGameStateForApi) : new List<Poe2Atlas.AtlasNodeLive>();
+        var nodes = _inGameStateForApi != 0 ? _atlas.ReadNodes(_inGameStateForApi, true, true) : new List<Poe2Atlas.AtlasNodeLive>();
         var vis = nodes.Where(n => n.Visible).ToList();
         return new
         {
@@ -2955,9 +2955,9 @@ public sealed class RadarApp : IDisposable
     /// empty reads so the route doesn't flicker; freezes the marks when the view is static (no arrow jitter).</summary>
     private void UpdateAtlas(nint inGameState)
     {
-        _atlas.ShowContentIcons = _settings.AtlasShowContentIcons;
-        _atlas.NeedNodeStatus = _settings.AtlasAutoRoute || _settings.AtlasHideCompleted || _settings.AtlasHideAccessible;
-        var nodes = _atlas.ReadNodes(inGameState);
+        var nodes = _atlas.ReadNodes(inGameState,
+            _settings.AtlasShowContentIcons,
+            _settings.AtlasAutoRoute || _settings.AtlasHideCompleted || _settings.AtlasHideAccessible);
         if (nodes.Count == 0)
         {
             // Empty read: ride over TRANSIENT misses (a node read hiccupping ~1×/sec was the ~0.1s route
