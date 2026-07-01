@@ -2301,9 +2301,17 @@ async function renderLanInfo(){
     const note = li.bindFailed
       ? '<small style="color:#f66">LAN bind failed &mdash; running loopback-only. Restart POE2GPS as administrator.</small>'
       : (li.bound==='lan' ? '' : '<small style="color:var(--ink-faint)">LAN access is off &mdash; toggle it on above, then restart.</small>');
-    box.innerHTML = li.addresses.map(a=>
-      `<code style="font-size:12px;color:var(--gold-bright)">http://${a}:${li.port}/map</code>`+
-      `<code style="font-size:12px;color:var(--gold-bright)">http://${a}:${li.port}/obs</code>`).join('') + note;
+    box.textContent='';
+    const dim = li.bound!=='lan';
+    li.addresses.forEach(a=>{
+      ['map','obs'].forEach(p=>{
+        const c=document.createElement('code');
+        c.style.cssText='font-size:12px;color:'+(dim?'var(--ink-faint)':'var(--gold-bright)');
+        c.textContent='http://'+a+':'+li.port+'/'+p;
+        box.appendChild(c);
+      });
+    });
+    if(note){ const n=document.createElement('small'); n.innerHTML=note; box.appendChild(n); }
   }catch(e){}
 }
 

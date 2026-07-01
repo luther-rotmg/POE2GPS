@@ -18,7 +18,7 @@ internal static class MapPageHtml
 <script>
   const cv=document.getElementById('c'),ctx=cv.getContext('2d'),hud=document.getElementById('hud');
   const TAU=Math.PI*2;
-  let scale=4, terrain=null, tw=0, th=0, thash=null, player={x:0,y:0}, ents=[];
+  let scale=4, terrain=null, tw=0, th=0, thash=null, player={x:0,y:0}, ents=[], areaLabel='—';
   const RC={Normal:'#b9b9c0',Magic:'#6a8bff',Rare:'#ffd52e',Unique:'#ff7a1a'}; // monster rarity palette
   function fit(){ cv.width=innerWidth; cv.height=innerHeight; }
   addEventListener('resize',fit); fit();
@@ -42,7 +42,7 @@ internal static class MapPageHtml
       const s=await j('/state'); if(s.player) player=s.player;
       if(s.areaHash!==thash) await loadTerrain();
       ents=await j('/entities?limit=600').catch(()=>[]);
-      hud.textContent=(s.areaName||s.areaCode||'—')+'  ·  '+ents.length+' dots  ·  z'+scale;
+      areaLabel=(s.areaName||s.areaCode||'—');
     }catch(e){ hud.textContent='waiting for game…'; }
     draw();
   }
@@ -64,8 +64,9 @@ internal static class MapPageHtml
     }
     ctx.fillStyle='#39d353'; ctx.beginPath(); ctx.arc(cx,cy,4,0,TAU); ctx.fill();
     ctx.strokeStyle='#0a0'; ctx.lineWidth=1.5; ctx.stroke();
+    hud.textContent=areaLabel+'  ·  '+ents.length+'  dots  ·  z'+scale;
   }
-  loadTerrain(); tick(); setInterval(tick,1000);
+  tick(); setInterval(tick,1000);
 </script></body></html>
 """;
 }

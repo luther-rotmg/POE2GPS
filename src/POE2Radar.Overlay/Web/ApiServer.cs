@@ -165,6 +165,8 @@ public sealed class ApiServer : IDisposable
             // reservation. Fall back to loopback so the local dashboard still works; surfaced to the
             // user via /api/lan-info (bindFailed).
             _lanBindFailed = true;
+            Console.Error.WriteLine($"[LAN] http://+:{_port}/ bind failed — falling back to loopback-only. " +
+                "Open the dashboard's Remote Access (LAN) card for details (try running as administrator).");
             _listener.Prefixes.Clear();
             _listener.Prefixes.Add(ApiPrefix.Build(false, _port));
             _listener.Start();
@@ -352,7 +354,8 @@ public sealed class ApiServer : IDisposable
                         break;
                     }
                     var applied = ApplySettings(ReadBody(ctx));
-                    Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, applied, settings = ReadSettings() }, Json));
+                    var restartRequired = System.Array.IndexOf(applied, "allowLanAccess") >= 0 ? new[] { "allowLanAccess" } : System.Array.Empty<string>();
+                    Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, applied, restartRequired, settings = ReadSettings() }, Json));
                 }
                 else
                 {
@@ -978,6 +981,7 @@ public sealed class ApiServer : IDisposable
             {
                 var (walk, w, h, hash) = _terrainProvider?.Invoke() ?? (null, 0, 0, 0u);
                 if (walk == null || w <= 0 || h <= 0) { Write(ctx, 200, "{\"ready\":false}"); break; }
+                // The ready-guard above ensures we never cache a payload for an unloaded zone, so the _mapCacheHash==0 default can't collide with a real (loaded) zone here.
                 if (_mapCacheJson == null || _mapCacheHash != hash)
                 {
                     _mapCacheJson = TerrainMapPayload.ToJson(walk, w, h, hash);
@@ -2127,6 +2131,13 @@ public sealed class ApiServer : IDisposable
 
     private static bool IsLoopbackHost(HttpListenerRequest req)
     {
+        // Authoritative check: the TCP source must actually be loopback. RemoteEndPoint.Address is set by
+        // the OS from the accepted socket and CANNOT be forged by the client — unlike the Host header. This
+        // is what keeps writes machine-local even when AllowLanAccess binds the listener to all interfaces
+        // (a LAN peer spoofing "Host: localhost" still has a non-loopback RemoteEndPoint and is rejected).
+        var remote = req.RemoteEndPoint?.Address;
+        if (remote == null || !System.Net.IPAddress.IsLoopback(remote)) return false;
+        // Defense-in-depth (DNS-rebinding): also require a loopback Host header.
         var host = req.UserHostName; // includes port, e.g. "localhost:7777"
         if (string.IsNullOrEmpty(host)) return false;
         var name = host.Split(':')[0];
