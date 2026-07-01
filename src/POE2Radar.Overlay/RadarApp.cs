@@ -1260,7 +1260,11 @@ public sealed class RadarApp : IDisposable
         var rit = _ritualRender;
         var mr = _monoRender;
 
-        if (inGame)
+        // SR-2: gate the per-frame render reads on focus so we don't burn ~7,680 RPM/sec while tabbed out.
+        // _overlayHadContent ensures ONE final read+draw fires on focus-loss to clear any stale frame.
+        // AlwaysShowOverlay keeps reads live for dashboard calibration even when unfocused.
+        var renderActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
+        if (inGame && (renderActive || _settings.AlwaysShowOverlay || _overlayHadContent))
         {
             _areaInstanceForApi = areaInstance; // for /api/tiles (read by _liveApi on the HTTP thread)
             _inGameStateForApi = inGameState;   // for /api/atlas + F10 route pick
@@ -1402,7 +1406,7 @@ public sealed class RadarApp : IDisposable
             Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps,
             RpmPerSec: _rpmPerSec);
 
-        var realActive = _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd;
+        var realActive = renderActive;   // SR-2: reuse focus check computed before the read block (avoids a second GetForegroundWindow call)
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
         var drawActive = realActive || _settings.AlwaysShowOverlay;
         var atlasProj = AtlasProjection(); // resolution-correct (auto from window height) or manual calib
