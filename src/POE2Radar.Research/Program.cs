@@ -117,6 +117,9 @@ if (HasFlag(args, "--mouseover"))
         TryGetHexArg(args, "--h") ?? 0x300, TryGetHexArg(args, "--s") ?? 0x3F0, TryGetHexArg(args, "--e") ?? 0xA8,
         HasFlag(args, "--scan"), HasFlag(args, "--hunt"));
 
+if (HasFlag(args, "--itemhover"))
+    return RunItemHover(process, reader, TryGetIntArg(args, "--secs") ?? 25);
+
 if (HasFlag(args, "--exchange-orders"))
     return RunExchangeOrders(process, reader,
         (float)(TryGetIntArg(args, "--lo-milli") ?? 2600) / 1000f, (float)(TryGetIntArg(args, "--hi-milli") ?? 3050) / 1000f,
@@ -4704,6 +4707,215 @@ static int RunLootResolve(ProcessHandle process, MemoryReader reader)
         if (firstLine.Length >= 2) { Console.WriteLine($"  label 0x{el:X} \"{firstLine}\""); labels++; }
     }
     Console.WriteLine($"\n{labels} text element(s) in scope — these are the ONLY things the price matcher sees.");
+    return 0;
+}
+
+// ── Hovered ITEM discovery: --itemhover [--secs N]. The feature bridge for a hover-price tooltip that works
+// in inventory/stash/vendor. Each poll resolves the item under the cursor THREE ways and prints its identity,
+// so we can see which source tracks the hovered slot: (A) the community HoverTracker chain
+// (*(UiRoot+0x7D8)+0x630 → +0x18), treated as either an item entity or a slot UiElement (+0x4F8 → item);
+// (B) the MouseOver sub-struct (*(IGS+0x300)+0x3F0), body-scanned for an item ptr or a slot-element ptr;
+// (C) cursor-in-rect fallback — the innermost VISIBLE element whose screen rect holds the cursor, its item
+// read via +0x4F8 or a body scan. Also reports the largest visible panel near the cursor (tooltip-anchor
+// candidate) with its rect. Hover several different items in turn (PoE2 focused) and watch which line tracks.
+static int RunItemHover(ProcessHandle process, MemoryReader reader, int secs)
+{
+    var (_, igs, _, _) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
+    var uiRoot = SafePtr(reader, igs + Poe2.InGameState.UiRoot);
+    if (uiRoot == 0) { Console.Error.WriteLine("no UiRoot."); return 1; }
+
+    const int SlotItemOff = 0x4F8; // item-slot UiElement → item entity (flask bar / ritual tiles)
+    const uint VisMask = 1u << Poe2.UiElement.FlagVisibleBit;
+
+    // Resolve a qword to a Metadata/Items entity — directly, or via one dereference.
+    (nint item, string meta)? AsItem(nint cand)
+    {
+        if ((ulong)cand is < 0x10000 or > 0x7FFFFFFFFFFF) return null;
+        var m = ReadEntityMetadata(reader, cand);
+        if (m.StartsWith("Metadata/Items", StringComparison.Ordinal)) return (cand, m);
+        var inner = SafePtr(reader, cand);
+        if ((ulong)inner is >= 0x10000 and <= 0x7FFFFFFFFFFF)
+        {
+            var mi = ReadEntityMetadata(reader, inner);
+            if (mi.StartsWith("Metadata/Items", StringComparison.Ordinal)) return (inner, mi);
+        }
+        return null;
+    }
+
+    // Item identity string: rarity / identified / stack / art / base name.
+    string Identity(nint item)
+    {
+        var mods = ResolveComponentAddr(reader, item, "Mods");
+        int rar = -1, id = -1;
+        if (mods != 0) { reader.TryReadStruct<int>(mods + Poe2.ModsComponent.Rarity, out rar); reader.TryReadStruct<int>(mods + Poe2.ModsComponent.Identified, out id); }
+        var ri = ResolveComponentAddr(reader, item, "RenderItem");
+        var art = ri == 0 ? "" : ItemArtBasename(reader.ReadStringUtf16(SafePtr(reader, ri + Poe2.RenderItemComponent.ResourcePath), 128)) ?? "";
+        var bc = ResolveComponentAddr(reader, item, "Base");
+        var name = "";
+        if (bc != 0) { var row = SafePtr(reader, bc + Poe2.BaseComponent.NameRow); var np = row == 0 ? 0 : SafePtr(reader, row + Poe2.BaseComponent.RowDisplayName); if (np != 0) name = reader.ReadStringUtf16(np, 64).Trim(); }
+        var st = ResolveComponentAddr(reader, item, "Stack"); int sn = 0; if (st != 0) reader.TryReadStruct<int>(st + 0x18, out sn);
+        var rs = rar switch { 0 => "Normal", 1 => "Magic", 2 => "Rare", 3 => "Unique", _ => $"r{rar}" };
+        return $"{rs} {(id == 1 ? "ID" : id == 0 ? "unID" : "id?")} {(sn > 1 ? $"x{sn} " : "")}art={art} name=\"{name}\"";
+    }
+
+    // A slot element (or one holding an item): +0x4F8 → item (RenderItem-validated), else body-scan for an item ptr.
+    (nint item, int off)? ItemFromElement(nint el)
+    {
+        var direct = SafePtr(reader, el + SlotItemOff);
+        if (direct != 0 && ResolveComponentAddr(reader, direct, "RenderItem") != 0) return (direct, SlotItemOff);
+        var body = new byte[0x600];
+        if (reader.TryReadBytes(el, body) >= body.Length)
+            for (var o = 0x10; o + 8 <= body.Length; o += 8)
+            {
+                var it = AsItem((nint)BitConverter.ToInt64(body, o));
+                if (it is { } hit) return (hit.item, o);
+            }
+        return null;
+    }
+
+    float winW = 2560, winH = 1600; var hwnd = Win.GetForegroundWindow();
+    if (hwnd != 0 && Win.GetClientRect(hwnd, out var rc0) && rc0.right > 0) { winW = rc0.right; winH = rc0.bottom; }
+
+    // Same UiElement screen-rect projection as --lootcursor / the overlay.
+    (float x, float y, float w, float h, bool ok) Rect(nint el)
+    {
+        reader.TryReadStruct<byte>(el + 0x18A, out var sidx);
+        reader.TryReadStruct<float>(el + 0x130, out var smul);
+        reader.TryReadStruct<float>(el + Poe2.UiElement.SizeW, out var sw);
+        reader.TryReadStruct<float>(el + Poe2.UiElement.SizeH, out var sh);
+        var (ux, uy) = RfUnscaledPos(reader, el, 0);
+        float v2 = winH / 1600f, v1 = winW / 2560f;
+        float scl = sidx == 2 ? v2 : sidx == 1 ? v1 : (sidx == 3 ? v2 : (smul == 0 ? 1 : smul));
+        float sx = ux * (sidx == 3 ? v1 : scl), sy = uy * scl, w = sw * (sidx == 3 ? v1 : scl), h = sh * scl;
+        return (sx, sy, w, h, w > 0 && h > 0 && float.IsFinite(sx) && float.IsFinite(sy));
+    }
+
+    Console.WriteLine($"UiRoot 0x{uiRoot:X}  window {winW}x{winH}");
+    Console.WriteLine($"Hover items in inventory/stash/vendor now (PoE2 focused). Polling ~{secs}s…\n");
+    var sw2 = System.Diagnostics.Stopwatch.StartNew();
+    string lastA = "", lastB = "", lastC = "";
+    while (sw2.Elapsed.TotalSeconds < secs)
+    {
+        System.Threading.Thread.Sleep(160);
+        if (!(Win.GetCursorPos(out var cp) && hwnd != 0 && Win.ScreenToClient(hwnd, ref cp))) continue;
+        float cx = cp.X, cy = cp.Y;
+
+        // (A) HoverTracker chain.
+        var lineA = "(none)";
+        var tk = SafePtr(reader, uiRoot + Poe2.HoverTracker.FromUiRoot);
+        var wt = tk == 0 ? 0 : SafePtr(reader, tk + Poe2.HoverTracker.WorldTracker);
+        var hv = wt == 0 ? 0 : SafePtr(reader, wt + Poe2.HoverTracker.HoveredEntity);
+        if (hv != 0)
+        {
+            if (AsItem(hv) is { } di) lineA = $"item 0x{di.item:X}  {Identity(di.item)}";
+            else if (ItemFromElement(hv) is { } ei) lineA = $"elem 0x{hv:X}(+0x{ei.off:X})→ 0x{ei.item:X}  {Identity(ei.item)}";
+            else lineA = $"ptr 0x{hv:X} (not an item)";
+        }
+
+        // (B) MouseOver sub-struct: body-scan for an item entity OR a slot element.
+        var lineB = "(none)";
+        var host = SafePtr(reader, igs + Poe2.MouseOver.HostFromInGameState);
+        var sub = host == 0 ? 0 : SafePtr(reader, host + Poe2.MouseOver.SubFromHost);
+        if (sub != 0)
+        {
+            var sbody = new byte[0x200];
+            if (reader.TryReadBytes(sub, sbody) >= sbody.Length)
+                for (var o = 0x08; o + 8 <= sbody.Length && lineB == "(none)"; o += 8)
+                {
+                    var q = (nint)BitConverter.ToInt64(sbody, o);
+                    if (AsItem(q) is { } di) lineB = $"sub+0x{o:X} → item 0x{di.item:X}  {Identity(di.item)}";
+                    else if (q != 0 && SafePtr(reader, q + SlotItemOff) is var sd && sd != 0 && ResolveComponentAddr(reader, sd, "RenderItem") != 0)
+                        lineB = $"sub+0x{o:X} → elem 0x{q:X}(+0x4F8)→ 0x{sd:X}  {Identity(sd)}";
+                }
+        }
+
+        // (C) cursor-in-rect: innermost visible element with an item. Collect visible text elements too, so we
+        // can locate the tooltip box (the panel whose title text == the hovered item's name/base).
+        var lineC = "(none)"; var tip = "(none)";
+        (nint el, float area, nint item, int off) bestItem = (0, float.MaxValue, 0, 0);
+        var texts = new List<(nint el, string t, float x, float y, float w, float h)>();
+        var q2 = new Queue<(nint el, int d)>(); q2.Enqueue((uiRoot, 0));
+        var vis = new HashSet<nint>();
+        while (q2.Count > 0 && vis.Count < 60000)
+        {
+            var (el, d) = q2.Dequeue();
+            if (el == 0 || d > 24 || !vis.Add(el)) continue;
+            var visible = reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var fl) && (fl & VisMask) != 0;
+            if (visible)
+            {
+                var r = Rect(el);
+                if (r.ok && cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h
+                    && r.w * r.h < bestItem.area && ItemFromElement(el) is { } hit)
+                    bestItem = (el, r.w * r.h, hit.item, hit.off);
+                var tx = ReadStdWString(reader, el + Poe2.UiElement.Text);
+                if (tx.Length is >= 2 and < 60 && r.ok)
+                {
+                    var nl = tx.IndexOf('\n'); var fl0 = (nl >= 0 ? tx[..nl] : tx).Trim();
+                    if (fl0.Length >= 2) texts.Add((el, fl0, r.x, r.y, r.w, r.h));
+                }
+            }
+            if (RfChildren(reader, el, out var first, out var n))
+                for (long i = 0; i < n; i++) q2.Enqueue((SafePtr(reader, first + (nint)(i * 8)), d + 1));
+        }
+        if (bestItem.el != 0)
+        {
+            lineC = $"elem 0x{bestItem.el:X}(+0x{bestItem.off:X})→ 0x{bestItem.item:X}  {Identity(bestItem.item)}";
+            // Tooltip title = a text element whose first line matches the item's display name or base name.
+            var bc = ResolveComponentAddr(reader, bestItem.item, "Base");
+            var bnameRow = bc == 0 ? 0 : SafePtr(reader, bc + Poe2.BaseComponent.NameRow);
+            var bnamePtr = bnameRow == 0 ? 0 : SafePtr(reader, bnameRow + Poe2.BaseComponent.RowDisplayName);
+            var bname = bnamePtr == 0 ? "" : reader.ReadStringUtf16(bnamePtr, 64).Trim();
+            var titleEl = texts.FirstOrDefault(t => t.el != bestItem.el
+                && (string.Equals(t.t, bname, StringComparison.OrdinalIgnoreCase)));
+            if (titleEl.el != 0)
+            {
+                // Climb parents; for EACH ancestor compute the UNION bbox of its visible descendant rects.
+                // The tooltip BOX is the level whose union looks like the full tooltip (wide + tall) and stops
+                // growing when climbing further (the next level jumps to a screen-scale container).
+                (float x0, float y0, float x1, float y1, int n) Union(nint root)
+                {
+                    float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f; int cnt = 0;
+                    var st = new Stack<(nint el, int d)>(); st.Push((root, 0)); var seen = new HashSet<nint>();
+                    while (st.Count > 0)
+                    {
+                        var (e, d) = st.Pop();
+                        if (e == 0 || d > 20 || !seen.Add(e) || seen.Count > 4000) continue;
+                        if (reader.TryReadStruct<uint>(e + Poe2.UiElement.Flags, out var f2) && (f2 & VisMask) != 0)
+                        {
+                            var rr = Rect(e);
+                            if (rr.ok) { x0 = MathF.Min(x0, rr.x); y0 = MathF.Min(y0, rr.y); x1 = MathF.Max(x1, rr.x + rr.w); y1 = MathF.Max(y1, rr.y + rr.h); cnt++; }
+                        }
+                        if (RfChildren(reader, e, out var cf, out var cn))
+                            for (long i = 0; i < cn; i++) st.Push((SafePtr(reader, cf + (nint)(i * 8)), d + 1));
+                    }
+                    return (x0, y0, x1, y1, cnt);
+                }
+                var chain = new List<string>();
+                var cur = titleEl.el;
+                for (var up = 0; up < 6 && cur != 0; up++)
+                {
+                    var u = Union(cur);
+                    chain.Add(u.n > 0 ? $"L{up}:0x{cur:X} bbox({u.x0:0},{u.y0:0} {u.x1 - u.x0:0}x{u.y1 - u.y0:0}) n={u.n}" : $"L{up}:0x{cur:X} (empty)");
+                    cur = SafePtr(reader, cur + Poe2.UiElement.Parent);
+                }
+                tip = $"title=\"{titleEl.t}\" @({titleEl.x:0},{titleEl.y:0})\n      " + string.Join("\n      ", chain);
+            }
+            else tip = $"(no text matched base=\"{bname}\"; {texts.Count} text els)";
+        }
+
+        // Print only when something changed (keeps the log readable as you move between slots).
+        if (lineA != lastA || lineB != lastB || lineC != lastC)
+        {
+            Console.WriteLine($"[{sw2.ElapsedMilliseconds,5}ms] cursor=({cx:0},{cy:0})");
+            Console.WriteLine($"   A hovertracker: {lineA}");
+            Console.WriteLine($"   B mouseover-sub: {lineB}");
+            Console.WriteLine($"   C cursor-in-rect: {lineC}");
+            Console.WriteLine($"   tooltip-panel: {tip}");
+            lastA = lineA; lastB = lineB; lastC = lineC;
+        }
+    }
+    Console.WriteLine("\nDone. The source whose item TRACKS the hovered slot (and is cheapest — A/B are ~a few reads) wins.");
     return 0;
 }
 

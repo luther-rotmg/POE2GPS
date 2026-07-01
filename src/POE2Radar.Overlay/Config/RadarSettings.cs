@@ -151,6 +151,10 @@ public sealed class RadarSettings
     // One-time guard: bumps the monster Magic/Rare/Unique rule sizes — the detailed Fang/Claw/Skull glyphs
     // need ~1.5× the size the old flat shapes used to be legible at radar scale.
     public bool IconSizesV1 { get; set; }
+    // One-time guard: folds the built-in tracked-tile rules (DisplayRules.BuiltInTileRules — currently the
+    // WaygateDevice waygate) into existing display_rules.json configs. Additive; set true after seeding so a
+    // user who deletes the rule keeps it gone. Fresh configs get them via DisplayRules.BuildDefault.
+    public bool BuiltInTileRulesSeeded { get; set; }
 
     // ── Auto-flask master enable (the F8 in-game kill-switch persists here so a disabled state survives
     //    a restart). Defaults ON to preserve the historical "auto-on each launch" behavior. NOTE: this is
@@ -188,6 +192,9 @@ public sealed class RadarSettings
 
     // ── Ground-item value overlay (unique drops): name + price over the loot icon, border if above value. ──
     public GroundItemSettings GroundItems { get; set; } = new();
+
+    // ── Hover price: chip beside the game's item tooltip (inventory/stash/vendor); stacks show per-unit + total. ──
+    public HoverPriceSettings HoverPrice { get; set; } = new();
 
     // ── Runeshape-monolith reward overlay: value-coloured map icon + N badge + nearby reward panel. ──
     public MonolithSettings Monoliths { get; set; } = new();
@@ -472,6 +479,17 @@ public sealed class GroundItemSettings
         "Uniques", "Currency", "Runes", "SoulCores", "Essences", "Fragments",
         "UncutGems", "Delirium", "Tablets", "Idols", "Abyss", "Ritual",
     };
+}
+
+/// <summary>Hover price chip: while you hover an item in ANY item UI (inventory / stash / vendor / reward),
+/// draw a small price chip beside the game's tooltip. Uniques price by 2D art (works on unidentified ones —
+/// the game hides the name); everything else by base name. Stacks show per-unit AND stack total. Unlike the
+/// ground overlay this ignores value floors/category toggles — hovering is explicit intent, so any priced
+/// item shows.</summary>
+public sealed class HoverPriceSettings
+{
+    public bool Enabled { get; set; } = true;
+    public double HighlightMinEx { get; set; } = 10.0;   // emphasize the chip when the (stack) value ≥ this many Exalted
 }
 
 /// <summary>

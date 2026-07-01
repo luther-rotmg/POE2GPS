@@ -1237,6 +1237,136 @@ public sealed class Poe2Live
         return result;
     }
 
+    /// <summary>Identity + tooltip box for the item under the cursor in ANY item UI (inventory, stash,
+    /// vendor). <see cref="Item"/> is the item entity; <see cref="Rarity"/>/<see cref="Art"/>/<see
+    /// cref="Identified"/>/<see cref="Name"/> are its price identity (uniques key off Art, everything else off
+    /// the base Name), <see cref="Stack"/> is the stack size (1 when not a stack). <see cref="BoxX"/>..<see
+    /// cref="BoxH"/> are the game tooltip's content rect (so the overlay draws a value bar aligned to its
+    /// width, just below it); <see cref="IsTooltip"/> is true when that box is the resolved tooltip (false =
+    /// it fell back to the item-slot rect because the tooltip couldn't be located).</summary>
+    public readonly record struct HoveredItem(nint Item, Rarity Rarity, string? Art, bool Identified,
+        string? Name, int Stack, bool IsTooltip, float BoxX, float BoxY, float BoxW, float BoxH);
+
+    /// <summary>Read the item currently under the cursor in an item UI (inventory/stash/vendor/reward): the
+    /// innermost VISIBLE UiElement whose screen rect holds the cursor and that carries an item entity at
+    /// +0x4F8 (<see cref="Poe2Offsets.Ritual.TileSlotItem"/> — the universal item-slot field). Reads its
+    /// identity (<see cref="ReadIdentityFromItem"/>) + stack count, and locates the tooltip TITLE element (the
+    /// visible text whose first line == the item's base name, nearest the cursor) so the overlay can anchor a
+    /// price chip beside the tooltip. Returns null when nothing item-like is hovered. One pruned visible-tree
+    /// walk (invisible subtrees skipped; per element only a +0x4F8 read and a text read — element rects are
+    /// computed only for the few item slots + the name-matched title) — meant to run THROTTLED on the world
+    /// thread. <paramref name="curX"/>/<paramref name="curY"/> are overlay-client pixels (TryUiElementRect space).</summary>
+    public HoveredItem? ReadHoveredItem(nint inGameState, float winW, float winH, float curX, float curY, int maxNodes = 40000)
+    {
+        var uiRoot = Ptr(inGameState + Poe2.InGameState.UiRoot);
+        if (uiRoot == 0) return null;
+        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
+
+        nint bestEl = 0, bestItem = 0; var bestArea = float.MaxValue;
+        var texts = new List<(nint el, string line)>();   // visible short-text elements → tooltip-title candidates
+
+        var queue = new Queue<nint>(); queue.Enqueue(uiRoot);
+        var visited = new HashSet<nint>();
+        while (queue.Count > 0 && visited.Count < maxNodes)
+        {
+            var el = queue.Dequeue();
+            if (el == 0 || !visited.Add(el)) continue;
+            var visible = _reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var flags) && (flags & visBit) != 0;
+            if (!visible && el != uiRoot) continue;   // prune invisible subtree
+            if (ChildSpan(el, out var f, out var nn))
+                for (long k = 0; k < nn; k++) queue.Enqueue(Ptr(f + (nint)(k * 8)));
+            if (el == uiRoot) continue;
+
+            // Item slot? (+0x4F8 → item entity, validated by a RenderItem component.) Only these few get a rect.
+            var it = Ptr(el + Poe2.Ritual.TileSlotItem);
+            if (it != 0 && ResolveComponent(it, "RenderItem") != 0
+                && TryUiElementRect(el, winW, winH, out var rx, out var ry, out var rw, out var rh)
+                && curX >= rx && curX <= rx + rw && curY >= ry && curY <= ry + rh)
+            {
+                var area = rw * rh;
+                if (area < bestArea) { bestArea = area; bestEl = el; bestItem = it; }
+            }
+
+            // Tooltip-title candidate: a short single-line text (cheap; rects deferred until we know the name).
+            if (texts.Count < 4000)
+            {
+                var tx = ReadStdWString(el + Poe2.UiElement.Text);
+                if (tx.Length is >= 2 and < 60)
+                {
+                    var nl = tx.IndexOf('\n'); var line = (nl >= 0 ? tx[..nl] : tx).Trim();
+                    if (line.Length >= 2) texts.Add((el, line));
+                }
+            }
+        }
+
+        if (bestItem == 0) return null;
+        var (rarity, art, identified, name) = ReadIdentityFromItem(bestItem);
+        var stackComp = ResolveComponent(bestItem, "Stack");
+        var stack = 0; if (stackComp != 0) _reader.TryReadStruct<int>(stackComp + Poe2.StackComponent.Count, out stack);
+
+        // Resolve the VISIBLE tooltip box so the overlay aligns a value bar to it. The tooltip's ancestor
+        // containers are a fixed oversized panel (the title sits mid-panel, not at its top), so they can't be
+        // used. Instead the box is the vertical CLUSTER of text lines around the title: the title element
+        // (first line == the base name) plus every text line reachable by small vertical gaps + horizontal
+        // overlap (Stack Size, description, hint lines). Read rects for the collected text lines now (only
+        // reached when an item IS hovered — the idle walk stays rect-free), pick the title match whose cluster
+        // has the MOST lines (the real tooltip), tie-broken by nearest the cursor.
+        var rects = new List<(string line, float x, float y, float w, float h)>(texts.Count);
+        foreach (var (tel, line) in texts)
+            if (tel != bestEl && TryUiElementRect(tel, winW, winH, out var tx, out var ty, out var tw, out var th)
+                && tx >= 0 && ty >= 0 && tx <= winW && ty <= winH)
+                rects.Add((line, tx, ty, tw, th));
+
+        var haveBox = false;
+        float bx = 0f, by = 0f, bw = 0f, bh = 0f;
+        var bestLines = 0; var bestDist = float.MaxValue;
+        if (!string.IsNullOrEmpty(name))
+            for (var si = 0; si < rects.Count; si++)
+            {
+                var seed = rects[si];
+                if (!string.Equals(seed.line, name, StringComparison.OrdinalIgnoreCase)) continue;
+                var (cx, cy, cw, ch, n) = ClusterBox(rects, si);
+                if (cw < 40f || ch < 8f) continue;
+                var d = (seed.x - curX) * (seed.x - curX) + (seed.y - curY) * (seed.y - curY);
+                if (n > bestLines || (n == bestLines && d < bestDist))
+                { bestLines = n; bestDist = d; haveBox = true; bx = cx; by = cy; bw = cw; bh = ch; }
+            }
+
+        if (!haveBox) TryUiElementRect(bestEl, winW, winH, out bx, out by, out bw, out bh);
+        return new HoveredItem(bestItem, rarity, art, identified, name, stack, haveBox, bx, by, bw, bh);
+    }
+
+    /// <summary>Grow a tooltip bounding box from a seed (title) text line: repeatedly absorb any text line that
+    /// HORIZONTALLY overlaps the current box (± a small pad) AND is within a small VERTICAL gap of it — the
+    /// tooltip's stacked lines. Lines off to the side (inventory counts, other panels) don't x-overlap and are
+    /// excluded, so the flood stays within the one tooltip. Returns the box + line count.</summary>
+    private static (float x, float y, float w, float h, int lines) ClusterBox(
+        List<(string line, float x, float y, float w, float h)> rects, int seedIndex)
+    {
+        const float gap = 42f, pad = 24f;
+        var seed = rects[seedIndex];
+        float l = seed.x, r = seed.x + seed.w, t = seed.y, b = seed.y + seed.h;
+        var used = new HashSet<int> { seedIndex };
+        int lines = 1, guard = 0;
+        bool grew = true;
+        while (grew && guard++ < 60)
+        {
+            grew = false;
+            for (var i = 0; i < rects.Count; i++)
+            {
+                if (used.Contains(i)) continue;
+                var u = rects[i];
+                var xOverlap = u.x < r + pad && u.x + u.w > l - pad;
+                var vGap = MathF.Max(0f, MathF.Max(u.y - b, t - (u.y + u.h)));   // 0 when vertically overlapping
+                if (!xOverlap || vGap > gap) continue;
+                l = MathF.Min(l, u.x); r = MathF.Max(r, u.x + u.w);
+                t = MathF.Min(t, u.y); b = MathF.Max(b, u.y + u.h);
+                used.Add(i); lines++; grew = true;
+            }
+        }
+        return (l, t, r - l, b - t, lines);
+    }
+
     /// <summary>The world Entity currently under the cursor (monsters/NPCs/doodads/ground items included), or
     /// 0 when nothing — or only UI — is hovered. Resolves the community hover chain off InGameState (three
     /// pointer hops, see <see cref="Poe2Offsets.MouseOver"/>); validated live 2026-06-29. Cheap enough for the

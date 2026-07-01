@@ -133,6 +133,7 @@ public sealed class OverlayRenderer : IDisposable
                 DrawRuneforge(rt, ctx);
                 DrawRitualRewards(rt, ctx);            // value chips on the ritual tribute-shop tiles (screen-space)
                 DrawLootTags(rt, ctx);                 // value chips on the game's own loot tags (screen-space)
+                DrawHoverPrice(rt, ctx);               // price chip beside the hovered item's tooltip (screen-space)
                 DrawMonolithPanel(rt, ctx);            // nearby-monolith reward list (screen-space)
                 DrawCurrencyExchange(rt, ctx);         // currency-exchange order-book depth panel (top-right, screen-space)
             }
@@ -371,7 +372,11 @@ public sealed class OverlayRenderer : IDisposable
         {
             var bmp = _atlasIcons!.Get(rt, bn);
             if (bmp == null) continue;
-            rt.DrawBitmap(bmp, 1f, BitmapInterpolationMode.Linear, new Rect(ix, iy, ix + iconH, iy + iconH));
+            // Vortice's Rect ctor is (x, y, WIDTH, HEIGHT) — NOT (left, top, right, bottom) — and this
+            // overload's rect is the DESTINATION (whole bitmap drawn as source). The old call passed an
+            // LTRB-shaped rect to the source-only overload with no destination, so the icon drew at the
+            // screen origin at native size while sampling a garbage region → invisible (only the panel showed).
+            rt.DrawBitmap(bmp, new Rect(ix, iy, iconH, iconH), 1f, BitmapInterpolationMode.Linear, (Rect?)null);
             ix += iconH + gap;
         }
     }
@@ -624,6 +629,27 @@ public sealed class OverlayRenderer : IDisposable
             rt.DrawText(t.Value, _tf!, new Rect(lx + 4f, cy - boxH * 0.5f + 1f, lx + boxW - 2f, cy + boxH * 0.5f - 1f),
                 _bStyle, DrawTextOptions.Clip);
         }
+    }
+
+    /// <summary>Price bar for the item under the cursor: a single-line styled bar aligned to the game
+    /// tooltip's content box (same left + width), drawn just below the tooltip. If the tooltip sits near the
+    /// bottom of the screen the bar snaps to just ABOVE its top edge instead. Border/emphasis when highlighted.</summary>
+    private void DrawHoverPrice(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (ctx.HoverPrice is not { } hp) return;
+        const float barH = 22f, gap = 3f, pad = 8f;
+        var x = hp.X;
+        var w = MathF.Max(60f, hp.W);                    // align to the tooltip width
+        // Below the tooltip by default; snap above its top edge when there's no room at the bottom.
+        var y = hp.Y + hp.H + gap;
+        if (y + barH > ctx.WindowHeight - 2f) y = hp.Y - barH - gap;
+        if (y < 2f) y = 2f;
+
+        var box = new Vortice.RawRectF(x, y, x + w, y + barH);
+        rt.FillRectangle(box, _bPanel!);
+        _bStyle!.Color = hp.Highlight ? ColItemHi : ColItemText;
+        rt.DrawRectangle(box, _bStyle, hp.Highlight ? 2f : 1f);
+        rt.DrawText(hp.Text, _tf!, new Rect(x + pad, y + 3f, x + w - pad, y + barH - 2f), _bStyle, DrawTextOptions.Clip);
     }
 
     /// <summary>Unpack a 0xAARRGGBB color (precomputed in RadarApp.BuildHpSpecs) to a Color4 — no string

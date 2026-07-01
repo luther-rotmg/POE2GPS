@@ -75,6 +75,12 @@ public readonly record struct RitualLabel(float X, float Y, float W, float H, st
 /// render frame so the chip tracks the tag as the player moves.</summary>
 public readonly record struct LootTagLabel(float X, float Y, float W, float H, string Value, bool Highlight);
 
+/// <summary>The hover price bar for the item under the cursor (inventory/stash/vendor). <see cref="X"/>..<see
+/// cref="H"/> is the game tooltip's content box; the renderer draws a single-line styled bar aligned to its
+/// width, just below its bottom edge (snapping above the top when near the screen bottom). <see cref="Text"/>
+/// is the value (stacks include the "(N × unit)" breakdown). Border/emphasis when <see cref="Highlight"/>.</summary>
+public readonly record struct HoverPriceLabel(float X, float Y, float W, float H, string Text, bool Highlight);
+
 /// <summary>One row of the Currency Exchange order-book ladder, aggregated at world rate in RadarApp.
 /// <see cref="Ratio"/> is Get/Give for the row; <see cref="Stock"/> is its listed count; <see cref="CumStock"/>
 /// is the running cumulative listed count down the ladder; <see cref="Recommended"/> marks the best (first)
@@ -207,6 +213,8 @@ public sealed record RenderContext(
     // Value chips drawn ON the game's own loot tags (screen-space rects, re-read live each frame). Covers
     // items the game already names; unidentified uniques use the world-projected ItemLabels instead.
     IReadOnlyList<LootTagLabel>? LootTags = null,
+    // Hover price chip for the item under the cursor (inventory/stash/vendor). Null → nothing hovered.
+    HoverPriceLabel? HoverPrice = null,
     // Runeshape monoliths to mark on the map (value-coloured icon + N badge + value/reward label) and
     // list in the nearby-monolith panel. World-space (grid). Null/empty → none.
     IReadOnlyList<MonolithMarker>? Monoliths = null,

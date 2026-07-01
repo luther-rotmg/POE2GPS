@@ -185,6 +185,10 @@ public sealed class DisplayRules
         rules.Add(new DisplayRule { Name = "Hide opened chests",        Categories = new() { "Chest" },   Chest = "Opened",  Hide = true });
         rules.Add(new DisplayRule { Name = "Hide completed encounters", Encounter = "Complete",                              Hide = true });
 
+        // 1b) Built-in tracked tiles (Tile-category rules match terrain paths, not entities, so they're
+        //     independent of the entity resolution order — placement here is purely cosmetic).
+        rules.AddRange(BuiltInTileRules());
+
         // 2) Watched highlights (force-draw + label; substring, any category) — before mechanics so
         //    watched still wins, matching the old DrawMap precedence.
         foreach (var w in watched)
@@ -237,6 +241,22 @@ public sealed class DisplayRules
 
         return rules;
     }
+
+    /// <summary>
+    /// The built-in "auto-track this tile" rules seeded into every fresh ruleset (and folded into existing
+    /// configs by a one-time migration in <c>RadarApp</c>). Each surfaces a terrain tile by a path substring
+    /// and gives it its own icon/colour — the Tile analogue of the seeded entity <see cref="MechanicStyle"/>s.
+    /// </summary>
+    public static IEnumerable<DisplayRule> BuiltInTileRules() => new[]
+    {
+        // Incursion Vaal-Ruins waygate device (Metadata/Terrain/Leagues/Incursion/Tiles/Features/Waygates/
+        // WaygateDevice). A yellow "Eye" so it stands out; navigable so the auto-router paths to it.
+        new DisplayRule
+        {
+            Name = "WaygateDevice", Categories = new() { "Tile" }, Match = new() { "WaygateDevice" },
+            Shape = "Eye", Color = "#F2E55A", Opacity = 1f, Size = 5f, Label = "WaygateDevice", Navigable = true,
+        },
+    };
 
     // ── internals ───────────────────────────────────────────────────────────
 

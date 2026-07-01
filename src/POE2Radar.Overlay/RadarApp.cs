@@ -116,6 +116,17 @@ public sealed class RadarApp : IDisposable
     private const int LootScanThrottleMs = 200;                  // re-scan the UI tree ~5×/s (cheap, pruned)
     private readonly List<LootTagLabel> _lootTagFrame = new();   // render-thread scratch (rebuilt per frame)
 
+    // ── Hover price: the item under the cursor in an item UI (inventory/stash/vendor). Scanned at world
+    //    rate (cursor-in-rect walk → +0x4F8 item → price + tooltip content box), published as a spec the
+    //    render thread draws as a value bar aligned to the tooltip's width, just below it. ──
+    private readonly record struct HoverPriceSpec(float BoxX, float BoxY, float BoxW, float BoxH,
+        string Text, bool Highlight);
+    private sealed record HoverPriceRender(HoverPriceSpec Spec);  // reference wrapper (nullable struct can't be volatile)
+    private volatile HoverPriceRender? _hoverPrice;               // null = nothing priced under the cursor
+    private DateTime _nextHoverScanUtc = DateTime.MinValue;
+    private const int HoverScanThrottleMs = 120;                 // ~8×/s (pruned visible-tree walk)
+    private HoverPriceLabel? _hoverFrame;                        // render-thread scratch (this frame's bar, if any)
+
     // ── Runeshape monoliths (priced offered rewards, read off the in-world device — works area-wide,
     //    before the panel is opened). World-space markers; published per area-hash for the zone-load guard. ──
     private readonly RuneMonolithCatalog _monoCatalog = RuneMonolithCatalog.Instance;
@@ -374,6 +385,25 @@ public sealed class RadarApp : IDisposable
                 Console.WriteLine("Display rules: seeded default Abyss Lightless (Void) monster rule.");
             }
             _settings.AbyssRuleSeeded = true; _settings.Save();
+        }
+        // One-time: fold the built-in tracked-tile rules (WaygateDevice waygate, …) into existing configs.
+        // Fresh configs already get these via DisplayRules.BuildDefault; this covers configs that predate them.
+        // Additive + name-guarded so it never duplicates a rule and a user's deletion of one sticks.
+        if (!_settings.BuiltInTileRulesSeeded)
+        {
+            var rules = _displayRules.All.ToList();
+            var added = 0;
+            foreach (var tile in DisplayRules.BuiltInTileRules())
+            {
+                if (rules.Any(r => string.Equals(r.Name, tile.Name, StringComparison.Ordinal))) continue;
+                rules.Add(tile); added++;
+            }
+            if (added > 0)
+            {
+                _displayRules.Replace(rules);
+                Console.WriteLine($"Display rules: seeded {added} built-in tracked-tile rule(s).");
+            }
+            _settings.BuiltInTileRulesSeeded = true; _settings.Save();
         }
         // One-time (v2): apply the curated icon glyphs to the STOCK display rules. Names are matched
         // SEPARATOR-INSENSITIVELY (normalized to lowercase alphanumerics) because the stock names contain a
@@ -916,13 +946,53 @@ public sealed class RadarApp : IDisposable
             // count-stripped name. Uniques are indexed by name too, so identified-unique tags resolve here.
             var pr = _priceBook.TryByName(text) ?? _priceBook.TryByName(StripCount(text));
             if (pr is not { } p) continue;
-            if (cfg.MinQuantity > 0 && p.Quantity < cfg.MinQuantity) continue;
+            if (cfg.MinQuantity > 0 && p.Quantity > 0 && p.Quantity < cfg.MinQuantity) continue; // see BuildItemLabels: 0 = no volume data, not low confidence
             var group = CategoryGroup(p.Category);
             if (!enabled.Contains(group)) continue;          // category group toggled off
             if (p.Exalted < GroundFloor(group)) continue;    // below this bucket's value floor
             specs.Add(new LootTagSpec(el, text, _priceBook.Format(p.Exalted), p.Exalted >= cfg.HighlightMinEx));
         }
         _lootTags = specs.Count > 0 ? new LootTagRender(specs) : LootTagRender.Empty;
+    }
+
+    /// <summary>Hover price: resolve the item under the cursor in any item UI (inventory/stash/vendor),
+    /// price it (uniques by art — works on unidentified ones — everything else by base name), and publish a
+    /// <see cref="HoverPriceSpec"/> the render thread anchors beside the game tooltip. Ignores the ground
+    /// value floors/toggles (hovering is explicit intent). Stacks carry per-unit + total. Throttled + gated
+    /// to PoE2 foreground; publishes null when nothing priceable is hovered. World thread.</summary>
+    private void UpdateHoverPrice(nint inGameState)
+    {
+        var cfg = _settings.HoverPrice;
+        if (!cfg.Enabled || !_priceBook.IsLoaded)
+        {
+            if (_hoverPrice != null) _hoverPrice = null;
+            return;
+        }
+        var now = DateTime.UtcNow;
+        if (now < _nextHoverScanUtc) return;
+        _nextHoverScanUtc = now.AddMilliseconds(HoverScanThrottleMs);
+
+        // Cursor in overlay-client pixels (same space as TryUiElementRect); only while PoE2 is foreground.
+        if (GetForegroundWindow() != _gameHwnd || !OverlayNative.GetCursorPos(out var pt)) { _hoverPrice = null; return; }
+        var (cx, cy) = ScreenToClientPoint(pt);
+        var hov = _live.ReadHoveredItem(inGameState, _window.Width, _window.Height, cx, cy);
+        if (hov is not { } h) { _hoverPrice = null; return; }
+
+        // Uniques key off art (each has its own icon, and an unID unique's name is hidden); the rest off name.
+        var isUnique = h.Rarity == Poe2Live.Rarity.Unique;
+        var pr = isUnique ? _priceBook.TryByArt(h.Art)
+                          : (h.Name is { Length: > 0 } nm ? _priceBook.TryByName(nm) : null);
+        if (pr is not { } p) { _hoverPrice = null; return; }
+
+        // One line (tooltips are wide): stacks show total + the per-unit breakdown; singles just the value.
+        var stack = h.Stack > 1 ? h.Stack : 1;
+        var text = stack > 1
+            ? $"{_priceBook.Format(p.Exalted * stack)}   ({stack} × {_priceBook.Format(p.Exalted)})"
+            : _priceBook.Format(p.Exalted);
+        var highlight = p.Exalted * stack >= cfg.HighlightMinEx;
+
+        _hoverPrice = new HoverPriceRender(new HoverPriceSpec(
+            h.BoxX, h.BoxY, h.BoxW, h.BoxH, text, highlight));
     }
 
     /// <summary>Strip a leading "&lt;count&gt;x " from a stack tag ("5x Chaos Orb" → "Chaos Orb") so the name
@@ -1062,6 +1132,12 @@ public sealed class RadarApp : IDisposable
                 _lootTagFrame.Add(new LootTagLabel(rx, ry, rw, rh, s.Value, s.Highlight));
             }
 
+            // Hover price bar: the world scan resolved the tooltip's content box (aligned + placed by the
+            // renderer). Box positions are static while a tooltip is up, so no per-frame re-read is needed.
+            _hoverFrame = _hoverPrice is { Spec: var hs }
+                ? new HoverPriceLabel(hs.BoxX, hs.BoxY, hs.BoxW, hs.BoxH, hs.Text, hs.Highlight)
+                : null;
+
             // Atlas marks/routes: re-read each node's live RelativePos this frame so the rings + route lines
             // track the atlas pan at full FPS (the world walk only refreshes baked positions ~30 Hz). Cheap —
             // only the handful of DRAWN marks + route points, one atomic 8-byte read each; a stale/closed node
@@ -1096,7 +1172,7 @@ public sealed class RadarApp : IDisposable
                 }
             }
         }
-        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_lootTagFrame.Count > 0) _lootTagFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); }
+        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_lootTagFrame.Count > 0) _lootTagFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); _hoverFrame = null; }
 
         // Zone-load guard: the world snapshot lags the live chain by up to one world pass, so right after a
         // zone change its entities/terrain/route still belong to the PREVIOUS area. Only draw them once the
@@ -1199,6 +1275,7 @@ public sealed class RadarApp : IDisposable
             // Loot-tag value chips (screen-space; rects re-read live each frame, so no zone-load gate needed —
             // a stale element just fails the rect read and drops out).
             LootTags: _lootTagFrame.Count > 0 ? _lootTagFrame : null,
+            HoverPrice: _hoverFrame,
             // Runeshape monoliths: value-coloured map markers + nearby reward panel (world-space).
             Monoliths: monoliths,
             ShowMonolithPanel: _settings.Monoliths.ShowPanel,
@@ -1333,6 +1410,10 @@ public sealed class RadarApp : IDisposable
         // Loot-tag value chips — throttled, invisible-subtree-pruned UI scan; matches tag text → price.
         // Publishes its own _lootTags bundle (render thread re-reads each tag's live rect).
         UpdateLootTags(inGameState);
+
+        // Hover price — the item under the cursor in an item UI (inventory/stash/vendor), priced + published
+        // as a spec the render thread anchors beside the game tooltip (its rect re-read live).
+        UpdateHoverPrice(inGameState);
 
         // Runeshape monolith rewards — resolve each in-world monolith device + price its offered rewards
         // (area-wide, before the panel is opened). Publishes its own _monoRender bundle.
@@ -1524,7 +1605,11 @@ public sealed class RadarApp : IDisposable
                 ? _priceBook.TryByArt(e.ItemArt)
                 : (e.ItemName is { Length: > 0 } nm ? _priceBook.TryByName(nm) : null);
             if (lookup is not { } pr) continue;
-            if (cfg.MinQuantity > 0 && pr.Quantity < cfg.MinQuantity) continue; // skip low-confidence mislistings
+            // Confidence gate: reject a listing whose volume is present but below the floor. poe.ninja's
+            // exchange endpoint reports volume=0 for many legitimately-priced fungibles (most runes), so a
+            // 0 means "no volume data", NOT low confidence — trust its derived price. Only qty in [1,Min) is
+            // the mislisting signal (e.g. a 1-listing unique priced sky-high).
+            if (cfg.MinQuantity > 0 && pr.Quantity > 0 && pr.Quantity < cfg.MinQuantity) continue;
             var group = CategoryGroup(pr.Category);
             if (!enabled.Contains(group)) continue;                 // category group toggled off
             if (pr.Exalted < GroundFloor(group)) continue;          // below this bucket's value floor (Unique/Currency/Other)
