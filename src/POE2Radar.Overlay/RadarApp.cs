@@ -1329,11 +1329,21 @@ public sealed class RadarApp : IDisposable
             _atlasMarkFrame.Clear();
             if (ar.Open)
             {
+                // SR-10: cull off-screen marks before the TryRelPos read. Off-screen marks are never
+                // drawn, so using the baked position is invisible. The baked centre (m.X/m.Y) projects
+                // to screen via the same scale AtlasProjection() puts in h0/h4 (shear/offset/persp = 0),
+                // so sx = m.X * pscale, sy = m.Y * pscale — identical to the renderer's formula.
+                // A 200 px margin prevents culling a mark that is panning onto screen mid-frame.
+                float pscale = (_window.Height > 0 ? _window.Height / 1600f : 0.675f) * (_atlasZoom > 0.01f ? _atlasZoom : 0.85f);
                 foreach (var m in ar.Marks)
+                {
+                    float bsx = m.X * pscale, bsy = m.Y * pscale;
+                    bool onScreen = bsx > -200 && bsx < _window.Width + 200 && bsy > -200 && bsy < _window.Height + 200;
                     _atlasMarkFrame.Add(
-                        m.Element != 0 && _liveRender.TryRelPos(m.Element, out var mx, out var my)
+                        onScreen && m.Element != 0 && _liveRender.TryRelPos(m.Element, out var mx, out var my)
                             ? m with { X = AtlasGeometry.AtlasCentre(mx, m.W), Y = AtlasGeometry.AtlasCentre(my, m.H) }
                             : m);
+                }
 
                 // Fresh live pos when the read validates, else the world-walk's baked pos — never a garbage
                 // coordinate (which would streak route lines off-screen). Points stay contiguous (no dropping).
