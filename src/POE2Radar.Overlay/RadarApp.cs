@@ -618,7 +618,7 @@ public sealed class RadarApp : IDisposable
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
                              _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
-                             GearJson, _gearWeights,
+                             GearJson, PreloadJson, _gearWeights,
                              AtlasJson, SetAtlasSelection,
                              SetAtlasHighlight, VersionJson, RequestRescan,
                              audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; case "mechanic": _cueMechanic.Play(); break; } },
@@ -817,6 +817,24 @@ public sealed class RadarApp : IDisposable
                     return new { line = a.Line, statIds = a.StatIds, value = a.Value, weight = a.Weight, points = Math.Round(a.Points, 2), pctOfMax, tier, tierCount };
                 }),
             }),
+        };
+    }
+
+    /// <summary>API (/api/preload): current zone's preload-alert hits + (when Diagnostic) the
+    /// full path-frequency table. Paths + hit counts only — no character/account data.</summary>
+    private object PreloadJson()
+    {
+        var frame = _preloadFrame;
+        var diag = _settings.PreloadAlert.Diagnostic && _preloadTracker != null
+            ? _preloadTracker.Snapshot().Select(kv => new { path = kv.Key, hits = kv.Value.hits, freq = kv.Value.freq })
+                              .OrderByDescending(x => x.freq).Take(400).ToArray<object>()
+            : null;
+        return new
+        {
+            enabled = _settings.PreloadAlert.Enabled,
+            hits = frame?.Select(h => new { h.Label, h.Tier, h.Category, h.Color }).ToArray<object>()
+                   ?? System.Array.Empty<object>(),
+            diagnostic = diag,
         };
     }
 

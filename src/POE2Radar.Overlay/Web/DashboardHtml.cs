@@ -740,6 +740,61 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Offset Y</div>
               <input class="numin" type="number" step="1" data-set="sessionHudOffsetY"></div>
           </div>
+          <div class="card collapsed" data-card="preload">
+            <h3>Preload Alert <small class="tag">experimental</small></h3>
+
+            <div class="row"><div class="rl">Enable<small>Scan preloaded file paths on zone entry and show an alert overlay</small></div>
+              <label class="sw"><input type="checkbox" data-set="preloadEnabled">
+                <span class="track"></span><span class="knob"></span></label></div>
+
+            <div class="row"><div class="rl">Min tier to show<small>Minimum tier to display on the overlay</small></div>
+              <select class="numin" data-set="preloadMinTier">
+                <option value="pinnacle">Pinnacle</option>
+                <option value="high">High</option>
+                <option value="mechanic">Mechanic</option>
+                <option value="interactable">Interactable</option>
+              </select></div>
+
+            <div class="row"><div class="rl">Audio tier<small>Play a sound cue when this tier or above is detected</small></div>
+              <select class="numin" data-set="preloadAudioTier">
+                <option value="pinnacle">Pinnacle</option>
+                <option value="high">High</option>
+                <option value="mechanic">Mechanic</option>
+                <option value="interactable">Interactable</option>
+                <option value="off">Off</option>
+              </select></div>
+
+            <div class="row"><div class="rl">Common threshold<small>Paths seen in this fraction of zones or more are suppressed as noise (0.0–1.0, restart to apply)</small></div>
+              <input class="numin" type="number" step="0.05" min="0" max="1" data-set="preloadCommonThreshold"></div>
+
+            <div class="row"><div class="rl">Warmup zones<small>Number of zones before noise suppression activates (1–50, restart to apply)</small></div>
+              <input class="numin" type="number" step="1" min="1" max="50" data-set="preloadWarmupZones"></div>
+
+            <div class="row"><div class="rl">Anchor corner</div>
+              <select class="numin" data-set="preloadAnchor">
+                <option value="top-right">Top Right</option>
+                <option value="top-left">Top Left</option>
+                <option value="bottom-right">Bottom Right</option>
+                <option value="bottom-left">Bottom Left</option>
+              </select></div>
+
+            <div class="row"><div class="rl">Offset X</div>
+              <input class="numin" type="number" step="1" data-set="preloadOffsetX"></div>
+
+            <div class="row"><div class="rl">Offset Y</div>
+              <input class="numin" type="number" step="1" data-set="preloadOffsetY"></div>
+
+            <div class="row"><div class="rl">Diagnostic mode<small>Exposes the full path-frequency table in /api/preload and the panel below</small></div>
+              <label class="sw"><input type="checkbox" data-set="preloadDiagnostic">
+                <span class="track"></span><span class="knob"></span></label></div>
+
+            <div id="preloadDiagPanel" style="display:none">
+              <div class="row"><div class="rl hint-row">Current zone hits (updated live when enabled)</div></div>
+              <div id="preloadHits" style="margin:4px 0 8px 0;font-size:12px;color:var(--accent)"></div>
+              <div class="row"><div class="rl hint-row">Path frequency table — paths sorted by zone frequency (paths · hits · freq)</div></div>
+              <div id="preloadFreqTable" style="max-height:280px;overflow-y:auto;font-size:11px"></div>
+            </div>
+          </div>
           <div class="card" data-card="hpbars">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
             <div class="row"><div class="rl hint-row">Toggle the bar on/off per rarity with the <b>On</b> checkbox &mdash; uncheck all to disable HP bars entirely, or leave only the rarities you want. The rest sets the bar <i>geometry</i> per rarity.</div></div>
@@ -979,6 +1034,7 @@ async function loadSettings(){
     gi = s.groundItems || {};
     renderHpBars(); renderTerrain(); renderGround();
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
+    if(window._syncDiagPanel) window._syncDiagPanel();
   }catch(e){}
 }
 
@@ -2094,6 +2150,51 @@ loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab
 tick(); setInterval(tick, 1000);
 checkVersion();
+
+/* ── preload alert diagnostic poller ── */
+let _preloadPollId=null;
+function startPreloadPoll(){
+  if(_preloadPollId) return;
+  _preloadPollId=setInterval(async()=>{
+    const panel=$('#preloadDiagPanel'); if(!panel||panel.style.display==='none') return;
+    try{
+      const d=await getJSON('/api/preload');
+      const hitsEl=$('#preloadHits');
+      if(hitsEl){
+        if(!d.enabled){ hitsEl.textContent='(disabled)'; }
+        else if(!d.hits||!d.hits.length){ hitsEl.textContent='No hits this zone.'; }
+        else{ hitsEl.innerHTML=d.hits.map(h=>'<span style="margin-right:8px;color:'+esc(h.Color||'#ccc')+'">'+esc(h.Label||h.Tier)+'</span>').join(''); }
+      }
+      const tblEl=$('#preloadFreqTable');
+      if(tblEl&&d.diagnostic&&d.diagnostic.length){
+        tblEl.innerHTML='<table style="width:100%;border-collapse:collapse"><thead><tr>'
+          +'<th style="text-align:left;padding:2px 6px;color:var(--ink-faint)">Path</th>'
+          +'<th style="text-align:right;padding:2px 6px;color:var(--ink-faint)">Hits</th>'
+          +'<th style="text-align:right;padding:2px 6px;color:var(--ink-faint)">Freq</th>'
+          +'</tr></thead><tbody>'
+          +d.diagnostic.map(r=>'<tr><td style="padding:1px 6px;word-break:break-all;color:var(--ink)">'+esc(r.path)+'</td>'
+            +'<td style="padding:1px 6px;text-align:right;color:var(--ink-faint)">'+r.hits+'</td>'
+            +'<td style="padding:1px 6px;text-align:right;color:var(--ink-faint)">'+(r.freq*100).toFixed(1)+'%</td></tr>').join('')
+          +'</tbody></table>';
+      } else if(tblEl&&(!d.diagnostic||!d.diagnostic.length)){
+        tblEl.innerHTML='<div style="color:var(--ink-faint);padding:4px 6px">'+(d.diagnostic?'No frequency data yet.':'Diagnostic mode is off — enable above.')+'</div>';
+      }
+    }catch(e){}
+  },2000);
+}
+// Show/hide diagnostic panel based on preloadDiagnostic checkbox
+(function(){
+  const cb=document.querySelector('[data-set="preloadDiagnostic"]');
+  const panel=$('#preloadDiagPanel');
+  if(cb&&panel){
+    function syncDiagPanel(){ panel.style.display=cb.checked?'block':'none'; if(cb.checked) startPreloadPoll(); }
+    cb.addEventListener('change',syncDiagPanel);
+    // Also sync after loadSettings runs (settings may set checked before we wire it)
+    const origLoad=window._origLoadSettings||loadSettings;
+    window._origLoadSettings=origLoad;
+    window._syncDiagPanel=syncDiagPanel;
+  }
+})();
 /* ── presets card (export copy/download + import paste/file) ── */
 function flashPreset(msg){ const m=$('#savedMsgPreset'); if(!m) return; m.textContent=msg||'✓ preset applied'; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1800); }
 async function presetExport(){ return await (await fetch('/api/preset/export',{cache:'no-store'})).json(); }

@@ -64,6 +64,7 @@ public sealed class ApiServer : IDisposable
     private readonly Func<IReadOnlyList<AtlasEntry>> _entityAtlasEntries;
     private readonly EntityNameStore _entityNames;
     private readonly Func<object> _gear;
+    private readonly Func<object> _preload;
     private readonly GearWeightStore _gearWeights;
     // Atlas map-data provider (catalog + current-region map set). Read-only, computed on demand (it
     // scans memory + caches), returns a JSON-ready object. Null when atlas reading is unavailable.
@@ -103,6 +104,7 @@ public sealed class ApiServer : IDisposable
         Func<IReadOnlyList<AtlasEntry>> entityAtlasProvider,
         EntityNameStore entityNames,
         Func<object> gearProvider,
+        Func<object> preloadProvider,
         GearWeightStore gearWeights,
         Func<object>? atlasProvider = null,
         Action<IReadOnlyList<long>>? atlasSelect = null,
@@ -136,6 +138,7 @@ public sealed class ApiServer : IDisposable
         _entityAtlasEntries = entityAtlasProvider;
         _entityNames = entityNames;
         _gear = gearProvider;
+        _preload = preloadProvider;
         _gearWeights = gearWeights;
         _presetStore = presetStore ?? new PresetStore();
         _listener.Prefixes.Add($"http://localhost:{port}/");
@@ -580,6 +583,13 @@ public sealed class ApiServer : IDisposable
                 // God-Roll Detector (experimental, default off): the scored inventory snapshot. Item stats
                 // + scores only — no character/account data. {enabled:false,items:[]} when off.
                 Write(ctx, 200, JsonSerializer.Serialize(_gear(), Json));
+                break;
+
+            case "/api/preload":
+                // Preload Alert (experimental): current zone's hit list + (when Diagnostic) the path
+                // frequency table. GET-only; paths + hit counts only — no character/account data.
+                if (ctx.Request.HttpMethod != "GET") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                Write(ctx, 200, JsonSerializer.Serialize(_preload(), Json));
                 break;
 
             case "/api/gear-weights":
@@ -1062,6 +1072,15 @@ public sealed class ApiServer : IDisposable
         highlightDynastyMaps = _settings.HighlightDynastyMaps,
         atlasHideCompleted   = _settings.AtlasHideCompleted,
         atlasHideAccessible  = _settings.AtlasHideAccessible,
+        preloadEnabled           = _settings.PreloadAlert.Enabled,
+        preloadMinTier           = _settings.PreloadAlert.MinTier,
+        preloadAudioTier         = _settings.PreloadAlert.AudioTier,
+        preloadDiagnostic        = _settings.PreloadAlert.Diagnostic,
+        preloadCommonThreshold   = _settings.PreloadAlert.CommonThreshold,
+        preloadWarmupZones       = _settings.PreloadAlert.WarmupZones,
+        preloadAnchor            = _settings.PreloadAlert.Anchor,
+        preloadOffsetX           = _settings.PreloadAlert.OffsetX,
+        preloadOffsetY           = _settings.PreloadAlert.OffsetY,
         sessionHudEnabled        = _settings.SessionHud.Enabled,
         sessionHudShowPace       = _settings.SessionHud.ShowPace,
         sessionHudShowZoneContext= _settings.SessionHud.ShowZoneContext,
@@ -1159,6 +1178,28 @@ public sealed class ApiServer : IDisposable
                 case "sessionHudAnchor" when TryString(p.Value, out var s): _settings.SessionHud.Anchor = s.Trim(); applied.Add(p.Name); break;
                 case "sessionHudOffsetX" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetX = n; applied.Add(p.Name); break;
                 case "sessionHudOffsetY" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetY = n; applied.Add(p.Name); break;
+                // Preload Alert settings
+                case "preloadEnabled" when TryBool(p.Value, out var b): _settings.PreloadAlert.Enabled = b; applied.Add(p.Name); break;
+                case "preloadDiagnostic" when TryBool(p.Value, out var b): _settings.PreloadAlert.Diagnostic = b; applied.Add(p.Name); break;
+                case "preloadMinTier" when TryString(p.Value, out var s):
+                {
+                    var v = s.Trim().ToLowerInvariant();
+                    if (v is "pinnacle" or "high" or "mechanic" or "interactable")
+                    { _settings.PreloadAlert.MinTier = v; applied.Add(p.Name); }
+                    break;
+                }
+                case "preloadAudioTier" when TryString(p.Value, out var s):
+                {
+                    var v = s.Trim().ToLowerInvariant();
+                    if (v is "pinnacle" or "high" or "mechanic" or "interactable" or "off")
+                    { _settings.PreloadAlert.AudioTier = v; applied.Add(p.Name); }
+                    break;
+                }
+                case "preloadAnchor" when TryString(p.Value, out var s): _settings.PreloadAlert.Anchor = s.Trim(); applied.Add(p.Name); break;
+                case "preloadCommonThreshold" when TryFloat(p.Value, out var f): _settings.PreloadAlert.CommonThreshold = Math.Clamp(f, 0.0, 1.0); applied.Add(p.Name); break;
+                case "preloadWarmupZones" when TryInt(p.Value, out var n): _settings.PreloadAlert.WarmupZones = Math.Clamp(n, 1, 50); applied.Add(p.Name); break;
+                case "preloadOffsetX" when TryInt(p.Value, out var n): _settings.PreloadAlert.OffsetX = n; applied.Add(p.Name); break;
+                case "preloadOffsetY" when TryInt(p.Value, out var n): _settings.PreloadAlert.OffsetY = n; applied.Add(p.Name); break;
                 // Zone summary panel settings
                 case "zoneSummaryEnabled" when TryBool(p.Value, out var b): _settings.ZoneSummary.Enabled = b; applied.Add(p.Name); break;
                 case "zoneSummaryAnchor"  when TryString(p.Value, out var s):
