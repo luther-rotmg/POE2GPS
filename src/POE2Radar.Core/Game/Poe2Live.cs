@@ -526,7 +526,7 @@ public sealed class Poe2Live
             int hpCur = 0, hpMax = 0;
             var rarity = Rarity.NonMonster;
             var opened = false;
-            if (cat is EntityCategory.Monster or EntityCategory.Player) (hpCur, hpMax) = ReadHp(entity);
+            if (cat == EntityCategory.Monster) (hpCur, hpMax) = ReadHp(entity);   // SR-5d: player HP comes from render-thread PlayerVitals
             if (cat is EntityCategory.Monster or EntityCategory.Chest) rarity = ReadRarity(entity);
             if (cat == EntityCategory.Chest) opened = ReadChestOpened(entity);
             var mods = (EnableModReads && cat == EntityCategory.Monster) ? ReadMods(entity) : null;

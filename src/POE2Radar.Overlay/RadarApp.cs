@@ -1268,12 +1268,14 @@ public sealed class RadarApp : IDisposable
         {
             _areaInstanceForApi = areaInstance; // for /api/tiles (read by _liveApi on the HTTP thread)
             _inGameStateForApi = inGameState;   // for /api/atlas + F10 route pick
-            _areaHash = _liveRender.AreaHash(areaInstance);
+            _areaHash = snap.AreaHash;   // SR-5a: snapshot already carries it; saves one RPM read per frame
 
-            player = _liveRender.PlayerGrid(localPlayer) ?? NumVec2.Zero;
-            playerWorld = _liveRender.PlayerWorld(localPlayer);   // same Render read PlayerGrid uses; live each frame
+            playerWorld = _liveRender.PlayerWorld(localPlayer);   // SR-5b: one Render read; derive grid from it
+            player = playerWorld is { } pw ? new NumVec2(pw.X / Poe2.WorldToGridRatio, pw.Y / Poe2.WorldToGridRatio) : NumVec2.Zero;
             map = _liveRender.ReadMap(inGameState, areaInstance);
-            _cameraMatrix = _liveRender.CameraMatrix(inGameState);
+            _cameraMatrix = (_settings.HpBarNormal || _settings.HpBarMagic || _settings.HpBarRare || _settings.HpBarUnique   // SR-5c
+                || _settings.AffixNameplates.Enabled || _settings.GroundItems.Enabled)
+                ? _liveRender.CameraMatrix(inGameState) : null;
             if (_liveRender.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }
 
             // Refresh each HP-bar mob's live position + HP from the world tick's spec (which captured the
