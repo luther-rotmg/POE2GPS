@@ -142,6 +142,8 @@ public sealed class RadarApp : IDisposable
     // (world thread) — guarded by _atlasLock (nullable int-tuples aren't torn-read-safe).
     private (int X, int Y)? _atlasStartGrid;
     private (int X, int Y)? _atlasGoalGrid;
+    private int _curGridRefreshTick;         // SR-11: slow-refresh counter for CurrentNodeGrid (~1 Hz)
+    private (int X, int Y)? _cachedCurGrid; // SR-11: cached current atlas node (changes only on map entry)
     private DateTime _atlasGoodAt = DateTime.MinValue; // last tick we read nodes — debounces transient misses (world)
     private long _lastAtlasSig;          // view+inputs signature — when unchanged, marks/route stay frozen (no arrow jitter)
     private bool _builtAtlasOnce;        // marks built at least once this atlas session (world)
@@ -3006,7 +3008,9 @@ public sealed class RadarApp : IDisposable
         lock (_atlasLock) { startGrid = _atlasStartGrid; goalGrid = _atlasGoalGrid; sel = new HashSet<nint>(_atlasSel); }
         // The player's CURRENT atlas node (the route source for auto-navigation). Changes only on zone
         // change, but it MUST feed the freeze signature so the auto-routes re-solve as the player advances.
-        var curGrid = _atlas.CurrentNodeGrid();
+        // SR-11: slow-refresh to ~1 Hz — the node is minutes-stable; ≤1 s stale is imperceptible.
+        if (_curGridRefreshTick++ % 30 == 0) _cachedCurGrid = _atlas.CurrentNodeGrid();
+        var curGrid = _cachedCurGrid;
 
         // ARROW JITTER FIX — freeze the marks when the atlas view is static. PoE2 doesn't keep CULLED
         // (off-screen) UI elements' relPos cleanly updated, so off-screen nodes' positions are noisy — which
