@@ -287,11 +287,15 @@ public sealed class Poe2Live
         return _plPlayer;
     }
 
-    /// <summary>Local character name (validated via StdWString @ Player+0x1B0).</summary>
+    private string? _cachedPlayerName;
+    /// <summary>Local character name (validated via StdWString @ Player+0x1B0). Permanently cached after first non-empty read — name never changes within a session.</summary>
     public string PlayerName(nint localPlayer)
     {
+        if (_cachedPlayerName != null) return _cachedPlayerName;
         var c = PlayerComp(localPlayer);
-        return c == 0 ? "" : ReadStdWString(c + Poe2.PlayerComponent.Name);
+        var name = c == 0 ? "" : ReadStdWString(c + Poe2.PlayerComponent.Name);
+        if (!string.IsNullOrEmpty(name)) _cachedPlayerName = name;
+        return name;
     }
 
     /// <summary>Local character level (byte @ Player+0x204).</summary>

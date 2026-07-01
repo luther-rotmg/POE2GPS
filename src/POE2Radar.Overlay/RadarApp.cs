@@ -210,6 +210,7 @@ public sealed class RadarApp : IDisposable
     private IReadOnlyList<Poe2Live.Landmark> _landmarks = Array.Empty<Poe2Live.Landmark>(); // world only
     private Poe2Live.TerrainData? _terrain;                 // world only
     private int _charLevel;                                 // world only (published in the snapshot)
+    private int _levelRefreshTick;                          // SR-6: slow-refresh PlayerLevel counter (world thread)
     private nint _lastAreaInstance;                         // world only: terrain-cache invalidation + atlas anchor
     // E3: cached per-area-instance reads (avoid re-reading unchanged values each tick).
     private uint _cachedAreaHash;    // world thread
@@ -279,6 +280,7 @@ public sealed class RadarApp : IDisposable
     private DateTime _nextBrowserAt = DateTime.MinValue;
     private DateTime _nextQuitAt    = DateTime.MinValue; // quit debounce (500 ms; no foreground gate)
     private float _hpPct = 100f, _manaPct = 100f, _esPct = 100f;
+    private int _vitalsRefreshFrame;                        // SR-6: slow-refresh PlayerVitals counter (render thread)
     private float[]? _cameraMatrix;
 
     // Render inputs rebuilt at world rate (30 Hz), not per render frame: they only change with the
@@ -1278,7 +1280,7 @@ public sealed class RadarApp : IDisposable
                 || _settings.EntityArrows.Enabled    // DrawEntityArrows (SR-5 follow-up: was missing)
                 || snap.SelectedPaths.Count > 0)     // DrawPathsWorld — no feature flag; fires whenever a nav target is selected
                 ? _liveRender.CameraMatrix(inGameState) : null;
-            if (_liveRender.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }
+            if (_vitalsRefreshFrame++ % 5 == 0 && _liveRender.PlayerVitals(localPlayer) is { } v) { _hpPct = v.HpPct; _manaPct = v.ManaPct; _esPct = v.EsPct; }  // SR-6: ~12 Hz
 
             // Refresh each HP-bar mob's live position + HP from the world tick's spec (which captured the
             // mob's Render/Life component addresses) using the RENDER reader — so bars track moving mobs
@@ -1565,7 +1567,7 @@ public sealed class RadarApp : IDisposable
         // backs the monster HP reads in Entities()/ReadHp. EnsurePlayerVitalOffsets does this with no
         // VitalStruct reads (no HP/Mana/ES syscalls), saving 3 RPM calls per world tick.
         _live.EnsurePlayerVitalOffsets(localPlayer);
-        _charLevel = _live.PlayerLevel(localPlayer);   // changes ~never; 30 Hz is plenty
+        if (_levelRefreshTick++ % 150 == 0) _charLevel = _live.PlayerLevel(localPlayer);  // SR-6: ~5 s cadence
 
         // RPM rate: update the windowed reads/sec once per second (all three reader stacks; _atlas rides _reader).
         var nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();
