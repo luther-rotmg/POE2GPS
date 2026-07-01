@@ -26,6 +26,7 @@
     <EmbeddedResource Include="Game\poe2_monster_mod_names.json" />
     <EmbeddedResource Include="Game\atlas_maps.json" />
     <EmbeddedResource Include="Game\atlas_content.json" />
+    <EmbeddedResource Include="Game\preload_catalog.json" />
   </ItemGroup>
 
 </Project>
