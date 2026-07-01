@@ -25,6 +25,9 @@ public sealed class Poe2Live
     private readonly Dictionary<nint, nint> _ompAddr = new();      // entity → ObjectMagicProperties (0 = none)
     private readonly Dictionary<nint, nint> _chestAddr = new();    // entity → Chest component (0 = none)
     private readonly HashSet<nint> _openedChests = new();          // entity → chest confirmed opened (one-way; cleared on zone change/rebind)
+    private readonly HashSet<nint> _completedPois = new();         // POI confirmed complete (one-way; cleared per zone)
+    private readonly Dictionary<nint, (int tick, bool poi, bool complete)> _iconState = new();  // last ReadIcon result + tick
+    private int _iconTick;                                          // incremented once per Entities() pass
     private readonly Dictionary<nint, EntityCategory> _category = new();
     private readonly Dictionary<nint, string> _meta = new();
     private readonly Dictionary<nint, nint> _iconAddr = new();     // entity → MinimapIcon component (0 = none); game POI
@@ -98,7 +101,7 @@ public sealed class Poe2Live
     public void Rebind(nint gameStateSlot)
     {
         _gameStateSlot = gameStateSlot;
-        _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear();
+        _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
         _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear();
         _itemIdent.Clear(); _idAt.Clear();
         _entCacheKey = 0;
@@ -461,7 +464,7 @@ public sealed class Poe2Live
     {
         if (areaInstance != _entCacheKey)
         {
-            _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear();
+            _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
             _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear();
             _entCacheKey = areaInstance;
         }
@@ -481,6 +484,7 @@ public sealed class Poe2Live
         _entVisited.Clear();
         _modReadBudget = ModReadBudgetPerPass;
         _itemReadBudget = ItemReadBudgetPerPass;
+        _iconTick++;
         var walkCap = size * 4 + 1024;   // E7: scale cap to entity count (balanced BST of N has N+1 nodes; 4× is generous)
         Span<nint> batchR = stackalloc nint[6];   // reused per new entity; declared outside the loop (CA2014)
         while (_entQueue.Count > 0 && _entVisited.Count < walkCap)
@@ -554,7 +558,7 @@ public sealed class Poe2Live
     private void EvictEntity(nint entity)
     {
         _renderAddr.Remove(entity); _lifeAddr.Remove(entity); _posAddr.Remove(entity);
-        _ompAddr.Remove(entity); _chestAddr.Remove(entity); _openedChests.Remove(entity); _category.Remove(entity);
+        _ompAddr.Remove(entity); _chestAddr.Remove(entity); _openedChests.Remove(entity); _completedPois.Remove(entity); _iconState.Remove(entity); _category.Remove(entity);
         _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _reaction.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity);
     }
 
@@ -569,13 +573,18 @@ public sealed class Poe2Live
     /// </summary>
     private (bool poi, bool complete) ReadIcon(nint entity)
     {
+        if (_completedPois.Contains(entity)) return (true, true);          // one-way: never re-read a completed POI
+        if (_iconState.TryGetValue(entity, out var last) && (_iconTick - last.tick) < 10)
+            return (last.poi, last.complete);                              // slow-refresh: reuse recent result
         if (!_iconAddr.TryGetValue(entity, out var icon))
         {
             icon = ResolveComponent(entity, "MinimapIcon");
             _iconAddr[entity] = icon; // cache even if 0, to avoid re-walking non-POI entities
         }
-        if (icon == 0) return (false, false);
+        if (icon == 0) { _iconState[entity] = (_iconTick, false, false); return (false, false); }
         var complete = _reader.TryReadStruct<int>(icon + Poe2.MinimapIcon.CompletedState, out var s) && s != 0;
+        if (complete) _completedPois.Add(entity);
+        _iconState[entity] = (_iconTick, true, complete);
         return (true, complete);
     }
 
