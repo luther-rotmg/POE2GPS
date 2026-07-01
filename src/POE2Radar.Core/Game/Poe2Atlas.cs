@@ -300,6 +300,7 @@ public sealed class Poe2Atlas
     // league mechanics from the stats list @ row+0x50 (stat ids "map_atlas_node_has_<mechanic>"). Cached
     // (content is stable while the atlas is open) and resolved at a bounded rate to avoid a tick hitch.
     private readonly Dictionary<nint, (string code, string map, string[] content, AtlasMapData.MapMeta? meta)> _tagCache = new();
+    private readonly Dictionary<nint, int> _iconTypeCache = new();  // element → content-icon type (static per node)
     private static readonly string[] NoTags = Array.Empty<string>();
 
     // Atlas CONNECTION GRAPH (grid coord → neighbour grid coords), read from the canvas's edge vector
@@ -416,11 +417,15 @@ public sealed class Poe2Atlas
             var iconType = 0;
             if (showContentIcons)
             {
-                var d = el;
-                for (var lvl = 0; lvl < 5 && d != 0; lvl++)
+                if (!_iconTypeCache.TryGetValue(el, out iconType))
                 {
-                    if (_reader.TryReadStruct<uint>(d + Poe2.AtlasNode.Content, out var c) && c is > 0 and < 256) { iconType = (int)c; break; }
-                    d = Ptr(Ptr(d + Poe2.UiElement.Children)); // first child = *(*(el+Children))
+                    var d = el;
+                    for (var lvl = 0; lvl < 5 && d != 0; lvl++)
+                    {
+                        if (_reader.TryReadStruct<uint>(d + Poe2.AtlasNode.Content, out var c) && c is > 0 and < 256) { iconType = (int)c; break; }
+                        d = Ptr(Ptr(d + Poe2.UiElement.Children)); // first child = *(*(el+Children))
+                    }
+                    _iconTypeCache[el] = iconType;
                 }
             }
             // Accessible/completed status: the GameHelper-validated deeper model
@@ -462,7 +467,7 @@ public sealed class Poe2Atlas
     /// defaults only when the full map/content set is available.</summary>
     public bool AllTagsResolved { get; private set; }
 
-    private void Invalidate() { _nodeCanvas = 0; _nodeVtable = 0; _hiddenTicks = 0; _tagCache.Clear(); _graph.Clear(); _graphCanvas = 0; _currentMarker = 0; }
+    private void Invalidate() { _nodeCanvas = 0; _nodeVtable = 0; _hiddenTicks = 0; _tagCache.Clear(); _iconTypeCache.Clear(); _graph.Clear(); _graphCanvas = 0; _currentMarker = 0; }
 
     /// <summary>The player's CURRENT atlas node grid coord (the "player icon" tile), via the marker element
     /// (<see cref="Poe2Offsets.AtlasGraph.CurrentMarkerNodePtr"/>): <c>*(marker+0x300)</c> → current node →
