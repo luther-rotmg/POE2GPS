@@ -3,6 +3,15 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.14.0] — 2026-06-30
+### Added — 🔮 **Preload Alert** *(opt-in — off by default · experimental)*
+- 🔮 **Know what's in the zone the moment you load in.** When you enter an area, POE2GPS reads the list of assets the game just loaded and calls out the **notable content waiting for you** — **pinnacle bosses** (Arbiters · Xesht · Kosis · Omniphobia · …), **league encounters** (Breach · Ritual · Expedition · Abyss · Incursion · Delirium · …), **Rogue/Conqueror exiles**, and **valuable chests** — as a tidy **corner panel**, tier-coloured 🔴 *pinnacle* · 🟠 *high* · 🟡 *mechanic* · 🔵 *interactable*.
+  - 🧠 **Self-tuning noise filter** — the game always keeps a lot of assets resident, so a naive read would flag *everything*. POE2GPS learns which paths show up in **every** zone (base noise) and **suppresses them**, surfacing only what's *genuinely this zone*. Tune the aggressiveness (**common-noise threshold** + **warm-up zones**) yourself.
+  - 🎚️ **Your call** — a **minimum tier** to display, an optional **audio cue** when *(≥ a tier you pick)* content loads, corner **anchor + offset**, and a **🔬 Diagnostic view** in the dashboard that shows every matched path with its zone-frequency, so you (and the community) can help grow the catalog.
+  - Flip it on in **⚙️ Settings → Preload Alert (experimental)**. **100% read-only** — it only *reads* the asset list the game already loaded and draws text. No prices, no trade, no input. 🛡️
+### Changed
+- 🧰 **Dev tooling** — new `--preload` Research probe (one-click launcher) that validates the loaded-files reader live per patch.
+
 ## [0.13.0] — 2026-06-29
 ### Added — 🌌 **Atlas QoL** *(a 7-part upgrade to the Atlas overlay)*
 - 👁️ **Content icons on fogged maps** *(on by default)* — the game hides a map's content art until you reveal the tile. POE2GPS now stamps the **content glyph** (🌀 Breach · 💀 Boss · 🔮 Essence · ⛏️ Expedition · 🩸 Ritual · 📦 Strongbox · …) **right on the fogged node**, so you can see *what's out there* **before** committing a single point. 15 crisp built-in icons; size + on/off in **Settings**.
