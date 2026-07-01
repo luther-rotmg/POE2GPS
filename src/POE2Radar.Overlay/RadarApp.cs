@@ -662,6 +662,7 @@ public sealed class RadarApp : IDisposable
                              audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; case "mechanic": _cueMechanic.Play(); break; } },
                              rebuildAudio: () => RebuildAudioCues(),
                              presetStore: _presetStore,
+                             terrainProvider: CurrentTerrain,
                              allowLanAccess: _settings.AllowLanAccess,
                              port: _settings.ApiPort);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
@@ -895,6 +896,16 @@ public sealed class RadarApp : IDisposable
             updateAvailable = u?.UpdateAvailable ?? false,
             url = u?.Url ?? UpdateChecker.ReleasesPage,
         };
+    }
+
+    /// <summary>Snapshot the current zone's walkable terrain + its area hash for the /api/map endpoint.
+    /// Reads the published _world once (a single volatile ref) so terrain and hash are always a matched
+    /// pair. Returns nulls until terrain is available (loading / no zone).</summary>
+    private (byte[]? Walkable, int Width, int Height, uint AreaHash) CurrentTerrain()
+    {
+        var w = _world;                       // one volatile read → consistent terrain + hash
+        var t = w?.Terrain;
+        return t == null ? (null, 0, 0, 0u) : (t.Walkable, t.Width, t.Height, w!.AreaHash);
     }
 
     public void Run()

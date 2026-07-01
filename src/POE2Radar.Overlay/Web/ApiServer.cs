@@ -88,6 +88,9 @@ public sealed class ApiServer : IDisposable
     private readonly bool _allowLanAccess;   // bound all-interfaces when true (opt-in LAN view)
     private readonly int _port;              // stored for /api/lan-info + loopback fallback
     private volatile bool _lanBindFailed;    // true if http://+:port bind threw and we fell back to loopback
+    private readonly Func<(byte[]? Walkable, int Width, int Height, uint AreaHash)>? _terrainProvider;
+    private uint _mapCacheHash;      // /api/map: 1-entry payload cache keyed by area hash (API loop is single-threaded)
+    private string? _mapCacheJson;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -118,6 +121,7 @@ public sealed class ApiServer : IDisposable
         Action<string>? audioTest = null,
         Action? rebuildAudio = null,
         PresetStore? presetStore = null,
+        Func<(byte[]? Walkable, int Width, int Height, uint AreaHash)>? terrainProvider = null,
         bool allowLanAccess = false,
         int port = 7777)
     {
@@ -146,6 +150,7 @@ public sealed class ApiServer : IDisposable
         _preload = preloadProvider;
         _gearWeights = gearWeights;
         _presetStore = presetStore ?? new PresetStore();
+        _terrainProvider = terrainProvider;
         _allowLanAccess = allowLanAccess;
         _port = port;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
@@ -962,6 +967,19 @@ public sealed class ApiServer : IDisposable
                 foreach (var id in _knownMods())
                 { if (!seen.Add(id)) continue; var info = cat.Resolve(id); items.Add(new { modId = id, name = info.Name, tier = info.Tier.ToString(), curated = false }); }
                 Write(ctx, 200, JsonSerializer.Serialize(new { affixes = items }, Json));
+                break;
+            }
+
+            case "/api/map":
+            {
+                var (walk, w, h, hash) = _terrainProvider?.Invoke() ?? (null, 0, 0, 0u);
+                if (walk == null || w <= 0 || h <= 0) { Write(ctx, 200, "{\"ready\":false}"); break; }
+                if (_mapCacheJson == null || _mapCacheHash != hash)
+                {
+                    _mapCacheJson = TerrainMapPayload.ToJson(walk, w, h, hash);
+                    _mapCacheHash = hash;
+                }
+                Write(ctx, 200, _mapCacheJson);
                 break;
             }
 
