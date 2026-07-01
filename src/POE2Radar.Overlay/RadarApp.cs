@@ -1271,6 +1271,7 @@ public sealed class RadarApp : IDisposable
                 snap.AreaHash,
                 snap.AreaCode,
                 snap.AreaLevel,
+                snap.CharLevel,
                 _hpPct,
                 DateTime.UtcNow.Ticks,
                 _settings.SessionHud.ExcludeTownsFromPace,

@@ -12,7 +12,7 @@ public class SessionTrackerTests
         uint areaHash = 1, string areaCode = "G1_1", int areaLevel = 1,
         float hpPct = 100f, long nowTicks = 0,
         bool excludeTowns = false, bool isTown = false)
-        => t.Update(areaHash, areaCode, areaLevel, hpPct, nowTicks, excludeTowns, isTown);
+        => t.Update(areaHash, areaCode, areaLevel, playerLevel: 0, hpPct, nowTicks, excludeTowns, isTown);
 
     [Fact]
     public void FirstUpdate_DoesNotIncrementZones()

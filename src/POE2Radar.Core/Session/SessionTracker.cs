@@ -1,3 +1,4 @@
+using POE2Radar.Core.Game;   // Poe2Live, Poe2Live.Rarity
 namespace POE2Radar.Core.Session;
 
 /// <summary>
@@ -22,6 +23,14 @@ public sealed class SessionTracker
     private bool   _awaitingRespawn;       // blocks a second death count until HP recovers
     private string _currentZoneName = "";
     private int    _currentAreaLevel;
+    // v2 fields
+    private readonly KillTracker _kills = new();
+    private int    _mapZonesEntered;
+    private int    _xpEfficiency;
+
+    /// <summary>Feed observed kill data into the kill tracker. Call once per entity per world tick.</summary>
+    public void ObserveKill(nint address, Poe2Live.Rarity rarity, int hpCur, int hpMax)
+        => _kills.Observe(address, rarity, hpCur, hpMax);
 
     /// <summary>
     /// Applies one frame of observation and returns the current snapshot. Call once per render frame,
@@ -31,6 +40,7 @@ public sealed class SessionTracker
         uint   areaHash,
         string areaCode,
         int    areaLevel,
+        int    playerLevel,
         float  hpPct,
         long   nowTicks,
         bool   excludeTowns,
@@ -38,6 +48,7 @@ public sealed class SessionTracker
     {
         _currentZoneName  = areaCode;
         _currentAreaLevel = areaLevel;
+        _xpEfficiency     = playerLevel - areaLevel;
 
         if (!_firstAreaSeen)
         {
@@ -61,6 +72,9 @@ public sealed class SessionTracker
             _deathsThisZone      = 0;
             if (!(excludeTowns && isTown))
                 _zonesEntered++;
+            if (!isTown)
+                _mapZonesEntered++;
+            _kills.ClearZone();
         }
 
         // Death detection (runs after zone-change reset). HP is [0,100]; "zero" is an exact 0f.
@@ -98,14 +112,21 @@ public sealed class SessionTracker
         _awaitingRespawn     = false;
         _firstAreaSeen       = true;       // current zone stays "seen" — no spurious increment next frame
         // _lastAreaHash intentionally left as the current value.
+        _kills.Reset();
+        _mapZonesEntered = 0;
     }
 
     private SessionStats Snapshot(long nowTicks)
     {
-        double sessionHours = (nowTicks - _sessionStartTicks) / (double)TimeSpan.TicksPerHour;
-        float  zonesPerHour = sessionHours < (1.0 / 60.0)
+        double sessionHours  = (nowTicks - _sessionStartTicks) / (double)TimeSpan.TicksPerHour;
+        float  zonesPerHour  = sessionHours < (1.0 / 60.0)
             ? 0f
             : (float)(_zonesEntered / sessionHours);
+        float  mapsPerHour   = sessionHours < (1.0 / 60.0)
+            ? 0f
+            : (float)(_mapZonesEntered / sessionHours);
+
+        var (kn, km, kr, ku) = _kills.Counts;
 
         return new SessionStats(
             SessionElapsed:   TimeSpan.FromTicks(nowTicks - _sessionStartTicks),
@@ -115,6 +136,13 @@ public sealed class SessionTracker
             CurrentZoneName:  _currentZoneName,
             CurrentAreaLevel: _currentAreaLevel,
             Deaths:           _deaths,
-            DeathsThisZone:   _deathsThisZone);
+            DeathsThisZone:   _deathsThisZone,
+            KillsNormal:      kn,
+            KillsMagic:       km,
+            KillsRare:        kr,
+            KillsUnique:      ku,
+            MapsPerHour:      mapsPerHour,
+            MapZonesEntered:  _mapZonesEntered,
+            XpEfficiency:     _xpEfficiency);
     }
 }
