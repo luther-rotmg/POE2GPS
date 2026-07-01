@@ -250,6 +250,9 @@ public sealed class RadarSettings
     // ── Zone summary panel: live counts (rares, chests, exits, landmarks) drawn as a corner HUD. Off by default. ──
     public ZoneSummarySettings ZoneSummary { get; set; } = new();
 
+    // ── Preload Alert: surfaces pinnacle/mechanic content by scanning the loaded-asset list on zone entry. Off by default. ──
+    public PreloadAlertSettings PreloadAlert { get; set; } = new();
+
     // ── Configurable hotkey VK codes. Defaults are the original literals — no behavior change for
     //    existing users. The Ctrl+Alt modifier pair, slot-digit 1-9/0 keys, and controller buttons
     //    are fixed and not in this table (rebinding them would conflict with PoE2's own controls). ──
@@ -527,6 +530,23 @@ public sealed class ZoneSummarySettings
     public string Anchor  { get; set; } = "TopRight";  // TopLeft|TopRight|BottomLeft|BottomRight
     public int    OffsetX { get; set; } = 0;
     public int    OffsetY { get; set; } = 0;
+}
+
+/// <summary>
+/// Preload Alert: surfaces high-value in-zone content (pinnacle bosses, Breach, etc.) by scanning
+/// the game's loaded-asset list on zone entry. Off by default — opt in from the dashboard.
+/// </summary>
+public sealed class PreloadAlertSettings
+{
+    public bool   Enabled           { get; set; } = false;          // opt-in, default OFF
+    public string MinTier           { get; set; } = "mechanic";     // pinnacle|high|mechanic|interactable — show >=
+    public string AudioTier         { get; set; } = "pinnacle";     // play cue when >= this tier (or "off")
+    public bool   Diagnostic        { get; set; } = false;          // expose full match+frequency in /state
+    public double CommonThreshold   { get; set; } = 0.6;            // paths seen in >= this fraction are noise
+    public int    WarmupZones       { get; set; } = 4;              // zones before noise suppression activates
+    public string Anchor            { get; set; } = "top-right";    // corner: top-right|top-left|bottom-right|bottom-left
+    public int    OffsetX           { get; set; } = 0;              // px inward from corner
+    public int    OffsetY           { get; set; } = 0;
 }
 
 /// <summary>

@@ -162,6 +162,7 @@ public sealed class RadarApp : IDisposable
     private AudioCue _cueItem      = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
     private AudioCue _cueObjective = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
     private AudioCue _cueMechanic  = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
+    private AudioCue _cuePreload   = new(POE2Radar.Core.Audio.PureToneWav.Generate(0, 0));
     private readonly HashSet<uint> _alertedMonsters = new();
     private readonly HashSet<uint> _alertedItems = new();
     private readonly HashSet<string> _alertedTargets = new();
@@ -186,6 +187,11 @@ public sealed class RadarApp : IDisposable
     private readonly List<ItemLabel> _itemFrame = new();   // render-thread scratch (rebuilt per frame)
     private readonly record struct AffixNameplateSpec(nint Render, AffixLine[] Lines);
     private readonly List<AffixNameplateTarget> _affixFrame = new();   // render-thread scratch (rebuilt per frame)
+    // Preload Alert: zone-scoped hit list (built ONCE per zone change on the world thread; carried in every
+    // WorldSnapshot until the next zone change). Never rebuilt per tick — only swapped on areaInstance change.
+    private Poe2LoadedFiles? _loadedFiles;           // world thread; constructed after first settings check
+    private PreloadTracker?  _preloadTracker;        // world thread; constructed from settings in ctor
+    private List<PreloadHit>? _preloadFrame;         // world thread; null = nothing to show this zone
     private IReadOnlyList<Poe2Live.Landmark> _landmarks = Array.Empty<Poe2Live.Landmark>(); // world only
     private Poe2Live.TerrainData? _terrain;                 // world only
     private int _charLevel;                                 // world only (published in the snapshot)
@@ -209,7 +215,10 @@ public sealed class RadarApp : IDisposable
         IReadOnlyList<AffixNameplateSpec> AffixSpecs,
         IReadOnlyList<SelectedPath> SelectedPaths,
         IReadOnlyList<LegendEntry> Legend,
-        IReadOnlyList<string> SelectedSnapshot)
+        IReadOnlyList<string> SelectedSnapshot,
+        // Preload Alert: zone-scoped hits (built once on zone entry; persisted in every snapshot until
+        // the next zone change). Null/empty = nothing surfaced this zone. Gated on zone-load guard in Tick().
+        IReadOnlyList<PreloadHit>? PreloadHits = null)
     {
         public static readonly WorldSnapshot Empty = new(
             false, 0, 0, "", 0, Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), null,
@@ -594,6 +603,14 @@ public sealed class RadarApp : IDisposable
         _gearWeights = new GearWeightStore(Path.Combine(ConfigDir, "stat_weights.json"));
         _presetStore = new PresetStore();
         ConsoleTheme.Kv("rules", $"{_hidden.Count} hidden · {_displayRules.Count} display · {_modCatalog.Count} mods");
+        // Preload Alert: construct the tracker from settings; restore persisted frequency state so
+        // zones observed in prior sessions contribute to the noise filter immediately. Constructed here
+        // (before Run/WorldLoop) so _preloadTracker is non-null by the time the world thread starts.
+        {
+            var pa = _settings.PreloadAlert;
+            _preloadTracker = new PreloadTracker(pa.WarmupZones, pa.CommonThreshold);
+            LoadPreloadFreq(_preloadTracker);
+        }
         // Audio cues: pre-load PCM tones into SoundPlayer so Play() is fire-and-forget with no disk I/O.
         // Master gate (EnableAudioAlerts) defaults false — nothing plays until the user opts in.
         // Initialized before ApiServer so the audioTest lambda can capture non-null references.
@@ -637,6 +654,135 @@ public sealed class RadarApp : IDisposable
         _cueItem      = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneItem,      vol));
         _cueObjective = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneObjective, vol));
         _cueMechanic  = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav(_settings.AudioToneMechanic,  vol));
+        // Preload cue reuses the "Alert" tone at the same volume — a single sharp cue on pinnacle entry.
+        _cuePreload   = new AudioCue(POE2Radar.Core.Audio.ToneTable.Wav("Alert", vol));
+    }
+
+    /// <summary>Path for the preload-frequency sidecar JSON (persists tracker state across sessions).</summary>
+    private static string PreloadFreqPath =>
+        Path.Combine(AppContext.BaseDirectory, "config", "preload_freq.json");
+
+    /// <summary>Load persisted tracker state from <c>config/preload_freq.json</c>. Missing/corrupt = start fresh (never throws).</summary>
+    private static void LoadPreloadFreq(PreloadTracker tracker)
+    {
+        try
+        {
+            if (!File.Exists(PreloadFreqPath)) return;
+            var json = File.ReadAllText(PreloadFreqPath);
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var zones = root.TryGetProperty("zonesObserved", out var zp) && zp.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? zp.GetInt32() : 0;
+            var hits = new Dictionary<string, int>(StringComparer.Ordinal);
+            if (root.TryGetProperty("hits", out var hp) && hp.ValueKind == System.Text.Json.JsonValueKind.Object)
+                foreach (var kv in hp.EnumerateObject())
+                    if (kv.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        hits[kv.Name] = kv.Value.GetInt32();
+            if (zones > 0) tracker.Load(zones, hits);
+        }
+        catch { /* corrupt/missing — start fresh */ }
+    }
+
+    /// <summary>Save tracker frequency state to <c>config/preload_freq.json</c>. Never throws.</summary>
+    private static void SavePreloadFreq(PreloadTracker tracker)
+    {
+        try
+        {
+            var (zones, hits) = tracker.Export();
+            var obj = new { zonesObserved = zones, hits };
+            var opts = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            JsonStore.AtomicWrite(PreloadFreqPath, obj, opts);
+        }
+        catch (Exception ex) { Console.Error.WriteLine($"PreloadFreq save failed: {ex.Message}"); }
+    }
+
+    /// <summary>Tier rank for filtering (pinnacle=3, high=2, mechanic=1, interactable=0). Duplicates
+    /// PreloadCatalog's private helper so RadarApp has no dependency on the internal enum.</summary>
+    private static int TierRank(string? tier) => tier switch
+    {
+        "pinnacle"     => 3,
+        "high"         => 2,
+        "mechanic"     => 1,
+        "interactable" => 0,
+        _              => 0,
+    };
+
+    /// <summary>
+    /// Preload Alert zone scan — called ONCE per zone change on the WORLD thread.
+    /// Lazy-constructs <see cref="_loadedFiles"/> on first call (needs <see cref="_reader"/> +
+    /// <see cref="_process"/>, both world-thread-owned). Scans ~20k asset paths, matches the catalog,
+    /// feeds the noise-frequency tracker, and writes the zone-scoped <see cref="_preloadFrame"/>.
+    /// Persists the updated tracker to <c>config/preload_freq.json</c> on each zone change.
+    /// Gated on <c>PreloadAlert.Enabled</c> — early-out when off (no scan, no allocation).
+    /// </summary>
+    private void RunPreloadScan()
+    {
+        var cfg = _settings.PreloadAlert;
+
+        // Always persist the tracker even when disabled, so re-enabling doesn't start blind.
+        if (_preloadTracker != null && _preloadTracker.ZonesObserved > 0)
+            SavePreloadFreq(_preloadTracker);
+
+        if (!cfg.Enabled || _preloadTracker == null)
+        {
+            _preloadFrame = null;
+            return;
+        }
+
+        // Lazy-init the loaded-files reader on the world reader stack (_reader + _process).
+        _loadedFiles ??= new Poe2LoadedFiles(_process, _reader);
+
+        try
+        {
+            // HEAVY: ~20k reads — only ever called once per zone (never per tick).
+            var loaded = _loadedFiles.ScanLoadedPaths();
+
+            // Match every path against the catalog (noise-gated inside Match()).
+            var matches = new List<(string path, PreloadCatalog.CatalogHit hit)>();
+            foreach (var p in loaded)
+            {
+                var h = PreloadCatalog.Shared.Match(p);
+                if (h != null) matches.Add((p, h));
+            }
+
+            // Feed the tracker so it can update per-path zone-frequency counts.
+            var res = _preloadTracker.ObserveZone(matches.Select(m => m.path));
+
+            // Persist now (zone just started; tracker updated).
+            SavePreloadFreq(_preloadTracker);
+
+            // Build alert list: paths that the tracker didn't suppress AND meet MinTier threshold.
+            int minRank = TierRank(cfg.MinTier);
+            var alertSet = new HashSet<string>(res.Alerts, StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal);   // dedupe by label
+            var hits = new List<PreloadHit>();
+            foreach (var (path, hit) in matches)
+            {
+                if (!alertSet.Contains(path)) continue;
+                if (TierRank(hit.Tier) < minRank) continue;
+                if (!seen.Add(hit.Label)) continue;   // dedupe by label
+                hits.Add(new PreloadHit(hit.Label, hit.Tier, hit.Category, hit.Color));
+            }
+
+            _preloadFrame = hits.Count > 0 ? hits : null;
+
+            // Audio cue when the master gate is on and a high-enough tier hit surfaced.
+            if (hits.Count > 0 && _settings.EnableAudioAlerts
+                && !string.Equals(cfg.AudioTier, "off", StringComparison.OrdinalIgnoreCase))
+            {
+                int audioRank = TierRank(cfg.AudioTier);
+                if (hits.Any(h => TierRank(h.Tier) >= audioRank))
+                    _cuePreload.Play();
+            }
+
+            if (cfg.Diagnostic)
+                Console.WriteLine($"[Preload] zone scan: {loaded.Count} paths, {matches.Count} catalog hits, {hits.Count} alerts (minTier={cfg.MinTier}).");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Preload] scan error: {ex.Message}");
+            _preloadFrame = null;
+        }
     }
 
     /// <summary>API (/api/version): this build's version + the latest known on GitHub + a download URL.
@@ -1215,7 +1361,13 @@ public sealed class RadarApp : IDisposable
             AffixNameplates: _settings.AffixNameplates,
             AtlasRouteArrowSpacing: _settings.AtlasRouteArrowSpacing,
             AtlasContentIcons: _settings.AtlasShowContentIcons,
-            AtlasContentIconSize: _settings.AtlasContentIconSize);
+            AtlasContentIconSize: _settings.AtlasContentIconSize,
+            // Preload Alert hits: zone-scoped, gated on zone-load guard (same AreaHash check as monoliths).
+            PreloadHits: worldFresh ? snap.PreloadHits : null,
+            PreloadEnabled: _settings.PreloadAlert.Enabled,
+            PreloadAnchor: _settings.PreloadAlert.Anchor,
+            PreloadOffsetX: _settings.PreloadAlert.OffsetX,
+            PreloadOffsetY: _settings.PreloadAlert.OffsetY);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
@@ -1247,6 +1399,9 @@ public sealed class RadarApp : IDisposable
             _terrain = null; _lastAreaInstance = areaInstance;
             _cachedAreaHash = _live.AreaHash(areaInstance);    // E3: cache; reads at most once per area
             _cachedAreaLevel = _live.AreaLevel(areaInstance);
+            // Preload Alert: on zone entry, scan loaded files + match catalog + filter noise.
+            // HEAVY (~20k reads) — runs ONCE here, never per tick, never on the render thread.
+            RunPreloadScan();
         }
         var areaHash = _cachedAreaHash;
         var areaLevel = _cachedAreaLevel;
@@ -1481,7 +1636,8 @@ public sealed class RadarApp : IDisposable
 
         // Publish the whole immutable world snapshot atomically for the render thread.
         _world = new WorldSnapshot(true, areaHash, areaLevel, areaCode, _charLevel,
-            _entities, _landmarks, _terrain, hpSpecs, itemLabels, affixSpecs, _selectedPaths, _legend, _selectedSnapshot);
+            _entities, _landmarks, _terrain, hpSpecs, itemLabels, affixSpecs, _selectedPaths, _legend, _selectedSnapshot,
+            PreloadHits: _preloadFrame);
     }
 
     /// <summary>

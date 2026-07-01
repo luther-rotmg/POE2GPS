@@ -97,6 +97,11 @@ public sealed record MonolithMarker(
     NumVec2 Grid, int Holes, bool IsUnique, bool Collected, string AnchorName,
     double BestEx, string BestName, uint Color, IReadOnlyList<MonolithReward> Rewards);
 
+/// <summary>One preload-alert entry surfaced on zone entry: a catalog match that passed the frequency
+/// filter and met the configured MinTier. Built once per zone change (never rebuilt per tick); the
+/// render thread reads it from the WorldSnapshot via the zone-load guard.</summary>
+public readonly record struct PreloadHit(string Label, string Tier, string Category, string Color);
+
 /// <summary>Live zone-aggregate counts published by the world thread and gated on AreaHash in Tick().</summary>
 public readonly record struct ZoneSummary(
     int MonstersAlive,
@@ -244,4 +249,12 @@ public sealed record RenderContext(
     // #5 on-node content icons: draw content-type glyphs on FOGGED atlas nodes (the game hides these).
     // AtlasContentIcons mirrors AtlasShowContentIcons from settings; AtlasContentIconSize is the glyph size px.
     bool                                  AtlasContentIcons = true,
-    float                                 AtlasContentIconSize = 26f);
+    float                                 AtlasContentIconSize = 26f,
+    // ── Preload Alert: zone-scoped hits (built once on zone entry, persisted until next zone change).
+    // Gated on zone-load guard (PreloadEnabled && worldFresh && snap.AreaHash == _areaHash).
+    // Null/empty → nothing drawn. Anchor/Offset mirror ZoneSummary/SessionHud layout conventions. ──
+    IReadOnlyList<PreloadHit>?            PreloadHits = null,
+    bool                                  PreloadEnabled = false,
+    string                                PreloadAnchor = "top-right",
+    int                                   PreloadOffsetX = 0,
+    int                                   PreloadOffsetY = 0);
