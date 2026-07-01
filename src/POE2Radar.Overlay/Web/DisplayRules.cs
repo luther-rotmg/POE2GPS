@@ -90,6 +90,21 @@ public sealed class DisplayRules
         }
     }
 
+    /// <summary>True when at least one enabled rule has a Rarity constraint AND could apply to a
+    /// WorldItem (<see cref="Poe2Live.EntityCategory.Other"/>) — meaning item-identity reads are
+    /// required to evaluate that rule even when GroundItems and AudioAlertUniqueDrop are both off.
+    /// Lock-free read of the precompiled snapshot. O(rules), called once per world-tick.</summary>
+    public bool AnyItemRarityFilter
+    {
+        get
+        {
+            var snap = _snapshot;
+            foreach (var c in snap)
+                if (c.HasItemRarityFilter) return true;
+            return false;
+        }
+    }
+
     /// <summary>All rules in order (snapshot copy; safe to enumerate off-thread / serialize for the API).</summary>
     public IReadOnlyList<DisplayRule> All { get { lock (_gate) return _rules.ToList(); } }
 
@@ -291,6 +306,7 @@ public sealed class DisplayRules
     {
         public readonly DisplayRule Rule;
         public readonly bool HasModFilter;                 // true = this enabled rule has a Mods filter; mod reads are required
+        public readonly bool HasItemRarityFilter;          // true = enabled, has Rarity constraint, applies to EntityCategory.Other
         private readonly bool _enabled;
         private readonly bool _isTile;                     // Categories contains "Tile" → matches terrain tiles
         // Category/rarity are matched by ENUM, precompiled — NOT by e.Category.ToString()/e.Rarity.ToString()
@@ -323,6 +339,15 @@ public sealed class DisplayRules
             if (_mods is { Length: 0 }) _mods = null;
             HasModFilter = r.Enabled && _mods != null;
             _anyRarity = string.IsNullOrEmpty(r.Rarity);
+            // A rule requires item-identity reads if it is enabled, has a Rarity constraint, and
+            // could apply to a WorldItem (EntityCategory.Other = index 6).  Mirrors the same
+            // _anyCat / _catMask[(int)ec] logic that Matches() uses for category applicability;
+            // if _anyCat the rule applies to every category including Other.  Fail-safe: ambiguous
+            // / unparseable Rarity still sets !_anyRarity, so we include the rule (prefer a read
+            // over a silent miss, per SR-4 follow-up spec).
+            HasItemRarityFilter = r.Enabled && !_anyRarity
+                && (_anyCat || ((int)Poe2Live.EntityCategory.Other < _catMask.Length
+                                && _catMask[(int)Poe2Live.EntityCategory.Other]));
             _rarity = _anyRarity ? default
                 : Enum.TryParse<Poe2Live.Rarity>(r.Rarity, ignoreCase: true, out var rr) ? rr : (Poe2Live.Rarity)int.MaxValue;
             _reaction = Code(r.Reaction, "Friendly", "Hostile");
