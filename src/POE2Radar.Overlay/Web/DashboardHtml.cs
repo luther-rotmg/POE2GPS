@@ -964,6 +964,21 @@ internal static class DashboardHtml
                 <option value="bottom-right">Bottom-right</option>
               </select></div>
           </div>
+          <div class="card collapsed" data-card="discord-presence">
+            <h3>Discord Rich Presence <small class="tag">&middot; opt-in</small></h3>
+            <div class="row"><div class="rl">Enable</div>
+              <label class="sw"><input type="checkbox" id="dpEnabled"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Client ID<small>paste your neutral Discord app&rsquo;s Client ID &mdash; leave blank to keep the current one; toggle Enabled off to disable</small></div>
+              <input class="numin" type="text" id="dpClientId" placeholder="Discord application snowflake" style="width:220px"></div>
+            <div class="row"><div class="rl">Details line<small>tokens: {area} {level} {zones} {mapshr} {kills} {xpeff}</small></div>
+              <input class="numin" type="text" id="dpDetailsTemplate" style="width:220px"></div>
+            <div class="row"><div class="rl">State line<small>tokens: {area} {level} {zones} {mapshr} {kills} {xpeff}</small></div>
+              <input class="numin" type="text" id="dpStateTemplate" style="width:220px"></div>
+            <div class="row"><div class="rl">Show elapsed timer</div>
+              <label class="sw"><input type="checkbox" id="dpShowTimer"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row" style="margin-top:4px"><div class="rl">Preview<small>live tokens from current /state</small></div>
+              <span id="dpPreview" style="font-size:12px;color:var(--gold-bright);white-space:pre-wrap"></span></div>
+          </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
@@ -1069,6 +1084,7 @@ async function tick(){
     setConn(true);
     try{ zone = await getJSON('/api/zone'); }catch(e){ zone=null; }
     renderState();
+    if(state) updateDiscordPreview(state);
   }catch(e){ setConn(false); }
 }
 
@@ -1086,8 +1102,9 @@ async function loadSettings(){
     gi = s.groundItems || {};
     ea = s.entityArrows || {};
     obsOvr = s.obsOverlay || {};
+    discordPres = s.discordPresence || {};
     renderHpBars(); renderTerrain(); renderGround();
-    renderEntityArrows(); renderObsOverlay();
+    renderEntityArrows(); renderObsOverlay(); renderDiscordPresence();
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
     if(window._syncDiagPanel) window._syncDiagPanel();
   }catch(e){}
@@ -2221,6 +2238,41 @@ function wireObsOverlay(){
   });
 }
 
+/* ── Discord Rich Presence card (writes via /api/settings as whole discordPresence object) ── */
+let discordPres = {};
+function saveDiscordPresence(){ saveSetting('discordPresence', discordPres); }
+function renderDiscordPresence(){
+  if(!discordPres) return;
+  const en=document.getElementById('dpEnabled'); if(en) en.checked=!!discordPres.enabled;
+  // clientId is intentionally omitted from the GET response (stream-safe) — field loads blank by design
+  const dt=document.getElementById('dpDetailsTemplate'); if(dt) dt.value=discordPres.detailsTemplate||'{area}';
+  const st=document.getElementById('dpStateTemplate');   if(st) st.value=discordPres.stateTemplate||'Level {level} · {mapshr} maps/hr';
+  const ti=document.getElementById('dpShowTimer');       if(ti) ti.checked=discordPres.showTimer!==false;
+}
+function wireDiscordPresence(){
+  const en=document.getElementById('dpEnabled');
+  if(en) en.onchange=()=>{ discordPres=discordPres||{}; discordPres.enabled=en.checked; saveDiscordPresence(); };
+  const ci=document.getElementById('dpClientId');
+  // blank clientId = "keep the stored one" (backend preserves it on empty POSTed value)
+  if(ci) ci.onchange=()=>{ discordPres=discordPres||{}; discordPres.clientId=ci.value; saveDiscordPresence(); };
+  const dt=document.getElementById('dpDetailsTemplate');
+  if(dt) dt.onchange=()=>{ discordPres=discordPres||{}; discordPres.detailsTemplate=dt.value; saveDiscordPresence(); };
+  const st=document.getElementById('dpStateTemplate');
+  if(st) st.onchange=()=>{ discordPres=discordPres||{}; discordPres.stateTemplate=st.value; saveDiscordPresence(); };
+  const ti=document.getElementById('dpShowTimer');
+  if(ti) ti.onchange=()=>{ discordPres=discordPres||{}; discordPres.showTimer=ti.checked; saveDiscordPresence(); };
+}
+function updateDiscordPreview(s){
+  const prev=document.getElementById('dpPreview'); if(!prev) return;
+  const toks={'area':s.areaName||s.areaCode||'','level':s.charLevel||0,'zones':s.session?.zonesEntered??0,
+    'mapshr':(s.session?.mapsPerHour??0).toFixed(1),'kills':((s.session?.killsNormal??0)+(s.session?.killsMagic??0)+(s.session?.killsRare??0)+(s.session?.killsUnique??0)),
+    'xpeff':(s.session?.xpEfficiency??0)};
+  function fmt(t){ return (t||'').replace(/\{(\w+)\}/g,(_,k)=>toks[k]??'{'+k+'}'); }
+  const dt=document.getElementById('dpDetailsTemplate');
+  const st=document.getElementById('dpStateTemplate');
+  prev.textContent=fmt(dt?.value||'{area}')+'\n'+fmt(st?.value||'Level {level} · {mapshr} maps/hr');
+}
+
 /* ── affix nameplates card (own endpoint /api/affix-nameplates) ── */
 function renderAffixNameplates(){
   if(!an) return;
@@ -2259,7 +2311,7 @@ function renderAnOverrides(){
     saveAffixNameplates();
   };});
 }
-wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireEntityArrows(); wireObsOverlay();
+wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireEntityArrows(); wireObsOverlay(); wireDiscordPresence();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab

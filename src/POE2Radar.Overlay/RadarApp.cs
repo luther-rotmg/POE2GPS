@@ -173,6 +173,14 @@ public sealed class RadarApp : IDisposable
     // ── World-thread working fields (written ONLY by the world tick; never read by the render thread —
     //    the render thread reads the published _world snapshot instead). ──
     private Thread? _worldThread;                           // the ~30 Hz background world loop (self-paced)
+    // ── Discord Rich Presence: dedicated low-rate thread (3 s wake, 15 s effective RP update rate).
+    //    _discordIpc, _nextDiscordUpdateAt, and _lastPresenceKey are SINGLE-THREAD-OWNED by _discordThread;
+    //    _state (volatile) is read lock-free — same pattern as the API lambda. ──
+    private readonly POE2Radar.Core.Presence.DiscordIpc _discordIpc = new();
+    private Thread? _discordThread;
+    private DateTime _nextDiscordUpdateAt = DateTime.MinValue;
+    private string _lastPresenceKey = "";
+    private readonly long _sessionStartUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     private List<Poe2Live.EntityDot> _entities = new();     // world only
     // Monster HP-bar pipeline: the SPEC (style + which mobs get a bar + their component addresses) is
     // rebuilt at WORLD rate; _hpFrame (live position + HP) is rebuilt every RENDER frame from cheap per-mob
@@ -897,6 +905,8 @@ public sealed class RadarApp : IDisposable
         _worldThread.Start();
         _resolverThread = new Thread(ResolverLoop) { IsBackground = true, Name = "POE2Radar.Resolver" };
         _resolverThread.Start();
+        _discordThread = new Thread(DiscordLoop) { IsBackground = true, Name = "POE2Radar.Discord" };
+        _discordThread.Start();
         timeBeginPeriod(1);   // 1 ms timer resolution → the frame pacer below can actually hit FpsCap
         try
         {
@@ -989,6 +999,47 @@ public sealed class RadarApp : IDisposable
             _worldMs = (float)sw.Elapsed.TotalMilliseconds;
             Thread.Sleep(Math.Max(1, budgetMs - (int)sw.ElapsedMilliseconds));
         }
+    }
+
+    // ── Discord Rich Presence loop (dedicated thread — NEVER inline in WorldTick/Tick). ──
+    // Wakes every 3 s; UpdateDiscordPresence self-throttles pushes to 15 s.
+    // All DiscordIpc I/O is on this thread only; _state (volatile RadarState) is read lock-free.
+    private void DiscordLoop()
+    {
+        while (!_shutdown)
+        {
+            try { UpdateDiscordPresence(); } catch { /* never let RP kill the thread */ }
+            Thread.Sleep(3000);
+        }
+    }
+
+    private void UpdateDiscordPresence()
+    {
+        var cfg = _settings.DiscordPresence;
+        if (!cfg.Enabled || string.IsNullOrWhiteSpace(cfg.ClientId)) return;
+        if (DateTime.UtcNow < _nextDiscordUpdateAt) return;
+        _nextDiscordUpdateAt = DateTime.UtcNow.AddSeconds(15);
+
+        if (!_discordIpc.Connected && !_discordIpc.TryConnect(cfg.ClientId)) return;
+
+        var st = _state;   // volatile read — safe; RadarState is immutable
+        var sess = st.Session;
+        var toks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["area"]   = ZoneGuide.Shared.FriendlyName(st.AreaCode),
+            ["level"]  = st.CharLevel.ToString(),
+            ["zones"]  = (sess?.ZonesEntered ?? 0).ToString(),
+            ["mapshr"] = (sess?.MapsPerHour  ?? 0).ToString("F1"),
+            ["kills"]  = ((sess?.KillsNormal ?? 0) + (sess?.KillsMagic ?? 0) + (sess?.KillsRare ?? 0) + (sess?.KillsUnique ?? 0)).ToString(),
+            ["xpeff"]  = (sess?.XpEfficiency ?? 0).ToString("+#;-#;0"),
+        };
+        var details = POE2Radar.Core.Presence.PresenceTemplate.Format(cfg.DetailsTemplate, toks);
+        var state   = POE2Radar.Core.Presence.PresenceTemplate.Format(cfg.StateTemplate,   toks);
+        long? start = cfg.ShowTimer ? _sessionStartUnix : null;
+        var key = details + "|" + state + "|" + (start?.ToString() ?? "");
+        if (key == _lastPresenceKey) return;   // no change → don't spam Discord
+        _lastPresenceKey = key;
+        _discordIpc.SetActivity(details, state, start, largeImage: null, largeText: null);
     }
 
     /// <summary>Build the health observation for this world tick and publish the monitor's verdict. World
@@ -3260,6 +3311,9 @@ public sealed class RadarApp : IDisposable
         _shutdown = true;
         _worldThread?.Join(1000);   // let the background world loop observe _shutdown and exit
         _resolverThread?.Join(1000);
+        _discordThread?.Join(1000);
+        try { _discordIpc.Clear(); } catch { }
+        _discordIpc.Dispose();
         _modCatalog.Flush(); // persist any mods seen since the last debounced write
         _seenPoiLog.Flush();
         _entityAtlas.Flush();
