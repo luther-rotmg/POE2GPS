@@ -152,6 +152,7 @@ public sealed class OverlayRenderer : IDisposable
                 DrawMonolithPanel(rt, ctx);            // nearby-monolith reward list (screen-space)
                 DrawSessionHud(rt, ctx);               // session pace/zone/death HUD (screen-space)
                 DrawZoneSummary(rt, ctx);              // opt-in zone summary panel (rares/chests/exits)
+                DrawPreloadPanel(rt, ctx);             // opt-in zone-entry preload alert (pinnacle/mechanic content)
                 DrawCampaignGps(rt, ctx);              // compact campaign GPS instruction line (top strip)
             }
 
@@ -918,6 +919,64 @@ public sealed class OverlayRenderer : IDisposable
         foreach (var row in rows)
         {
             rt.DrawText(row, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bText!, DrawTextOptions.Clip);
+            cy += lineH;
+        }
+    }
+
+    /// <summary>Opt-in zone-entry preload panel: lists the preloaded content hits (pinnacle bosses,
+    /// mechanics, etc.) grouped by tier (pinnacle → high → mechanic → interactable), each line
+    /// coloured by the hit's configured color. Mirrors the corner-anchoring idiom of
+    /// <see cref="DrawZoneSummary"/> and <see cref="DrawSessionHud"/>.</summary>
+    private void DrawPreloadPanel(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (!ctx.PreloadEnabled || ctx.PreloadHits is not { Count: > 0 } preloadHits) return;
+
+        // Sort hits by tier rank descending: pinnacle(3) → high(2) → mechanic(1) → interactable(0).
+        static int TierRank(string? tier) => tier switch
+        {
+            "pinnacle"     => 3,
+            "high"         => 2,
+            "mechanic"     => 1,
+            "interactable" => 0,
+            _              => 0,
+        };
+
+        var sorted = new System.Collections.Generic.List<PreloadHit>(preloadHits);
+        sorted.Sort((a, b) => TierRank(b.Tier).CompareTo(TierRank(a.Tier)));
+
+        const float panelW = 220f;
+        const float pad = 6f, titleH = 16f, lineH = 15f;
+        float panelH = titleH + sorted.Count * lineH + pad * 2;
+
+        // Corner anchoring — same math as DrawZoneSummary / DrawSessionHud.
+        // PreloadAnchor uses lowercase-hyphenated format: "top-right", "bottom-left", etc.
+        var corner = ctx.PreloadAnchor ?? "top-right";
+        bool isRight  = corner.Contains("right",  StringComparison.OrdinalIgnoreCase);
+        bool isBottom = corner.Contains("bottom", StringComparison.OrdinalIgnoreCase);
+        const float margin = 10f;
+
+        float left = isRight
+            ? ctx.WindowWidth  - margin - panelW - ctx.PreloadOffsetX
+            : margin + ctx.PreloadOffsetX;
+        float top  = isBottom
+            ? ctx.WindowHeight - margin - panelH - ctx.PreloadOffsetY
+            : margin + ctx.PreloadOffsetY;
+        left = Math.Clamp(left, margin, ctx.WindowWidth  - margin - panelW);
+        top  = Math.Clamp(top,  margin, ctx.WindowHeight - margin - panelH);
+
+        rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
+
+        float cy = top + pad;
+        // Header line.
+        rt.DrawText("PRELOAD", _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        cy += titleH;
+        // Per-hit lines, each coloured by the hit's Color field.
+        foreach (var hit in sorted)
+        {
+            var col = ParseColor(hit.Color, 1f);
+            _bStyle!.Color = col;
+            var text = $"● {hit.Label}";
+            rt.DrawText(text, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bStyle, DrawTextOptions.Clip);
             cy += lineH;
         }
     }
