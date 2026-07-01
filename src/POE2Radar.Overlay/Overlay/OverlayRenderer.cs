@@ -131,6 +131,7 @@ public sealed class OverlayRenderer : IDisposable
             {
                 DrawCycleIndicator(rt, ctx);               // transient active-target indicator (post-cycle flash)
                 DrawNameplates(rt, ctx);                   // world-space HP bars over hostile mobs
+                DrawEntityArrows(rt, ctx);                 // off-screen entity edge arrows (uniques/bosses/etc.)
                 DrawItemLabels(rt, ctx);                   // priced unique drops over their loot icons
                 DrawAffixNameplates(rt, ctx);              // tiered affix text above elite mobs
                 if (ctx.Map.IsVisible)
@@ -322,7 +323,7 @@ public sealed class OverlayRenderer : IDisposable
             // OFF-SCREEN: if this map has the arrow rule, draw an edge arrow pointing toward it; else skip.
             if (!onScreen)
             {
-                if (n.Arrow) DrawAtlasArrow(rt, sx, sy, ccx, ccy, W, H, col, n.Label);
+                if (n.Arrow) DrawEdgeArrow(rt, sx, sy, ccx, ccy, W, H, col, n.Label);
                 continue;
             }
 
@@ -459,21 +460,16 @@ public sealed class OverlayRenderer : IDisposable
     };
     private static Color4 BiomeColor(int b) => (b >= 0 && b < BiomeColors.Length) ? BiomeColors[b] : new Color4(0.6f, 0.6f, 0.6f, 1f);
 
-    /// <summary>Draw an edge arrow pointing from screen-centre toward an OFF-SCREEN atlas map (sx,sy), so
-    /// you can pan toward high-value maps you can't zoom out far enough to see. Clamped to a screen-edge
-    /// inset, coloured by the rule, labelled with the map/content.</summary>
-    private void DrawAtlasArrow(ID2D1RenderTarget rt, float sx, float sy, float cx, float cy, float W, float H, Color4 col, string? label)
+    /// <summary>Draw an edge arrow pointing from screen-centre toward an OFF-SCREEN target at (sx,sy),
+    /// clamped to the inset screen edge, coloured by <paramref name="col"/> and optionally labelled.
+    /// Used for both atlas off-screen maps and off-screen entity arrows.</summary>
+    private void DrawEdgeArrow(ID2D1RenderTarget rt, float sx, float sy, float cx, float cy, float W, float H,
+        Color4 col, string? label, float head = 11f, float margin = 46f)
     {
-        float dx = sx - cx, dy = sy - cy;
-        float len = MathF.Sqrt(dx * dx + dy * dy); if (len < 1f) return;
-        float ux = dx / len, uy = dy / len;
-        const float margin = 46f;
-        float tX = MathF.Abs(ux) > 1e-4f ? (W * 0.5f - margin) / MathF.Abs(ux) : 1e9f;
-        float tY = MathF.Abs(uy) > 1e-4f ? (H * 0.5f - margin) / MathF.Abs(uy) : 1e9f;
-        float t = MathF.Min(tX, tY);
-        float ex = cx + ux * t, ey = cy + uy * t;     // point on the inset screen edge
+        var (ex, ey, ux, uy) = EdgeArrow.BorderPoint(sx, sy, cx, cy, W, H, margin);
+        if (ux == 0f && uy == 0f) return;
         float px = -uy, py = ux;                       // perpendicular
-        var tip = new NumVec2(ex + ux * 11f, ey + uy * 11f);
+        var tip = new NumVec2(ex + ux * head, ey + uy * head);
         var bl = new NumVec2(ex - ux * 9f + px * 10f, ey - uy * 9f + py * 10f);
         var br = new NumVec2(ex - ux * 9f - px * 10f, ey - uy * 9f - py * 10f);
         _bStyle!.Color = col;
@@ -490,6 +486,48 @@ public sealed class OverlayRenderer : IDisposable
             ly = Math.Clamp(ly, 2f, H - 20f);
             rt.FillRectangle(new Vortice.RawRectF(lx - 3f, ly - 1f, lx + lw, ly + 17f), _bPanel!);
             rt.DrawText(label, _tf!, new Rect(lx, ly, lx + lw + 40f, ly + 18f), _bText!, DrawTextOptions.Clip);
+        }
+    }
+
+    /// <summary>Off-screen entity arrows: projects each <see cref="EntityArrowTarget"/> via the camera
+    /// matrix; draws an edge arrow for any that land outside the screen rect (skipping targets that are
+    /// only just off-screen by less than <see cref="RenderContext.EntityArrowMinEdgePx"/> px). Drawn
+    /// nearest-first, capped at <see cref="RenderContext.EntityArrowMax"/>.</summary>
+    private void DrawEntityArrows(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (!ctx.EntityArrowsEnabled || ctx.CameraMatrix is not { } m || ctx.EntityArrows is not { Count: > 0 } targets) return;
+        float W = ctx.WindowWidth, H = ctx.WindowHeight, cx = W * 0.5f, cy = H * 0.5f;
+        float minEdge = ctx.EntityArrowMinEdgePx;
+
+        var offs = new List<(float sx, float sy, float d, uint col, string? label)>();
+        foreach (var t in targets)
+        {
+            var w = t.World;
+            var cw = w.X * m[3] + w.Y * m[7] + w.Z * m[11] + m[15];
+            if (cw <= 0.0001f) continue;   // behind camera
+            var px2 = w.X * m[0] + w.Y * m[4] + w.Z * m[8] + m[12];
+            var py2 = w.X * m[1] + w.Y * m[5] + w.Z * m[9] + m[13];
+            float sx = (px2 / cw / 2f + 0.5f) * W, sy = (0.5f - py2 / cw / 2f) * H;
+            bool onScreen = sx >= 0 && sx <= W && sy >= 0 && sy <= H;
+            if (onScreen) continue;        // already visible as a dot
+
+            // MinEdgePx: skip targets whose projected point is within minEdge px of the screen rect
+            // (i.e., only marginally off-screen — avoids cluttering the edge for barely-missed targets).
+            float distFromEdge = MathF.Max(0f, MathF.Max(
+                MathF.Max(-sx, sx - W),
+                MathF.Max(-sy, sy - H)));
+            if (distFromEdge < minEdge) continue;
+
+            float d = MathF.Sqrt((sx - cx) * (sx - cx) + (sy - cy) * (sy - cy));
+            offs.Add((sx, sy, d, t.Color, ctx.EntityArrowShowLabel ? t.Label : null));
+        }
+        offs.Sort((a, b) => a.d.CompareTo(b.d));
+        int drawn = 0;
+        foreach (var o in offs)
+        {
+            if (drawn >= ctx.EntityArrowMax) break;
+            DrawEdgeArrow(rt, o.sx, o.sy, cx, cy, W, H, ColorFromU(o.col), o.label, ctx.EntityArrowSize);
+            drawn++;
         }
     }
 
