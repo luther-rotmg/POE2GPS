@@ -17,11 +17,22 @@ public class DiscordIpcTests
         var frame = DiscordIpc.EncodeFrame(0, json);
         Assert.Equal(Encoding.UTF8.GetByteCount(json), BitConverter.ToInt32(frame, 4));
     }
-    [Fact] public void TryConnect_returns_false_when_discord_absent_and_never_throws()
+    // NOTE: we deliberately do NOT assert TryConnect(<real-looking id>) here — its result depends on
+    // whether Discord is running on the test machine (true if it is, false if not), which makes such a
+    // test non-deterministic. We assert only the environment-independent behavior instead.
+    [Fact] public void TryConnect_empty_or_whitespace_client_id_returns_false()
     {
         using var ipc = new DiscordIpc();
-        // In CI/dev there is no Discord pipe; must return false, not throw.
-        var ok = ipc.TryConnect("000000000000000000");
-        Assert.False(ok);
+        Assert.False(ipc.TryConnect(""));      // empty → early-out false, never touches a pipe
+        Assert.False(ipc.TryConnect("   "));   // whitespace → false
+        Assert.False(ipc.Connected);
+    }
+    [Fact] public void SetActivity_and_Clear_when_not_connected_are_noops_and_never_throw()
+    {
+        using var ipc = new DiscordIpc();
+        ipc.SetActivity("details", "state", 1234567890, null, null);   // not connected → no-op
+        ipc.Clear();
+        ipc.Dispose();
+        Assert.False(ipc.Connected);
     }
 }
