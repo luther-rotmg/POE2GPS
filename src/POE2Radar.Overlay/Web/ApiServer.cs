@@ -7,6 +7,7 @@ using POE2Radar.Core.Config;
 using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Input;
+using POE2Radar.Core.Remote;
 using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
 
@@ -84,6 +85,11 @@ public sealed class ApiServer : IDisposable
     private readonly Action? _rebuildAudio;
     private readonly PresetStore _presetStore;
     private volatile bool _running;
+    private readonly bool _allowLanAccess;   // bound all-interfaces when true (opt-in LAN view)
+    private readonly int _port;              // stored for /api/lan-info + loopback fallback
+#pragma warning disable CS0414  // Task 2 reads _lanBindFailed in /api/lan-info
+    private volatile bool _lanBindFailed;    // true if http://+:port bind threw and we fell back to loopback
+#pragma warning restore CS0414
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -114,6 +120,7 @@ public sealed class ApiServer : IDisposable
         Action<string>? audioTest = null,
         Action? rebuildAudio = null,
         PresetStore? presetStore = null,
+        bool allowLanAccess = false,
         int port = 7777)
     {
         _state = state;
@@ -141,12 +148,24 @@ public sealed class ApiServer : IDisposable
         _preload = preloadProvider;
         _gearWeights = gearWeights;
         _presetStore = presetStore ?? new PresetStore();
-        _listener.Prefixes.Add($"http://localhost:{port}/");
+        _allowLanAccess = allowLanAccess;
+        _port = port;
+        _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
     public void Start()
     {
-        _listener.Start();
+        try { _listener.Start(); }
+        catch (HttpListenerException) when (_allowLanAccess)
+        {
+            // Binding all interfaces (http://+:port) failed — usually missing admin rights / no urlacl
+            // reservation. Fall back to loopback so the local dashboard still works; surfaced to the
+            // user via /api/lan-info (bindFailed).
+            _lanBindFailed = true;
+            _listener.Prefixes.Clear();
+            _listener.Prefixes.Add(ApiPrefix.Build(false, _port));
+            _listener.Start();
+        }
         _running = true;
         var t = new Thread(Loop) { IsBackground = true, Name = "POE2Radar.Api" };
         t.Start();

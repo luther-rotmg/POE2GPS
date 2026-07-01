@@ -662,6 +662,7 @@ public sealed class RadarApp : IDisposable
                              audioTest: cue => { switch (cue) { case "monster": _cueMonster.Play(); break; case "item": _cueItem.Play(); break; case "objective": _cueObjective.Play(); break; case "mechanic": _cueMechanic.Play(); break; } },
                              rebuildAudio: () => RebuildAudioCues(),
                              presetStore: _presetStore,
+                             allowLanAccess: _settings.AllowLanAccess,
                              port: _settings.ApiPort);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }

@@ -195,6 +195,11 @@ public sealed class RadarSettings
     // ── HTTP API. ──
     public int ApiPort { get; set; } = 7777;
 
+    // Allow other devices on your LAN to VIEW the overlay's pages (/obs, /map, /state) by binding the
+    // HTTP server to all interfaces instead of loopback. OFF by default. Writes stay loopback-only
+    // regardless — LAN peers get 403 on any settings change. Changing this needs an app restart.
+    public bool AllowLanAccess { get; set; } = false;
+
     // ── Stealth / footprint. ──
     // Hide the overlay from screen capture / screenshots / OBS (SetWindowDisplayAffinity). On by default
     // for the lowest footprint; turn OFF if you want to screenshot/stream the overlay itself. The overlay
