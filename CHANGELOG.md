@@ -3,6 +3,15 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.18.0] — 2026-07-01
+### Changed — 🥷 **Performance v3: Stealth Reads** *(read the game less, see exactly the same thing)*
+- 🩶 **The overlay now reads the game's memory far less often** — a smaller footprint and less CPU, with **zero change to anything you see**. Every dot, HP bar, nameplate, arrow, route, and the atlas behave identically; the only thing that moves is the **`reads/sec` counter** (watch it drop live in the dashboard / `⚙️` status).
+- 🎛️ **Reads now scale with the features you actually use.** If a feature is **off**, the overlay stops reading the data that fed it — so a lean setup reads dramatically less. Affix nameplates off → no monster-mod reads. Ground-item overlay off → no dropped-item reads. Atlas content-icons / auto-route / hide-filters off → those per-node reads stop. (All fail-safe: anything a feature needs is always read.)
+- 🌌 **Atlas got the biggest cut.** While the Atlas is open it used to re-scan **~20,000 memory reads *every tick*** — even sitting still. Now the static per-node data is **cached**, off-screen nodes are **culled** before reading, and the current-node poll is slowed to ~1/s. Panning, routing, rings, arrows, and content icons look exactly the same.
+- 😴 **Idle when you're away.** While **PoE2 isn't the focused window** (alt-tabbed), the overlay stops its per-frame reads entirely (it isn't drawing anyway) and picks right back up on focus. Streamers/dashboard-watchers with "always-show" on are unaffected.
+- ⚡ **Smarter live reads.** De-duplicated redundant per-frame reads, cached values that never change (character name), and slowed reads for things that change slower than the eye (level, %-vitals, POI completion, monolith data) — every one imperceptible.
+- 🛡️ **100% read-only, no new offsets.** This release only *removes* reads; it adds nothing. Fully compliant, and every feature verified unchanged.
+
 ## [0.17.0] — 2026-07-01
 ### Added — 🛰️ **Remote Views** *(see your overlay from anywhere on your network)*
 - 🌐 **Remote Access (LAN)** *(opt-in — off by default)* — flip one toggle and the overlay's pages become reachable from **other devices on your network**: open `http://<your-ip>:7777/obs` on your **stream-capture PC**, or `…/map` on a **phone / tablet / Raspberry Pi**. **Writes stay locked to your machine** — a LAN device can **view**, but **nobody on your network can change your settings** (every settings write is still loopback-only; LAN peers get a `403`). Needs an **app restart** to apply, and Windows will ask to allow POE2GPS through the **firewall** the first time. The dashboard shows your live **LAN URLs** once it's on. *(Reads are unauthenticated over your LAN by design — only enable it on a network you trust.)*
