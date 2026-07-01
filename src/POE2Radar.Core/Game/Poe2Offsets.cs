@@ -561,4 +561,17 @@ public static class Poe2
         public const int WorldTracker = 0x630; // + 0x630 → world hover tracker
         public const int HoveredEntity = 0x18; // + 0x18 → hovered entity/element
     }
+
+    /// <summary>Loaded-files list (Preload Alert). ✓ validated live 2026-06-30 via --preload.
+    /// FileRoot(AOB) → 16 buckets @0x38 (each a StdVector) → node @0x18 → FilesPointer+0x08 →
+    /// FileInfo{ Name StdWString @+0x08, AreaChangeCount int @+0x40 }.</summary>
+    public static class LoadedFiles
+    {
+        public const int BucketCount   = 16;
+        public const int BucketStride  = 0x38;
+        public const int NodeStride    = 0x18;
+        public const int FilesPointer  = 0x08;
+        public const int NameStr       = 0x08;
+        public const int AreaChangeCnt = 0x40;
+    }
 }
