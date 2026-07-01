@@ -258,6 +258,14 @@ public sealed class RadarSettings
     // One-time guard: false until OffScreenArrow=true has been seeded onto Unique+Boss/Citadel rules.
     public bool EntityArrowsSeeded { get; set; }
 
+    // ── OBS browser-source overlay (ExcludeFromCapture OFF path): the per-corner chip that renders
+    //    session stats into OBS via the /obs endpoint. Off by default — OBS users opt in.
+    public ObsOverlaySettings ObsOverlay { get; set; } = new();
+
+    // ── Discord Rich Presence: opt-in activity status in the user's Discord profile. Inert until
+    //    Enabled = true AND ClientId is set to the user's own Discord application id. ──
+    public DiscordPresenceSettings DiscordPresence { get; set; } = new();
+
     // ── Configurable hotkey VK codes. Defaults are the original literals — no behavior change for
     //    existing users. The Ctrl+Alt modifier pair, slot-digit 1-9/0 keys, and controller buttons
     //    are fixed and not in this table (rebinding them would conflict with PoE2's own controls). ──
@@ -598,6 +606,40 @@ public sealed class GroundItemSettings
         "Uniques", "Currency", "Runes", "SoulCores", "Essences", "Fragments",
         "UncutGems", "Delirium", "Tablets", "Idols", "Abyss", "Ritual",
     };
+}
+
+/// <summary>
+/// OBS browser-source overlay settings: the corner chip that renders session stats (kills, maps/hr,
+/// xp-eff, zone/session timers, active objective) into an OBS browser source via the /obs endpoint.
+/// ExcludeFromCapture must be OFF for OBS to capture the overlay; this controls what the chip shows.
+/// </summary>
+public sealed class ObsOverlaySettings
+{
+    public bool   ShowSessionTimer { get; set; } = true;
+    public bool   ShowZoneTimer    { get; set; } = true;
+    public bool   ShowArea         { get; set; } = true;
+    public bool   ShowKills        { get; set; } = true;
+    public bool   ShowMapsHr       { get; set; } = true;
+    public bool   ShowXpEff        { get; set; } = false;
+    public bool   ShowObjective    { get; set; } = false;
+    public string TextColor        { get; set; } = "#FFFFFF";
+    public int    PanelOpacity     { get; set; } = 40;    // 0-100 (0 = no chip background)
+    public float  Scale            { get; set; } = 1.0f;  // 0.5-3.0
+    public string Corner           { get; set; } = "top-left"; // top-left|top-right|bottom-left|bottom-right
+}
+
+/// <summary>
+/// Discord Rich Presence settings. Inert (and the Discord SDK is never loaded) until Enabled = true
+/// AND ClientId is set to the user's own Discord application id. ClientId is never logged or echoed
+/// in the API — the /api/settings GET omits it from the response to avoid accidental stream leaks.
+/// </summary>
+public sealed class DiscordPresenceSettings
+{
+    public bool   Enabled         { get; set; }                                          // opt-in, default OFF
+    public string ClientId        { get; set; } = "";                                    // Discord snowflake; empty → RP inert
+    public string DetailsTemplate { get; set; } = "{area}";                              // first line in Discord status
+    public string StateTemplate   { get; set; } = "Level {level} · {mapshr} maps/hr";   // second line
+    public bool   ShowTimer       { get; set; } = true;
 }
 
 /// <summary>

@@ -230,6 +230,13 @@ public sealed class ApiServer : IDisposable
                         currentAreaLevel  = s.Session.CurrentAreaLevel,
                         deaths            = s.Session.Deaths,
                         deathsThisZone    = s.Session.DeathsThisZone,
+                        // v2 session fields: kill breakdown, maps/hr pace, XP level-delta.
+                        killsNormal       = s.Session.KillsNormal,
+                        killsMagic        = s.Session.KillsMagic,
+                        killsRare         = s.Session.KillsRare,
+                        killsUnique       = s.Session.KillsUnique,
+                        mapsPerHour       = s.Session.MapsPerHour,
+                        xpEfficiency      = s.Session.XpEfficiency,
                     },
                 }, Json));
                 break;
@@ -1114,6 +1121,16 @@ public sealed class ApiServer : IDisposable
         // Off-screen entity arrows: whole settings object + seeded flag (so dashboard can read state).
         entityArrows             = _settings.EntityArrows,
         entityArrowsSeeded       = _settings.EntityArrowsSeeded,
+        // OBS overlay + Discord Presence settings. ClientId is intentionally omitted from the GET
+        // response — it is write-only (set via POST) and must not appear in screenshots or streams.
+        obsOverlay               = _settings.ObsOverlay,
+        discordPresence          = new {
+            enabled         = _settings.DiscordPresence.Enabled,
+            // clientId intentionally omitted — write-only, never echoed
+            detailsTemplate = _settings.DiscordPresence.DetailsTemplate,
+            stateTemplate   = _settings.DiscordPresence.StateTemplate,
+            showTimer       = _settings.DiscordPresence.ShowTimer,
+        },
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -1233,6 +1250,15 @@ public sealed class ApiServer : IDisposable
                 // Off-screen entity arrows: whole-object write (the dashboard POSTs the full sub-object).
                 case "entityArrows" when p.Value.ValueKind == JsonValueKind.Object:
                     if (TryParseEntityArrows(p.Value, out var ea)) { _settings.EntityArrows = ea; applied.Add(p.Name); }
+                    break;
+                // OBS overlay: whole-object write; PanelOpacity clamped 0-100, Scale 0.5-3.0, TextColor validated, Corner sanitized.
+                case "obsOverlay" when p.Value.ValueKind == JsonValueKind.Object:
+                    if (TryParseObsOverlay(p.Value, out var obs)) { _settings.ObsOverlay = obs; applied.Add(p.Name); }
+                    break;
+                // Discord Presence: whole-object write; ClientId sanitized to digits only (≤32); templates capped at 128 chars.
+                // ClientId is never logged — only stored and passed to the SDK.
+                case "discordPresence" when p.Value.ValueKind == JsonValueKind.Object:
+                    if (TryParseDiscordPresence(p.Value, out var dp)) { _settings.DiscordPresence = dp; applied.Add(p.Name); }
                     break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
@@ -1438,6 +1464,63 @@ public sealed class ApiServer : IDisposable
             return true;
         }
         catch { return false; }
+    }
+
+    /// <summary>Deserialize + sanitize a full <see cref="Config.ObsOverlaySettings"/> from a JSON element.
+    /// Clamps PanelOpacity to 0-100, Scale to 0.5-3.0; validates TextColor as #RRGGBB (fallback #FFFFFF);
+    /// canonicalizes Corner to one of the four legal values. Returns false on malformed JSON.</summary>
+    private static bool TryParseObsOverlay(JsonElement el, out Config.ObsOverlaySettings obs)
+    {
+        obs = new Config.ObsOverlaySettings();
+        try
+        {
+            var p = JsonSerializer.Deserialize<Config.ObsOverlaySettings>(el.GetRawText(), Json);
+            if (p == null) return false;
+            p.PanelOpacity = Math.Clamp(p.PanelOpacity, 0, 100);
+            p.Scale        = Math.Clamp(p.Scale, 0.5f, 3.0f);
+            p.TextColor    = ValidHexOr(p.TextColor, "#FFFFFF");
+            p.Corner       = p.Corner?.Trim().ToLowerInvariant() switch
+            {
+                "top-left"     => "top-left",
+                "top-right"    => "top-right",
+                "bottom-left"  => "bottom-left",
+                "bottom-right" => "bottom-right",
+                _              => "top-left",
+            };
+            obs = p;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    /// <summary>Deserialize + sanitize a full <see cref="Config.DiscordPresenceSettings"/> from a JSON element.
+    /// ClientId is trimmed and reduced to decimal digits only, capped at 32 chars (Discord snowflake format).
+    /// Template strings are trimmed and capped at 128 chars. ClientId is NEVER logged or echoed.
+    /// Returns false on malformed JSON.</summary>
+    private static bool TryParseDiscordPresence(JsonElement el, out Config.DiscordPresenceSettings dp)
+    {
+        dp = new Config.DiscordPresenceSettings();
+        try
+        {
+            var p = JsonSerializer.Deserialize<Config.DiscordPresenceSettings>(el.GetRawText(), Json);
+            if (p == null) return false;
+            // Strip all non-digit chars then cap at 32 (Discord snowflake max length). Never logged.
+            var rawId = (p.ClientId ?? "").Trim();
+            var digitsOnly = new string(rawId.Where(char.IsDigit).ToArray());
+            p.ClientId = digitsOnly.Length > 32 ? digitsOnly[..32] : digitsOnly;
+            // Templates: trim whitespace, cap at 128 chars.
+            p.DetailsTemplate = Cap128(p.DetailsTemplate);
+            p.StateTemplate   = Cap128(p.StateTemplate);
+            dp = p;
+            return true;
+        }
+        catch (JsonException) { return false; }
+
+        static string Cap128(string? s)
+        {
+            var t = (s ?? "").Trim();
+            return t.Length > 128 ? t[..128] : t;
+        }
     }
 
     private static List<string> SanitizeStringList(List<string>? raw)
