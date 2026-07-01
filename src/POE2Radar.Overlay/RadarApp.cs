@@ -1267,6 +1267,11 @@ public sealed class RadarApp : IDisposable
         if (worldFresh)
         {
             bool isTown = ZoneGuide.Shared.Area(snap.AreaCode)?.Town ?? false;
+            // Feed kill observations from the published immutable snapshot (render-thread-safe).
+            // ObserveKill and Update both run here on the render thread — no race.
+            foreach (var e in snap.Entities)
+                if (e.Category == Poe2Live.EntityCategory.Monster)
+                    _session.ObserveKill(e.Address, e.Rarity, e.HpCur, e.HpMax);
             _sessionSnapshot = _session.Update(
                 snap.AreaHash,
                 snap.AreaCode,

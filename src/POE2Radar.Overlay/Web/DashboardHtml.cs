@@ -722,6 +722,10 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="sessionHudShowDeaths">
                 <span class="track"></span><span class="knob"></span></label></div>
 
+            <div class="row"><div class="rl">Kills · Maps/hr · XP-eff<small>Kill counts by rarity, map rate, XP efficiency</small></div>
+              <label class="sw"><input type="checkbox" data-set="sessionHudShowKills">
+                <span class="track"></span><span class="knob"></span></label></div>
+
             <div class="row"><div class="rl">Exclude towns<small>Omit towns from pace</small></div>
               <label class="sw"><input type="checkbox" data-set="sessionHudExcludeTowns">
                 <span class="track"></span><span class="knob"></span></label></div>

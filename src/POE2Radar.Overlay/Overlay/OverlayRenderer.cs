@@ -77,6 +77,10 @@ public sealed class OverlayRenderer : IDisposable
     private float _hudCacheZonesPerHr;
     private string? _hudCacheZoneName;
     private bool _hudCacheShowPace, _hudCacheShowZone, _hudCacheShowDeaths;
+    private int _hudCacheKillsN, _hudCacheKillsM, _hudCacheKillsR, _hudCacheKillsU;
+    private float _hudCacheMapsHr;
+    private int _hudCacheXpEff;
+    private bool _hudCacheShowKills;
 
     // ── D2: Terrain color cache + per-rule color memo (render-thread-owned). ──
     private string _terrainCacheIntHex = "", _terrainCacheEdgeHex = "";
@@ -790,7 +794,14 @@ public sealed class OverlayRenderer : IDisposable
             || sess.DeathsThisZone != _hudCacheDeathsHere
             || hud.ShowPace        != _hudCacheShowPace
             || hud.ShowZoneContext != _hudCacheShowZone
-            || hud.ShowDeaths      != _hudCacheShowDeaths)
+            || hud.ShowDeaths      != _hudCacheShowDeaths
+            || sess.KillsNormal    != _hudCacheKillsN
+            || sess.KillsMagic     != _hudCacheKillsM
+            || sess.KillsRare      != _hudCacheKillsR
+            || sess.KillsUnique    != _hudCacheKillsU
+            || sess.MapsPerHour    != _hudCacheMapsHr
+            || sess.XpEfficiency   != _hudCacheXpEff
+            || hud.ShowKills       != _hudCacheShowKills)
         {
             _hudCacheSessionSec   = sessionSec;
             _hudCacheZoneSec      = zoneSec;
@@ -803,6 +814,13 @@ public sealed class OverlayRenderer : IDisposable
             _hudCacheShowPace     = hud.ShowPace;
             _hudCacheShowZone     = hud.ShowZoneContext;
             _hudCacheShowDeaths   = hud.ShowDeaths;
+            _hudCacheKillsN       = sess.KillsNormal;
+            _hudCacheKillsM       = sess.KillsMagic;
+            _hudCacheKillsR       = sess.KillsRare;
+            _hudCacheKillsU       = sess.KillsUnique;
+            _hudCacheMapsHr       = sess.MapsPerHour;
+            _hudCacheXpEff        = sess.XpEfficiency;
+            _hudCacheShowKills    = hud.ShowKills;
 
             // Build only the enabled rows (pre-formatted strings). Line count drives the panel height.
             var lines = new List<(string text, bool isDeath)>(6);
@@ -820,6 +838,12 @@ public sealed class OverlayRenderer : IDisposable
             if (hud.ShowDeaths)
             {
                 lines.Add(($"Deaths   {sess.Deaths} ({sess.DeathsThisZone} here)", sess.Deaths > 0));
+            }
+            if (hud.ShowKills)
+            {
+                lines.Add(($"Kills    N{sess.KillsNormal} M{sess.KillsMagic} R{sess.KillsRare} U{sess.KillsUnique}", false));
+                lines.Add(($"Maps/hr  {sess.MapsPerHour:F1}", false));
+                lines.Add(($"XP eff   {sess.XpEfficiency:+#;-#;0}", false));
             }
             _hudLines = lines.ToArray();
         }

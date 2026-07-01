@@ -1085,6 +1085,7 @@ public sealed class ApiServer : IDisposable
         sessionHudShowPace       = _settings.SessionHud.ShowPace,
         sessionHudShowZoneContext= _settings.SessionHud.ShowZoneContext,
         sessionHudShowDeaths     = _settings.SessionHud.ShowDeaths,
+        sessionHudShowKills      = _settings.SessionHud.ShowKills,
         sessionHudAnchor         = _settings.SessionHud.Anchor,
         sessionHudOffsetX        = _settings.SessionHud.OffsetX,
         sessionHudOffsetY        = _settings.SessionHud.OffsetY,
@@ -1174,6 +1175,7 @@ public sealed class ApiServer : IDisposable
                 case "sessionHudShowPace" when TryBool(p.Value, out var b): _settings.SessionHud.ShowPace = b; applied.Add(p.Name); break;
                 case "sessionHudShowZoneContext" when TryBool(p.Value, out var b): _settings.SessionHud.ShowZoneContext = b; applied.Add(p.Name); break;
                 case "sessionHudShowDeaths" when TryBool(p.Value, out var b): _settings.SessionHud.ShowDeaths = b; applied.Add(p.Name); break;
+                case "sessionHudShowKills" when TryBool(p.Value, out var b): _settings.SessionHud.ShowKills = b; applied.Add(p.Name); break;
                 case "sessionHudExcludeTowns" when TryBool(p.Value, out var b): _settings.SessionHud.ExcludeTownsFromPace = b; applied.Add(p.Name); break;
                 case "sessionHudAnchor" when TryString(p.Value, out var s): _settings.SessionHud.Anchor = s.Trim(); applied.Add(p.Name); break;
                 case "sessionHudOffsetX" when TryInt(p.Value, out var n): _settings.SessionHud.OffsetX = n; applied.Add(p.Name); break;

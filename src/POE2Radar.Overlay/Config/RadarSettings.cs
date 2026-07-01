@@ -515,6 +515,7 @@ public sealed class SessionHudSettings
     public bool   ShowPace              { get; set; } = false;
     public bool   ShowZoneContext       { get; set; } = false;
     public bool   ShowDeaths            { get; set; } = false;
+    public bool   ShowKills             { get; set; } = false;
     public string Anchor                { get; set; } = "TopLeft";
     // Legal values: "TopLeft", "TopRight", "BottomLeft", "BottomRight"
     // Mirrors NavMenuCorner (RadarSettings.cs line 55) — plain string, no C# enum.
