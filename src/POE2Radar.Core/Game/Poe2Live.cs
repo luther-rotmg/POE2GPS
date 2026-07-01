@@ -28,6 +28,7 @@ public sealed class Poe2Live
     private readonly HashSet<nint> _completedPois = new();         // POI confirmed complete (one-way; cleared per zone)
     private readonly Dictionary<nint, (int tick, bool poi, bool complete)> _iconState = new();  // last ReadIcon result + tick
     private int _iconTick;                                          // incremented once per Entities() pass
+    private readonly Dictionary<nint, MonolithState> _monolithCache = new();  // device → static station data (Collected re-read live)
     private readonly Dictionary<nint, EntityCategory> _category = new();
     private readonly Dictionary<nint, string> _meta = new();
     private readonly Dictionary<nint, nint> _iconAddr = new();     // entity → MinimapIcon component (0 = none); game POI
@@ -103,7 +104,7 @@ public sealed class Poe2Live
         _gameStateSlot = gameStateSlot;
         _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
         _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear();
-        _itemIdent.Clear(); _idAt.Clear();
+        _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear();
         _entCacheKey = 0;
         _league = ""; _leagueFor = -1;
         _areaCode = ""; _areaCodeFor = -1;
@@ -465,7 +466,7 @@ public sealed class Poe2Live
         if (areaInstance != _entCacheKey)
         {
             _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
-            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear();
+            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear();
             _entCacheKey = areaInstance;
         }
 
@@ -559,7 +560,7 @@ public sealed class Poe2Live
     {
         _renderAddr.Remove(entity); _lifeAddr.Remove(entity); _posAddr.Remove(entity);
         _ompAddr.Remove(entity); _chestAddr.Remove(entity); _openedChests.Remove(entity); _completedPois.Remove(entity); _iconState.Remove(entity); _category.Remove(entity);
-        _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _reaction.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity);
+        _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _reaction.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity); _monolithCache.Remove(entity);
     }
 
     /// <summary>
@@ -597,11 +598,16 @@ public sealed class Poe2Live
     public readonly record struct MonolithState(
         bool Resolved, int HoleCount, int AnchorIdx, int AnchorPos, bool IsUnique, bool Collected);
 
-    /// <summary>Resolve a monolith device's hole count + anchor rune. Stateless per call (no caching — the
-    /// station ptr is stable per area but cheap to re-walk, and the caller throttles at world rate).</summary>
+    /// <summary>Resolve a monolith device's hole count + anchor rune. Caches the static station data
+    /// (HoleCount/AnchorIdx/AnchorPos/IsUnique) per device; only <c>Collected</c> is re-read live each tick.
+    /// <c>Resolved == true</c> results are cached; transient failures (Resolved false) are never cached so
+    /// they retry next tick.</summary>
     public MonolithState ReadMonolith(nint device)
     {
         var (_, collected) = ReadIcon(device);
+        if (_monolithCache.TryGetValue(device, out var cachedMono))
+            return cachedMono with { Collected = collected };
+
         var fail = new MonolithState(false, 0, -1, -1, false, collected);
 
         var sm = ResolveComponent(device, "StateMachine");
@@ -628,18 +634,29 @@ public sealed class Poe2Live
         _reader.TryReadStruct<int>(station + Poe2.RuneStation.AnchorPos, out var pos);
 
         var rowPtr = Ptr(station + Poe2.RuneStation.AnchorRef);
-        if (rowPtr == 0) return new MonolithState(true, holes, -1, -1, true, collected); // anchor-less → "unique"
+        if (rowPtr == 0)
+        {
+            var uniqueResult = new MonolithState(true, holes, -1, -1, true, collected); // anchor-less → "unique"
+            _monolithCache[device] = uniqueResult;
+            return uniqueResult;
+        }
 
         // anchor rune index = (rowPtr − tableBase)/RuneStride; tableBase is per-area (deref holder+0x28).
         var holder = Ptr(station + Poe2.RuneStation.AnchorHolder);
         var p1 = Ptr(holder + 0x28);
         if (p1 == 0 || !_reader.TryReadStruct<long>(p1, out var tableBase) || tableBase == 0)
-            return new MonolithState(true, holes, -1, pos, false, collected); // station ok, anchor decode failed
+        {
+            var partialResult = new MonolithState(true, holes, -1, pos, false, collected); // station ok, anchor decode failed
+            _monolithCache[device] = partialResult;
+            return partialResult;
+        }
         var delta = (long)rowPtr - tableBase;
         var idx = (delta >= 0 && delta % Poe2.RuneStation.RuneStride == 0)
             ? (int)(delta / Poe2.RuneStation.RuneStride) : -1;
         if (idx < 0 || idx >= Poe2.RuneStation.RuneCount) idx = -1;
-        return new MonolithState(true, holes, idx, pos, false, collected);
+        var result = new MonolithState(true, holes, idx, pos, false, collected);
+        _monolithCache[device] = result;
+        return result;
     }
 
     private Rarity ReadRarity(nint entity)
