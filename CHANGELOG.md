@@ -3,6 +3,13 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.16.0] — 2026-06-30
+### Added — 📡 **Streaming & Presence** *(two ways to share your session)*
+- 🎥 **OBS overlay** — a **transparent, stream-styled page** at `http://localhost:7777/obs`. Add it as a **Browser Source** in OBS and your session stats composite right over gameplay: session/zone timers, area + level, **kills** (N·M·R·U), **maps/hr**, **XP-efficiency**, next objective. Pick which widgets show + colour/opacity/scale/corner in **⚙️ Settings → OBS Overlay**. Built on the data the overlay already publishes — no new reads.
+- 🎮 **Discord Rich Presence** *(opt-in — off by default)* — show your PoE2 run in your Discord status: **`{area} · Level {level}`**, maps/hr, an **elapsed timer**. **You write the templates** (tokens `{area} {level} {zones} {mapshr} {kills} {xpeff}`), and it runs under a **neutral app identity** — friends see your progress, not "an overlay tool." Publishes **only to your local Discord**, on its own thread so it never touches the game loop.
+  - *One-time setup:* paste a Discord **Client ID** in **⚙️ Settings → Discord Rich Presence** to activate it (blank = inert).
+- 🛡️ Both are **100% read-only** of the game — no new offsets, no new reads, no input, no pricing. OBS stays on localhost; Discord RP is your explicit opt-in.
+
 ## [0.15.0] — 2026-06-30
 ### Added — 🧭 **Situational Awareness** *(two awareness upgrades)*
 - ➡️ **Off-screen entity arrows** *(on by default; seeded for Uniques + Bosses)* — when a notable monster is **off the edge of your screen**, an **arrow at the window border points right at it**, colour-matched to its rule — so you spot the unique/boss/pack **before it comes into view**. It's driven by your existing **display rules**: flip the new **"off-screen arrow"** checkbox on any rule to include it. Nearest-first with a **cap** so dense packs stay readable. Tune size / label / max in **⚙️ Settings → Entity Arrows**.
