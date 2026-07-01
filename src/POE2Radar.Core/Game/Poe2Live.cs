@@ -38,6 +38,9 @@ public sealed class Poe2Live
     /// <summary>When false, monster affix-mod reads are skipped entirely (no consumer needs them). Set by
     /// RadarApp each world tick from the affix-nameplate + mod-filter feature state. Default true = fail-safe.</summary>
     public bool EnableModReads { get; set; } = true;
+    /// <summary>When false, dropped-item identity reads (art/name/rarity) are skipped — the ground-item
+    /// label overlay is off. Set by RadarApp per world tick. Default true = fail-safe.</summary>
+    public bool EnableItemIdentityReads { get; set; } = true;
     private readonly Dictionary<nint, string[]> _mods = new();     // entity → affix mod ids (static per spawn; cached; empty = no mods)
     private readonly Dictionary<nint, (Rarity rarity, string? art, bool identified, string? name)> _itemIdent = new(); // WorldItem entity → dropped-item identity (static; cached)
     private readonly Dictionary<nint, uint> _idAt = new();         // entity address → last-seen std::map key id (recycle guard)
@@ -532,7 +535,7 @@ public sealed class Poe2Live
             // basename + rarity, read once off the inner item entity. Rarity then reflects the item.
             string? itemArt = null, itemName = null;
             var itemIdentified = true;
-            if (cat == EntityCategory.Other && meta.Contains("WorldItem", StringComparison.Ordinal))
+            if (EnableItemIdentityReads && cat == EntityCategory.Other && meta.Contains("WorldItem", StringComparison.Ordinal))
                 (rarity, itemArt, itemIdentified, itemName) = ReadItemIdentity(entity);
 
             var (poi, iconComplete) = ReadIcon(entity);
