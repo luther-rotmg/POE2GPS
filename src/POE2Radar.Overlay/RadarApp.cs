@@ -2955,6 +2955,8 @@ public sealed class RadarApp : IDisposable
     /// empty reads so the route doesn't flicker; freezes the marks when the view is static (no arrow jitter).</summary>
     private void UpdateAtlas(nint inGameState)
     {
+        _atlas.ShowContentIcons = _settings.AtlasShowContentIcons;
+        _atlas.NeedNodeStatus = _settings.AtlasAutoRoute || _settings.AtlasHideCompleted || _settings.AtlasHideAccessible;
         var nodes = _atlas.ReadNodes(inGameState);
         if (nodes.Count == 0)
         {

@@ -40,6 +40,12 @@ public sealed class Poe2Atlas
 
     public Poe2Atlas(MemoryReader reader) => _reader = reader;
 
+    /// <summary>Set by RadarApp before ReadNodes: skip the per-node content-icon child-walk when the
+    /// content-icon overlay is off, and skip the accessible/completed status reads when no route/hide
+    /// filter needs them. Both feed the freeze-signature, so toggling them rebuilds correctly.</summary>
+    public bool ShowContentIcons { get; set; } = true;
+    public bool NeedNodeStatus { get; set; } = true;
+
     /// <summary>One map archetype: its internal code ("MapSteppe"), display name ("Steppe"), an id
     /// (tracks roughly with tier/level), and the address of its parsed runtime object.</summary>
     public readonly record struct MapType(int Id, string Code, string Name, string Kind, long ParsedObj, long IdStr);
@@ -409,22 +415,29 @@ public sealed class Poe2Atlas
             var visible = ((uiFlags >> Poe2.UiElement.FlagVisibleBit) & 1) != 0;
             // The node's content/icon TYPE lives on a nested sigil-icon child (content int 1..~50);
             // walk first-children a few levels to find it. Lets us classify + match nodes to in-game icons.
-            var iconType = 0; var d = el;
-            for (var lvl = 0; lvl < 5 && d != 0; lvl++)
+            var iconType = 0;
+            if (ShowContentIcons)
             {
-                if (_reader.TryReadStruct<uint>(d + Poe2.AtlasNode.Content, out var c) && c is > 0 and < 256) { iconType = (int)c; break; }
-                d = Ptr(Ptr(d + Poe2.UiElement.Children)); // first child = *(*(el+Children))
+                var d = el;
+                for (var lvl = 0; lvl < 5 && d != 0; lvl++)
+                {
+                    if (_reader.TryReadStruct<uint>(d + Poe2.AtlasNode.Content, out var c) && c is > 0 and < 256) { iconType = (int)c; break; }
+                    d = Ptr(Ptr(d + Poe2.UiElement.Children)); // first child = *(*(el+Children))
+                }
             }
             // Accessible/completed status: the GameHelper-validated deeper model
             // *(node+DataStorage)+DataModel → status byte +0x2CF (bit0 accessible, bit1 completed). This is
             // the route SOURCE frontier ("maps you can run right now"). Cheap (2 derefs + 1 byte).
             bool accessible = false, completed = false;
-            var storage = Ptr(el + Poe2.AtlasNode.DataStorage);
-            if (storage != 0)
+            if (NeedNodeStatus)
             {
-                var model = Ptr(storage + Poe2.AtlasNode.DataModel);
-                if (model != 0 && _reader.TryReadStruct<byte>(model + Poe2.AtlasNode.DataStatus, out var stb))
-                { accessible = (stb & 1) != 0; completed = (stb & 2) != 0; }
+                var storage = Ptr(el + Poe2.AtlasNode.DataStorage);
+                if (storage != 0)
+                {
+                    var model = Ptr(storage + Poe2.AtlasNode.DataModel);
+                    if (model != 0 && _reader.TryReadStruct<byte>(model + Poe2.AtlasNode.DataStatus, out var stb))
+                    { accessible = (stb & 1) != 0; completed = (stb & 2) != 0; }
+                }
             }
             // Resolved (cached): map name (all nodes) + rolled content tags (nodes with a +0x310 row).
             // Budget-limited per call so the first read doesn't hitch the tick; fills in over a few calls.
