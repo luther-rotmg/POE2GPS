@@ -21,7 +21,7 @@
 
 ---
 
-### Task SR-2: Unfocused idle-slowdown — gate the render read-block on focus
+### Task 1: (SR-2) Unfocused idle-slowdown — gate the render read-block on focus
 
 **Files:** Modify `src/POE2Radar.Overlay/RadarApp.cs` (`Tick()`, the `if (inGame)` block ~1263 and the `realActive`/`_overlayHadContent` logic).
 
@@ -52,7 +52,7 @@ git commit -m "perf(stealth): skip render read-block while PoE2 unfocused (SR-2 
 
 ---
 
-### Task SR-3: Feature-gate ReadMods on affix-nameplate / mod-filter usage
+### Task 2: (SR-3) Feature-gate ReadMods on affix-nameplate / mod-filter usage
 
 **Files:** Modify `src/POE2Radar.Core/Game/Poe2Live.cs` (add `EnableModReads`; gate at line 526). Modify `src/POE2Radar.Overlay/RadarApp.cs` (`WorldTick`, before `_live.Entities(...)`).
 
@@ -93,7 +93,7 @@ git commit -m "perf(stealth): gate monster mod reads on affix-nameplate/mod-filt
 
 ---
 
-### Task SR-4: Feature-gate ReadItemIdentity on ground-items usage
+### Task 3: (SR-4) Feature-gate ReadItemIdentity on ground-items usage
 
 **Files:** Modify `Poe2Live.cs` (add `EnableItemIdentityReads`; gate at 532–533). Modify `RadarApp.cs` (`WorldTick`).
 
@@ -137,7 +137,7 @@ git commit -m "perf(stealth): gate dropped-item identity reads on GroundItems ov
 
 ---
 
-### Task SR-5: Render-thread redundant-read quick wins (batch)
+### Task 4: (SR-5) Render-thread redundant-read quick wins (batch)
 
 **Files:** Modify `RadarApp.cs` (`Tick()` lines 1267–1273). Modify `Poe2Live.cs` (`Entities` HP condition line 523).
 
@@ -173,7 +173,7 @@ git commit -m "perf(stealth): render-thread redundant-read dedupes + CameraMatri
 
 ---
 
-### Task SR-6: Slow-refresh player scalars (batch)
+### Task 5: (SR-6) Slow-refresh player scalars (batch)
 
 **Files:** Modify `Poe2Live.cs` (`PlayerName` cache). Modify `RadarApp.cs` (`PlayerLevel` + `PlayerVitals` refresh counters).
 
@@ -216,7 +216,7 @@ git commit -m "perf(stealth): cache PlayerName, slow-refresh PlayerLevel + Playe
 
 ---
 
-### Task SR-7: Atlas per-node feature gates (iconType + status reads)
+### Task 6: (SR-7) Atlas per-node feature gates (iconType + status reads)
 
 **Files:** Modify `src/POE2Radar.Core/Game/Poe2Atlas.cs` (`ReadCanvasNodes` 412–428; add gate properties). Modify `RadarApp.cs` (`UpdateAtlas`, before `_atlas.ReadNodes`).
 
@@ -279,7 +279,7 @@ git commit -m "perf(stealth): gate atlas per-node icon + status reads on their f
 
 ---
 
-### Task SR-1: Cache the static per-node atlas iconType (safe atlas read-cut)
+### Task 7: (SR-1) Cache the static per-node atlas iconType (safe atlas read-cut)
 
 **Files:** Modify `src/POE2Radar.Core/Game/Poe2Atlas.cs` (`ReadCanvasNodes` iconType block; `Invalidate`; add cache field).
 
@@ -327,7 +327,7 @@ git commit -m "perf(stealth): cache static per-node atlas iconType (skip the 5-l
 
 ---
 
-### Task SR-8: POI CompletedState one-way cache + slow-refresh in ReadIcon
+### Task 8: (SR-8) POI CompletedState one-way cache + slow-refresh in ReadIcon
 
 **Files:** Modify `Poe2Live.cs` (`ReadIcon` 560–570; area-clear 452–457; `EvictEntity` 544–549; add fields).
 
@@ -378,7 +378,7 @@ git commit -m "perf(stealth): one-way cache + 10-tick slow-refresh for POI Compl
 
 ---
 
-### Task SR-9: ReadMonolith static-data cache (live-read only Collected)
+### Task 9: (SR-9) ReadMonolith static-data cache (live-read only Collected)
 
 **Files:** Modify `Poe2Live.cs` (`ReadMonolith` 583–624; area-clear; `EvictEntity`; add cache). Depends on SR-8 (reuses `ReadIcon`'s cache for `Collected`).
 
@@ -416,7 +416,7 @@ git commit -m "perf(stealth): cache monolith static station data, live-read only
 
 ---
 
-### Task SR-10: Cull off-screen atlas marks before the render TryRelPos loop
+### Task 10: (SR-10) Cull off-screen atlas marks before the render TryRelPos loop
 
 **Files:** Modify `RadarApp.cs` (`Tick()` atlas-mark loop, lines 1320–1324).
 
@@ -448,7 +448,7 @@ git commit -m "perf(stealth): cull off-screen atlas marks before live relPos rea
 
 ---
 
-### Task SR-11: Slow-refresh CurrentNodeGrid to ~1 Hz
+### Task 11: (SR-11) Slow-refresh CurrentNodeGrid to ~1 Hz
 
 **Files:** Modify `RadarApp.cs` (`UpdateAtlas` line 2972; add counter + cache fields).
 
@@ -478,7 +478,7 @@ git commit -m "perf(stealth): slow-refresh atlas CurrentNodeGrid to ~1 Hz (SR-11
 
 ---
 
-### Task SR-12: Version bump + integration + compliance
+### Task 12: (SR-12) Version bump + integration + compliance
 
 **Files:** Modify `src/POE2Radar.Overlay/POE2Radar.Overlay.csproj` (`<Version>` → `0.18.0`).
 
