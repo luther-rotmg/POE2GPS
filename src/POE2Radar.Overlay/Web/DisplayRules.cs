@@ -77,6 +77,19 @@ public sealed class DisplayRules
     /// <summary>Whether any rules are loaded (used to decide if a migration must seed defaults).</summary>
     public int Count { get { lock (_gate) return _rules.Count; } }
 
+    /// <summary>True when at least one enabled rule uses a Mods filter, meaning monster affix-mod reads
+    /// are required to evaluate that rule. Lock-free read of the precompiled snapshot.</summary>
+    public bool AnyModFilter
+    {
+        get
+        {
+            var snap = _snapshot;
+            foreach (var c in snap)
+                if (c.HasModFilter) return true;
+            return false;
+        }
+    }
+
     /// <summary>All rules in order (snapshot copy; safe to enumerate off-thread / serialize for the API).</summary>
     public IReadOnlyList<DisplayRule> All { get { lock (_gate) return _rules.ToList(); } }
 
@@ -277,6 +290,7 @@ public sealed class DisplayRules
     private sealed class Compiled
     {
         public readonly DisplayRule Rule;
+        public readonly bool HasModFilter;                 // true = this enabled rule has a Mods filter; mod reads are required
         private readonly bool _enabled;
         private readonly bool _isTile;                     // Categories contains "Tile" → matches terrain tiles
         // Category/rarity are matched by ENUM, precompiled — NOT by e.Category.ToString()/e.Rarity.ToString()
@@ -307,6 +321,7 @@ public sealed class DisplayRules
             _mods = r.Mods is { Count: > 0 }
                 ? r.Mods.Where(m => !string.IsNullOrEmpty(m)).Select(CompileTerm).ToArray() : null;
             if (_mods is { Length: 0 }) _mods = null;
+            HasModFilter = r.Enabled && _mods != null;
             _anyRarity = string.IsNullOrEmpty(r.Rarity);
             _rarity = _anyRarity ? default
                 : Enum.TryParse<Poe2Live.Rarity>(r.Rarity, ignoreCase: true, out var rr) ? rr : (Poe2Live.Rarity)int.MaxValue;

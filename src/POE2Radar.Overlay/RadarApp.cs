@@ -1580,6 +1580,7 @@ public sealed class RadarApp : IDisposable
         }
 
         _terrain ??= _live.Terrain(areaInstance);
+        _live.EnableModReads = _settings.AffixNameplates.Enabled || _displayRules.AnyModFilter;
         _entities = _live.Entities(areaInstance);
         // Atlas census: catalog EVERY distinct entity for naming/coverage. Runs on the PRE-cull list
         // (before the local-player + user-hidden RemoveAll below) so hiding a dot doesn't erase it from

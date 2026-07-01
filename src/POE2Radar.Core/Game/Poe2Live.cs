@@ -35,6 +35,9 @@ public sealed class Poe2Live
 
     /// <summary>Pure: true on ticks where the reaction cache should be flushed and re-read.</summary>
     public static bool ShouldRefreshReaction(int tick, int interval) => interval > 0 && tick % interval == 0;
+    /// <summary>When false, monster affix-mod reads are skipped entirely (no consumer needs them). Set by
+    /// RadarApp each world tick from the affix-nameplate + mod-filter feature state. Default true = fail-safe.</summary>
+    public bool EnableModReads { get; set; } = true;
     private readonly Dictionary<nint, string[]> _mods = new();     // entity → affix mod ids (static per spawn; cached; empty = no mods)
     private readonly Dictionary<nint, (Rarity rarity, string? art, bool identified, string? name)> _itemIdent = new(); // WorldItem entity → dropped-item identity (static; cached)
     private readonly Dictionary<nint, uint> _idAt = new();         // entity address → last-seen std::map key id (recycle guard)
@@ -523,7 +526,7 @@ public sealed class Poe2Live
             if (cat is EntityCategory.Monster or EntityCategory.Player) (hpCur, hpMax) = ReadHp(entity);
             if (cat is EntityCategory.Monster or EntityCategory.Chest) rarity = ReadRarity(entity);
             if (cat == EntityCategory.Chest) opened = ReadChestOpened(entity);
-            var mods = cat == EntityCategory.Monster ? ReadMods(entity) : null;
+            var mods = (EnableModReads && cat == EntityCategory.Monster) ? ReadMods(entity) : null;
             var meta = _meta.GetValueOrDefault(entity, "");
             // Dropped items (WorldItem containers, categorized Other) carry a price-lookup identity: art
             // basename + rarity, read once off the inner item entity. Rarity then reflects the item.
