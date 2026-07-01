@@ -253,6 +253,11 @@ public sealed class RadarSettings
     // ── Preload Alert: surfaces pinnacle/mechanic content by scanning the loaded-asset list on zone entry. Off by default. ──
     public PreloadAlertSettings PreloadAlert { get; set; } = new();
 
+    // ── Off-screen entity arrows: edge arrows pointing toward rule-flagged entities outside the visible radar area. ──
+    public EntityArrowSettings EntityArrows { get; set; } = new();
+    // One-time guard: false until OffScreenArrow=true has been seeded onto Unique+Boss/Citadel rules.
+    public bool EntityArrowsSeeded { get; set; }
+
     // ── Configurable hotkey VK codes. Defaults are the original literals — no behavior change for
     //    existing users. The Ctrl+Alt modifier pair, slot-digit 1-9/0 keys, and controller buttons
     //    are fixed and not in this table (rebinding them would conflict with PoE2's own controls). ──
@@ -566,6 +571,20 @@ public sealed class KeybindsSettings
     public int CyclePrev     { get; set; } = 0xDB; // [   — cycle prev target  (Ctrl+Alt+[, hold-to-fast)
     public int NavMenuToggle { get; set; } = 0x4D; // M   — toggle nav menu    (Ctrl+Alt+M, foreground-gated)
     public int SessionReset  { get; set; } = 0x52; // R   — reset session HUD  (Ctrl+Alt+R, foreground-gated)
+}
+
+/// <summary>
+/// Off-screen entity arrow settings. Arrows are drawn at the screen edge pointing toward rule-flagged
+/// entities that are outside the visible radar area. Enabled = master gate (arrows fire only for entities
+/// whose DisplayRule has <c>OffScreenArrow = true</c>). Size, label, cap, and edge-margin are tunable.
+/// </summary>
+public sealed class EntityArrowSettings
+{
+    public bool Enabled { get; set; } = true;          // master gate (arrows only fire for rule-flagged, off-screen entities)
+    public float Size { get; set; } = 11f;             // arrowhead size in px
+    public bool ShowLabel { get; set; } = true;        // draw the rule name by the arrow
+    public int MaxArrows { get; set; } = 12;           // cap (nearest-first) to avoid edge clutter
+    public int MinEdgeDistancePx { get; set; } = 24;   // skip targets whose projection is within this of the edge
 }
 
 public sealed class GroundItemSettings

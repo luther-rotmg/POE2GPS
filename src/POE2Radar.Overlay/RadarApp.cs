@@ -187,6 +187,11 @@ public sealed class RadarApp : IDisposable
     private readonly List<ItemLabel> _itemFrame = new();   // render-thread scratch (rebuilt per frame)
     private readonly record struct AffixNameplateSpec(nint Render, AffixLine[] Lines);
     private readonly List<AffixNameplateTarget> _affixFrame = new();   // render-thread scratch (rebuilt per frame)
+    // Off-screen entity arrow pipeline: the SPEC (Render component address + packed color + label) is built
+    // at WORLD rate for each entity whose DisplayRule has OffScreenArrow=true; the render thread re-reads each
+    // entity's live world position via _liveRender.TryLiveBarAt every frame (same pattern as affix nameplates).
+    private readonly record struct EntityArrowSpec(nint Render, uint Color, string? Label);
+    private readonly List<EntityArrowTarget> _entityArrowFrame = new();  // render-thread scratch (rebuilt per frame)
     // Preload Alert: zone-scoped hit list (built ONCE per zone change on the world thread; carried in every
     // WorldSnapshot until the next zone change). Never rebuilt per tick — only swapped on areaInstance change.
     private Poe2LoadedFiles? _loadedFiles;           // world thread; constructed after first settings check
@@ -220,12 +225,16 @@ public sealed class RadarApp : IDisposable
         IReadOnlyList<string> SelectedSnapshot,
         // Preload Alert: zone-scoped hits (built once on zone entry; persisted in every snapshot until
         // the next zone change). Null/empty = nothing surfaced this zone. Gated on zone-load guard in Tick().
-        IReadOnlyList<PreloadHit>? PreloadHits = null)
+        IReadOnlyList<PreloadHit>? PreloadHits = null,
+        // Off-screen entity arrows: per-entity specs built at world rate (Render addr + color + label);
+        // the render thread converts each to a live world position via TryLiveBarAt every frame.
+        IReadOnlyList<EntityArrowSpec>? EntityArrowSpecs = null)
     {
         public static readonly WorldSnapshot Empty = new(
             false, 0, 0, "", 0, Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), null,
             Array.Empty<HpBarSpec>(), Array.Empty<ItemLabelSpec>(), Array.Empty<AffixNameplateSpec>(), Array.Empty<SelectedPath>(),
-            Array.Empty<LegendEntry>(), Array.Empty<string>());
+            Array.Empty<LegendEntry>(), Array.Empty<string>(),
+            PreloadHits: null, EntityArrowSpecs: Array.Empty<EntityArrowSpec>());
     }
     private volatile WorldSnapshot _world = WorldSnapshot.Empty;
     private NumVec2 _worldPlayer;          // the world tick's current player grid (for off-thread replans)
@@ -591,6 +600,25 @@ public sealed class RadarApp : IDisposable
             if (n > 0) _displayRules.Replace(rules);
             _settings.IconSizesV1 = true; _settings.Save();
             Console.WriteLine($"Display rules: bumped {n} monster icon size(s) for glyph legibility.");
+        }
+        // One-time: seed OffScreenArrow=true on default Unique monster + Boss/Citadel-named rules so
+        // new users get arrows out-of-the-box. Additive — never clears a flag the user already set.
+        // Gated by EntityArrowsSeeded so a user who clears the flag from the dashboard keeps it gone.
+        if (!_settings.EntityArrowsSeeded)
+        {
+            var rules = _displayRules.All.ToList();
+            var n = 0;
+            foreach (var r in rules)
+            {
+                if (r.OffScreenArrow) continue;  // already set — don't touch
+                var isUnique = string.Equals(r.Rarity, "Unique", StringComparison.OrdinalIgnoreCase);
+                var hasBossOrCitadel = r.Name.Contains("Boss", StringComparison.OrdinalIgnoreCase)
+                                    || r.Name.Contains("Citadel", StringComparison.OrdinalIgnoreCase);
+                if (isUnique || hasBossOrCitadel) { r.OffScreenArrow = true; n++; }
+            }
+            if (n > 0) _displayRules.Replace(rules);
+            _settings.EntityArrowsSeeded = true; _settings.Save();
+            Console.WriteLine($"Display rules: seeded OffScreenArrow on {n} Unique/Boss/Citadel rule(s).");
         }
         _displayRulesGen = _displayRules.Generation;
         // User-editable overlay on the baked curated landmark table (the "Landmarks" tab). Inject its
@@ -1211,6 +1239,16 @@ public sealed class RadarApp : IDisposable
                         _affixFrame.Add(new AffixNameplateTarget(w, spec.Lines));
             }
 
+            // Off-screen entity arrows: re-read each flagged entity's live world position THIS frame so
+            // the arrow direction is current even when the entity is moving. life arg 0 → world-pos only.
+            _entityArrowFrame.Clear();
+            if (snap.EntityArrowSpecs is { Count: > 0 } arrowSpecs && _settings.EntityArrows.Enabled)
+            {
+                foreach (var s in arrowSpecs)
+                    if (_liveRender.TryLiveBarAt(s.Render, 0, out var w, out _, out _))
+                        _entityArrowFrame.Add(new EntityArrowTarget(w, s.Color, s.Label));
+            }
+
             // Atlas marks/routes: re-read each node's live RelativePos this frame so the rings + route lines
             // track the atlas pan at full FPS (the world walk only refreshes baked positions ~30 Hz). Cheap —
             // only the handful of DRAWN marks + route points, one atomic 8-byte read each; a stale/closed node
@@ -1253,7 +1291,7 @@ public sealed class RadarApp : IDisposable
                 }
             }
         }
-        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_affixFrame.Count > 0) _affixFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); if (_atlasRouteFrame.Count > 0) _atlasRouteFrame.Clear(); if (_atlasAutoRoutesFrame.Count > 0) _atlasAutoRoutesFrame.Clear(); }
+        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_affixFrame.Count > 0) _affixFrame.Clear(); if (_entityArrowFrame.Count > 0) _entityArrowFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); if (_atlasRouteFrame.Count > 0) _atlasRouteFrame.Clear(); if (_atlasAutoRoutesFrame.Count > 0) _atlasAutoRoutesFrame.Clear(); }
 
         // Zone-load guard: the world snapshot lags the live chain by up to one world pass, so right after a
         // zone change its entities/terrain/route still belong to the PREVIOUS area. Only draw them once the
@@ -1401,7 +1439,15 @@ public sealed class RadarApp : IDisposable
             PreloadEnabled: _settings.PreloadAlert.Enabled,
             PreloadAnchor: _settings.PreloadAlert.Anchor,
             PreloadOffsetX: _settings.PreloadAlert.OffsetX,
-            PreloadOffsetY: _settings.PreloadAlert.OffsetY);
+            PreloadOffsetY: _settings.PreloadAlert.OffsetY,
+            // Off-screen entity arrows: world positions refreshed live each render frame from the world tick's
+            // EntityArrowSpecs (same HP-bar pattern); gated on worldFresh so stale zone data never leaks.
+            EntityArrows: worldFresh ? (IReadOnlyList<EntityArrowTarget>)_entityArrowFrame : System.Array.Empty<EntityArrowTarget>(),
+            EntityArrowsEnabled: _settings.EntityArrows.Enabled,
+            EntityArrowSize: _settings.EntityArrows.Size,
+            EntityArrowShowLabel: _settings.EntityArrows.ShowLabel,
+            EntityArrowMax: _settings.EntityArrows.MaxArrows,
+            EntityArrowMinEdgePx: _settings.EntityArrows.MinEdgeDistancePx);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
@@ -1563,6 +1609,9 @@ public sealed class RadarApp : IDisposable
         // Affix nameplates for elite monsters (shares the _resolveCache populated above).
         var affixSpecs = BuildAffixSpecs();
 
+        // Off-screen entity arrows (shares the _resolveCache populated above).
+        var entityArrowSpecs = BuildEntityArrowSpecs();
+
         // Atlas F10 route — ReadNodes is cheap when the atlas is closed (it gates on the atlas
         // panel's visible bit before any whole-tree scan), so this is safe each world tick. Publishes
         // its own _atlasRender bundle.
@@ -1671,7 +1720,8 @@ public sealed class RadarApp : IDisposable
         // Publish the whole immutable world snapshot atomically for the render thread.
         _world = new WorldSnapshot(true, areaHash, areaLevel, areaCode, _charLevel,
             _entities, _landmarks, _terrain, hpSpecs, itemLabels, affixSpecs, _selectedPaths, _legend, _selectedSnapshot,
-            PreloadHits: _preloadFrame);
+            PreloadHits: _preloadFrame,
+            EntityArrowSpecs: entityArrowSpecs);
     }
 
     /// <summary>
@@ -1836,6 +1886,27 @@ public sealed class RadarApp : IDisposable
             if (lines.Count == 0) continue;
             if (!_live.TryBarComponents(e.Address, out var render, out _)) continue;
             specs.Add(new AffixNameplateSpec(render, System.Linq.Enumerable.ToArray(lines)));
+        }
+        return specs;
+    }
+
+    /// <summary>
+    /// Build the off-screen entity arrow spec list (world rate): for each entity whose first matching
+    /// DisplayRule has <c>OffScreenArrow = true</c> (and EntityArrows.Enabled is set), capture the
+    /// Render component address + packed color + optional label. Shares the _resolveCache populated by
+    /// BuildHpSpecs so Resolve() is called at most once per entity-address this tick.
+    /// </summary>
+    private List<EntityArrowSpec> BuildEntityArrowSpecs()
+    {
+        var specs = new List<EntityArrowSpec>();
+        if (!_settings.EntityArrows.Enabled) return specs;
+        foreach (var e in _entities)
+        {
+            if (!_resolveCache.TryGetValue(e.Address, out var rule)) { rule = _displayRules.Resolve(e); _resolveCache[e.Address] = rule; }
+            if (rule is null || rule.Hide || !rule.OffScreenArrow) continue;
+            if (!_live.TryBarComponents(e.Address, out var render, out _)) continue;
+            var label = _settings.EntityArrows.ShowLabel ? (rule.Label ?? rule.Name) : null;
+            specs.Add(new EntityArrowSpec(render, PackColor(rule.Color), string.IsNullOrEmpty(label) ? null : label));
         }
         return specs;
     }

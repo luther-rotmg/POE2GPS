@@ -37,6 +37,7 @@ public sealed class DisplayRule
     public float Opacity { get; set; } = 1f;
     public float Size { get; set; } = 3f;
     public string? Label { get; set; }                      // optional text label drawn next to the dot
+    public bool OffScreenArrow { get; set; }                // draw an edge arrow when this entity is off-screen
     public bool Navigable { get; set; }                     // reserved (Phase 2): qualifies as a nav target
 }
 

@@ -848,6 +848,18 @@ internal static class DashboardHtml
             <input id="anSearch" class="numin" placeholder="filter affixes…" style="width:100%">
             <div id="anOverrides" style="max-height:240px;overflow:auto"></div>
           </div>
+          <div class="card collapsed" data-card="entity-arrows">
+            <h3>Entity Arrows <small class="tag">opt-in</small></h3>
+            <div class="row"><div class="rl">Enable off-screen arrows<small>edge arrows pointing toward rule-flagged entities outside the radar &mdash; flag rules in the Rules tab</small></div>
+              <label class="sw"><input type="checkbox" data-ea="enabled"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Arrowhead size (px)</div>
+              <input class="numin" type="number" min="4" max="40" step="1" data-ea="size"></div>
+            <div class="row"><div class="rl">Show label</div>
+              <label class="sw"><input type="checkbox" data-ea="showLabel"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Max arrows<small>cap (nearest-first) to avoid edge clutter</small></div>
+              <input class="numin" type="number" min="1" max="40" step="1" data-ea="maxArrows"></div>
+            <div class="row"><div class="rl hint-row">Enable the &ldquo;off-screen arrow&rdquo; flag on individual rules in the Rules tab to choose which entities get arrows.</div></div>
+          </div>
           <div class="card" data-card="terrain">
             <h3>Terrain <span class="tag">&middot; walkable overlay</span></h3>
             <div class="row"><div class="rl">Interior fill<small>wash over walkable cells</small></div>
@@ -1036,7 +1048,9 @@ async function loadSettings(){
     hpBars = s.hpBars || null;
     terrain = s.terrain || null;
     gi = s.groundItems || {};
+    ea = s.entityArrows || {};
     renderHpBars(); renderTerrain(); renderGround();
+    renderEntityArrows();
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
     if(window._syncDiagPanel) window._syncDiagPanel();
   }catch(e){}
@@ -1339,6 +1353,7 @@ function drRow(r,i){
         <input type="number" class="numin sz dr-size" step="0.1" min="0.5" value="${r.size}">
         <input class="mname dr-label" style="flex:1;min-width:70px" value="${esc(r.label||'')}" placeholder="label (optional)">
         <label class="drflag" title="qualify as an auto-path navigation target"><input type="checkbox" class="dr-nav"${r.navigable?' checked':''}> Auto-path</label>
+        <label class="drflag" title="draw an edge arrow when this entity is off-screen"><input type="checkbox" class="dr-arrow"${r.offScreenArrow?' checked':''}> Arrow</label>
       </div>
     </div>`:'';
   return `<div class="mechrow drrow${r.hide?' hideon':''}${open?' open':''}${r.enabled?'':' off'}" data-i="${i}">
@@ -1381,6 +1396,7 @@ function renderDrules(){
     row.querySelector('.dr-size').onchange=e=>{ const v=parseFloat(e.target.value); if(!isNaN(v)){ r.size=v; save(); } };
     row.querySelector('.dr-label').onchange=e=>{ r.label=e.target.value; save(); };
     row.querySelector('.dr-nav').onchange=e=>{ r.navigable=e.target.checked; save(); };
+    row.querySelector('.dr-arrow').onchange=e=>{ r.offScreenArrow=e.target.checked; save(); };
   });
 }
 $('#drAdd')?.addEventListener('click',()=>{ drules.push({enabled:true,name:'New rule',categories:[],match:[],shape:'Circle',color:'#ffd926',opacity:1,size:4,_open:true}); renderDrules(); saveDrules(); });
@@ -2110,6 +2126,28 @@ async function checkVersion(){
   }catch(e){}
 }
 
+/* ── entity arrows card (writes via /api/settings as whole entityArrows object) ── */
+let ea = {};
+function renderEntityArrows(){
+  if(!ea) return;
+  document.querySelectorAll('[data-ea]').forEach(el=>{
+    const k=el.dataset.ea;
+    if(el.type==='checkbox') el.checked=!!ea[k];
+    else if(ea[k]!==undefined && ea[k]!==null) el.value=ea[k];
+  });
+}
+function wireEntityArrows(){
+  document.querySelectorAll('[data-ea]').forEach(el=>{
+    const k=el.dataset.ea;
+    const upd=()=>{
+      ea=ea||{};
+      ea[k]=el.type==='checkbox'?el.checked:(el.type==='number'?parseFloat(el.value||'0'):el.value);
+      saveSetting('entityArrows', ea);
+    };
+    el.onchange=upd;
+  });
+}
+
 /* ── affix nameplates card (own endpoint /api/affix-nameplates) ── */
 function renderAffixNameplates(){
   if(!an) return;
@@ -2148,7 +2186,7 @@ function renderAnOverrides(){
     saveAffixNameplates();
   };});
 }
-wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates();
+wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireEntityArrows();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab

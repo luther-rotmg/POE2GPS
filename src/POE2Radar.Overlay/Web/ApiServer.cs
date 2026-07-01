@@ -1111,6 +1111,9 @@ public sealed class ApiServer : IDisposable
         atlasRouteArrowSpacing   = _settings.AtlasRouteArrowSpacing,
         atlasShowContentIcons    = _settings.AtlasShowContentIcons,
         atlasContentIconSize     = _settings.AtlasContentIconSize,
+        // Off-screen entity arrows: whole settings object + seeded flag (so dashboard can read state).
+        entityArrows             = _settings.EntityArrows,
+        entityArrowsSeeded       = _settings.EntityArrowsSeeded,
     };
 
     /// <summary>Apply only whitelisted radar/visual keys from a posted JSON object; persists on change.</summary>
@@ -1227,6 +1230,10 @@ public sealed class ApiServer : IDisposable
                 case "atlasRouteArrowSpacing" when TryFloat(p.Value, out var f): _settings.AtlasRouteArrowSpacing = Math.Clamp(f, 2f, 60f); applied.Add(p.Name); break;
                 case "atlasShowContentIcons" when TryBool(p.Value, out var b): _settings.AtlasShowContentIcons = b; applied.Add(p.Name); break;
                 case "atlasContentIconSize" when TryFloat(p.Value, out var f): _settings.AtlasContentIconSize = Math.Clamp(f, 8f, 64f); applied.Add(p.Name); break;
+                // Off-screen entity arrows: whole-object write (the dashboard POSTs the full sub-object).
+                case "entityArrows" when p.Value.ValueKind == JsonValueKind.Object:
+                    if (TryParseEntityArrows(p.Value, out var ea)) { _settings.EntityArrows = ea; applied.Add(p.Name); }
+                    break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
         }
@@ -1412,6 +1419,25 @@ public sealed class ApiServer : IDisposable
             return true;
         }
         catch (JsonException) { return false; }
+    }
+
+    /// <summary>Deserialize + sanitize a full <see cref="Config.EntityArrowSettings"/> from a JSON element.
+    /// Clamps Size (4..40), MaxArrows (1..40), MinEdgeDistancePx (0..200). Returns false on malformed input
+    /// — never throws.</summary>
+    private static bool TryParseEntityArrows(JsonElement el, out Config.EntityArrowSettings ea)
+    {
+        ea = new Config.EntityArrowSettings();
+        try
+        {
+            var p = JsonSerializer.Deserialize<Config.EntityArrowSettings>(el.GetRawText(), Json);
+            if (p == null) return false;
+            p.Size = Math.Clamp(p.Size, 4f, 40f);
+            p.MaxArrows = Math.Clamp(p.MaxArrows, 1, 40);
+            p.MinEdgeDistancePx = Math.Clamp(p.MinEdgeDistancePx, 0, 200);
+            ea = p;
+            return true;
+        }
+        catch { return false; }
     }
 
     private static List<string> SanitizeStringList(List<string>? raw)

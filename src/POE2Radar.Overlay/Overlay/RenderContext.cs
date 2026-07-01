@@ -102,6 +102,14 @@ public sealed record MonolithMarker(
 /// render thread reads it from the WorldSnapshot via the zone-load guard.</summary>
 public readonly record struct PreloadHit(string Label, string Tier, string Category, string Color);
 
+/// <summary>One off-screen entity arrow to draw this frame. <see cref="World"/> is the entity's live
+/// world position (re-read from its Render component every render frame via
+/// <c>_liveRender.TryLiveBarAt</c>, exactly like <see cref="HpBarTarget.World"/>); <see cref="Color"/>
+/// is the packed 0xAARRGGBB fill from the matching DisplayRule; <see cref="Label"/> is the optional
+/// rule name drawn beside the arrowhead. The renderer projects <see cref="World"/> via the camera matrix,
+/// determines the off-screen direction, and draws an edge arrow. Null label → no text.</summary>
+public readonly record struct EntityArrowTarget(Vector3 World, uint Color, string? Label);
+
 /// <summary>Live zone-aggregate counts published by the world thread and gated on AreaHash in Tick().</summary>
 public readonly record struct ZoneSummary(
     int MonstersAlive,
@@ -257,4 +265,14 @@ public sealed record RenderContext(
     bool                                  PreloadEnabled = false,
     string                                PreloadAnchor = "top-right",
     int                                   PreloadOffsetX = 0,
-    int                                   PreloadOffsetY = 0);
+    int                                   PreloadOffsetY = 0,
+    // ── Off-screen entity arrows: per-frame list of world positions + colors + labels, built at render
+    // rate from the world tick's EntityArrowSpecs list (same HP-bar pattern: world builds spec → snapshot
+    // → render converts via _liveRender.TryLiveBarAt → RenderContext). Settings mirrored so the renderer
+    // needs no settings reference. Null/empty → none drawn. ──
+    IReadOnlyList<EntityArrowTarget>?     EntityArrows = null,
+    bool                                  EntityArrowsEnabled = false,
+    float                                 EntityArrowSize = 11f,
+    bool                                  EntityArrowShowLabel = true,
+    int                                   EntityArrowMax = 12,
+    int                                   EntityArrowMinEdgePx = 24);
