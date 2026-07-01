@@ -928,6 +928,42 @@ internal static class DashboardHtml
             </div>
             <div style="height:14px"><span class="saved" id="savedMsgKb">&#10003; saved</span></div>
           </div>
+          <div class="card collapsed" data-card="obs-overlay">
+            <h3>OBS Overlay <small class="tag">&middot; browser source</small></h3>
+            <div class="row"><div class="rl">Browser source URL<small>add this as a Browser Source in OBS (transparent background)</small></div>
+              <span style="display:flex;gap:6px;align-items:center">
+                <code id="obsUrl" style="font-size:12px;color:var(--gold-bright)">http://localhost:7777/obs</code>
+                <button class="addbtn" id="obsCopyUrl">Copy</button>
+              </span></div>
+            <div class="row"><div class="rl hint-row">In OBS: add Browser Source, paste the URL above, set width/height to match your game resolution, tick &ldquo;Shutdown source when not visible&rdquo; and &ldquo;Custom CSS: background: transparent;&rdquo;.</div></div>
+            <div class="row"><div class="rl">Show session timer</div>
+              <label class="sw"><input type="checkbox" id="obsShowSessionTimer"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Show zone timer</div>
+              <label class="sw"><input type="checkbox" id="obsShowZoneTimer"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Show area</div>
+              <label class="sw"><input type="checkbox" id="obsShowArea"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Show kills</div>
+              <label class="sw"><input type="checkbox" id="obsShowKills"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Show maps/hr</div>
+              <label class="sw"><input type="checkbox" id="obsShowMapsHr"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Show XP efficiency</div>
+              <label class="sw"><input type="checkbox" id="obsShowXpEff"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Show objective</div>
+              <label class="sw"><input type="checkbox" id="obsShowObjective"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Text colour</div>
+              <input type="color" class="i-color" id="obsTextColor"></div>
+            <div class="row"><div class="rl">Panel opacity (0&ndash;100)</div>
+              <input class="numin" type="number" min="0" max="100" step="5" id="obsPanelOpacity"></div>
+            <div class="row"><div class="rl">Scale (0.5&ndash;3.0)</div>
+              <input class="numin" type="number" min="0.5" max="3.0" step="0.1" id="obsScale"></div>
+            <div class="row"><div class="rl">Corner</div>
+              <select class="numin" id="obsCorner">
+                <option value="top-left">Top-left</option>
+                <option value="top-right">Top-right</option>
+                <option value="bottom-left">Bottom-left</option>
+                <option value="bottom-right">Bottom-right</option>
+              </select></div>
+          </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
@@ -1049,8 +1085,9 @@ async function loadSettings(){
     terrain = s.terrain || null;
     gi = s.groundItems || {};
     ea = s.entityArrows || {};
+    obsOvr = s.obsOverlay || {};
     renderHpBars(); renderTerrain(); renderGround();
-    renderEntityArrows();
+    renderEntityArrows(); renderObsOverlay();
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
     if(window._syncDiagPanel) window._syncDiagPanel();
   }catch(e){}
@@ -2148,6 +2185,42 @@ function wireEntityArrows(){
   });
 }
 
+/* ── OBS overlay card (writes via /api/settings as whole obsOverlay object) ── */
+let obsOvr = {};
+function saveObsOverlay(){ saveSetting('obsOverlay', obsOvr); }
+function renderObsOverlay(){
+  if(!obsOvr) return;
+  const map={showSessionTimer:'obsShowSessionTimer',showZoneTimer:'obsShowZoneTimer',
+    showArea:'obsShowArea',showKills:'obsShowKills',showMapsHr:'obsShowMapsHr',
+    showXpEff:'obsShowXpEff',showObjective:'obsShowObjective'};
+  for(const[k,id] of Object.entries(map)){ const el=document.getElementById(id); if(el) el.checked=!!obsOvr[k]; }
+  const tc=document.getElementById('obsTextColor'); if(tc) tc.value=obsOvr.textColor||'#ffffff';
+  const op=document.getElementById('obsPanelOpacity'); if(op) op.value=obsOvr.panelOpacity??40;
+  const sc=document.getElementById('obsScale'); if(sc) sc.value=obsOvr.scale??1;
+  const co=document.getElementById('obsCorner'); if(co) co.value=obsOvr.corner||'top-left';
+}
+function wireObsOverlay(){
+  const boolMap={showSessionTimer:'obsShowSessionTimer',showZoneTimer:'obsShowZoneTimer',
+    showArea:'obsShowArea',showKills:'obsShowKills',showMapsHr:'obsShowMapsHr',
+    showXpEff:'obsShowXpEff',showObjective:'obsShowObjective'};
+  for(const[k,id] of Object.entries(boolMap)){
+    const el=document.getElementById(id);
+    if(el) el.onchange=()=>{ obsOvr=obsOvr||{}; obsOvr[k]=el.checked; saveObsOverlay(); };
+  }
+  const tc=document.getElementById('obsTextColor');
+  if(tc) tc.onchange=()=>{ obsOvr=obsOvr||{}; obsOvr.textColor=tc.value; saveObsOverlay(); };
+  const op=document.getElementById('obsPanelOpacity');
+  if(op) op.onchange=()=>{ const v=parseFloat(op.value); if(!isNaN(v)){ obsOvr=obsOvr||{}; obsOvr.panelOpacity=Math.max(0,Math.min(100,v)); saveObsOverlay(); }};
+  const sc=document.getElementById('obsScale');
+  if(sc) sc.onchange=()=>{ const v=parseFloat(sc.value); if(!isNaN(v)){ obsOvr=obsOvr||{}; obsOvr.scale=Math.max(0.5,Math.min(3.0,v)); saveObsOverlay(); }};
+  const co=document.getElementById('obsCorner');
+  if(co) co.onchange=()=>{ obsOvr=obsOvr||{}; obsOvr.corner=co.value; saveObsOverlay(); };
+  document.getElementById('obsCopyUrl')?.addEventListener('click',()=>{
+    navigator.clipboard.writeText('http://localhost:7777/obs').catch(()=>{});
+    const b=document.getElementById('obsCopyUrl'); if(b){ const t=b.textContent; b.textContent='Copied!'; setTimeout(()=>b.textContent=t,1200); }
+  });
+}
+
 /* ── affix nameplates card (own endpoint /api/affix-nameplates) ── */
 function renderAffixNameplates(){
   if(!an) return;
@@ -2186,7 +2259,7 @@ function renderAnOverrides(){
     saveAffixNameplates();
   };});
 }
-wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireEntityArrows();
+wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireEntityArrows(); wireObsOverlay();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab
