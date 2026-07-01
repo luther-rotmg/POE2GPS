@@ -12,7 +12,7 @@ internal static class ObsOverlayHtml
 </style></head><body><div id="wrap"></div>
 <script>
   async function j(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;return r.json();}
-  let cfg={showSessionTimer:true,showArea:true,showKills:true,showMapsHr:true};
+  let cfg={showSessionTimer:true,showZoneTimer:true,showArea:true,showKills:true,showMapsHr:true};
   async function loadCfg(){try{const s=await j('/api/settings');cfg=s.obsOverlay||cfg;applyStyle(cfg);}catch(e){}}
   function applyStyle(c){const w=document.getElementById('wrap');
     w.style.setProperty('--op',(c.panelOpacity??40)/100);
