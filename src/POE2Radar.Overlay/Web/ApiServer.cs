@@ -1258,7 +1258,14 @@ public sealed class ApiServer : IDisposable
                 // Discord Presence: whole-object write; ClientId sanitized to digits only (≤32); templates capped at 128 chars.
                 // ClientId is never logged — only stored and passed to the SDK.
                 case "discordPresence" when p.Value.ValueKind == JsonValueKind.Object:
-                    if (TryParseDiscordPresence(p.Value, out var dp)) { _settings.DiscordPresence = dp; applied.Add(p.Name); }
+                    if (TryParseDiscordPresence(p.Value, out var dp))
+                    {
+                        // ClientId is omitted from the GET (write-only, stream-safe), so the dashboard POSTs it
+                        // blank when the user edits other RP fields. An empty incoming id must PRESERVE the saved
+                        // one (not wipe it) — to stop RP you toggle Enabled off, you don't blank the id.
+                        if (string.IsNullOrEmpty(dp.ClientId)) dp.ClientId = _settings.DiscordPresence.ClientId;
+                        _settings.DiscordPresence = dp; applied.Add(p.Name);
+                    }
                     break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
