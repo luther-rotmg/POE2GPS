@@ -46,4 +46,12 @@ public class AutoUpdatePolicyTests
         Assert.Equal("abc123", AutoUpdatePolicy.ExpectedSha(txt, "POE2GPS-v0.20.0-win-x64.zip"));
         Assert.Null(AutoUpdatePolicy.ExpectedSha(txt, "missing.zip"));
     }
+
+    [Fact]
+    public void ExpectedSha_handles_binary_mode_asterisk_marker()
+    {
+        // sha256sum binary-mode format uses a single space + '*' before the filename.
+        var txt = "abc123 *POE2GPS-v0.20.0-win-x64.zip\n";
+        Assert.Equal("abc123", AutoUpdatePolicy.ExpectedSha(txt, "POE2GPS-v0.20.0-win-x64.zip"));
+    }
 }
