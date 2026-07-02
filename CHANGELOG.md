@@ -3,6 +3,14 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.19.0] — 2026-07-01
+### Added — 🩸 **Buff Icons** *(opt-in — see what dangerous buff an elite is running)*
+- 🩸 **Know why that rare just got scary.** When enabled, POE2GPS reads the **active buffs on elite monsters** (Rare / Unique / Boss) and floats short **tier-colored tags below the mob** — a **fire/cold/lightning aura**, **enrage**, a **shield**, **haste**, a temporal bubble, etc. — with a **countdown** for temporary ones. Now you can *see* the empowering aura before it deletes you.
+- 🎚️ **Curated + self-growing.** A built-in catalog maps the combat-relevant buffs to a readable name + **danger tier** 🔴 *Deadly* · 🟠 *Notable* · 🔵 *Minor*; anything uncatalogued is auto-tiered by heuristic and prettified, while pure engine-noise buffs are suppressed. A **"Display ALL" diagnostic** + an **observed-buffs panel** in the dashboard let you (and the community) grow the catalog from real fights — same approach as affix nameplates and Preload Alert.
+- 🎛️ Tune it in **⚙️ Settings → Buff Icons**: enable, danger tier, per-rarity (Rare/Unique/Magic), max tags, show-all.
+- 🥷 **Stealth-first, off by default.** When off it reads **nothing** — buff reads are gated on the feature and only run for elites you're near, and each buff's id is cached. Fully in line with the Stealth Reads pass.
+- 🛡️ **100% read-only.** One new (patch-validated) memory read, **no input, no pricing, no writes**. Tags render through the same camera projection as HP bars / affix nameplates.
+
 ## [0.18.0] — 2026-07-01
 ### Changed — 🥷 **Performance v3: Stealth Reads** *(read the game less, see exactly the same thing)*
 - 🩶 **The overlay now reads the game's memory far less often** — a smaller footprint and less CPU, with **zero change to anything you see**. Every dot, HP bar, nameplate, arrow, route, and the atlas behave identically; the only thing that moves is the **`reads/sec` counter** (watch it drop live in the dashboard / `⚙️` status).
