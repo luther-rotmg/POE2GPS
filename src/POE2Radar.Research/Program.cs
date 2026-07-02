@@ -7933,6 +7933,36 @@ static int RunBuffs(ProcessHandle process, MemoryReader reader, nint? entityOver
         Console.WriteLine($"  +0x{i:X3}  {hexPart}");
     }
 
+    // ── id-finder: from a buff-list entry, follow pointer hops 1-2 levels deep and read UTF-16/UTF-8,
+    //    returning the first id-like string + the hop path that reached it. Robust to unknown offsets.
+    static bool IdLike(string s) => s.Length is >= 4 and <= 128 &&
+        s.All(c => c < 0x7f && (char.IsLetterOrDigit(c) || c is '_' or '-' or '/' or '.'));
+    string? ReadStr(nint addr)
+    {
+        if (addr == 0) return null;
+        var w = reader.ReadStringUtf16(addr, 128); if (!string.IsNullOrEmpty(w) && IdLike(w)) return w;
+        var a = reader.ReadStringUtf8(addr, 128);  if (!string.IsNullOrEmpty(a) && IdLike(a)) return a;
+        return null;
+    }
+    (string id, string hop)? TryBuffId(nint entry, int stride)
+    {
+        int[] hopSlots = { 0x00, 0x08, 0x10, 0x18, 0x20 };
+        foreach (var h1 in hopSlots)
+        {
+            if (h1 >= stride) continue;
+            var p1 = SafePtr(reader, entry + h1);
+            if (p1 == 0) continue;
+            if (ReadStr(p1) is { } s1) return (s1, $"entry+0x{h1:X}=>*");
+            foreach (var h2 in hopSlots)
+            {
+                var p2 = SafePtr(reader, p1 + h2);
+                if (p2 == 0) continue;
+                if (ReadStr(p2) is { } s2) return (s2, $"entry+0x{h1:X}=>+0x{h2:X}=>*");
+            }
+        }
+        return null;
+    }
+
     // ── 3) Static single-shot analysis ────────────────────────────────────────────────────────────
     void PrintBuffList(nint comp)
     {
@@ -7969,40 +7999,45 @@ static int RunBuffs(ProcessHandle process, MemoryReader reader, nint? entityOver
                 // Try to decode buff id strings from several intra-entry pointer slots.
                 // GH2 layout: entry+0x00 = BuffDefinition ptr → first qword = UTF-16 id ptr.
                 // Also try entry+0x08 in case the first qword is a vtable.
+                var deepDumped = 0;
                 for (long i = 0; i < count; i++)
                 {
                     var entry = first + (nint)(i * stride);
-                    var decoded = false;
-                    foreach (var defOff in new[] { 0x00, 0x08 })
+                    if (TryBuffId(entry, stride) is { } h)
                     {
-                        var defPtr = SafePtr(reader, entry + defOff);
-                        if (defPtr == 0) continue;
-                        // The definition's first qword should be a pointer to the UTF-16 id string.
-                        foreach (var idOff in new[] { 0x00, 0x08 })
-                        {
-                            var idPtr = SafePtr(reader, defPtr + idOff);
-                            if (idPtr == 0) continue;
-                            var id = reader.ReadStringUtf16(idPtr, 128);
-                            if (string.IsNullOrEmpty(id) || id.Length < 3 || !id.All(c => c < 0x7f && (char.IsLetterOrDigit(c) || c == '_')))
-                                continue;
-                            // Read timer float and charge int from common offsets.
-                            reader.TryReadStruct<float>(entry + 0x10, out var timer);
-                            reader.TryReadStruct<int>(entry + 0x18, out var charges);
-                            reader.TryReadStruct<int>(entry + 0x1C, out var charges2);
-                            Console.WriteLine($"    [{i,2}] defOff+0x{defOff:X2} idOff+0x{idOff:X2}  id=\"{id}\"  timer={timer:F2}s  charges={charges}/{charges2}");
-                            decoded = true;
-                            break;
-                        }
-                        if (decoded) break;
+                        reader.TryReadStruct<float>(entry + 0x10, out var timer);
+                        reader.TryReadStruct<int>(entry + 0x18, out var charges);
+                        Console.WriteLine($"    [{i,2}] id=\"{h.id}\"  ({h.hop})  f@+0x10={timer:F2}  i@+0x18={charges}");
                     }
-                    if (!decoded)
+                    else
                     {
-                        // Print the raw first three qwords as hex so the output is still actionable.
                         var raw = new byte[Math.Min(stride, 0x20)];
                         if (reader.TryReadBytes(entry, raw) >= 8)
                         {
                             var hex = string.Join(' ', Enumerable.Range(0, raw.Length).Select(j => raw[j].ToString("X2")));
-                            Console.WriteLine($"    [{i,2}] (no id decoded)  raw: {hex}");
+                            Console.WriteLine($"    [{i,2}] (no id)  raw: {hex}");
+                        }
+                        // Deep-dump the first few undecoded entries' q0/q1 targets so the layout is visible by eye.
+                        if (deepDumped < 3)
+                        {
+                            deepDumped++;
+                            for (var qi = 0; qi < 2; qi++)
+                            {
+                                var p = SafePtr(reader, entry + qi * 8);
+                                if (p == 0) continue;
+                                var d = new byte[0x60];
+                                var dg = reader.TryReadBytes(p, d);
+                                if (dg < 16) continue;
+                                Console.WriteLine($"         entry[{i}].q{qi} -> 0x{p:X} :");
+                                for (var k = 0; k < dg; k += 16)
+                                {
+                                    var n2 = Math.Min(16, dg - k);
+                                    var hx = string.Join(' ', Enumerable.Range(0, n2).Select(j => d[k + j].ToString("X2")));
+                                    var s16 = reader.ReadStringUtf16(p + k, 48);
+                                    var ann = !string.IsNullOrEmpty(s16) && IdLike(s16) ? $"   \"{s16}\"" : "";
+                                    Console.WriteLine($"            +0x{k:X2}  {hx}{ann}");
+                                }
+                            }
                         }
                     }
                 }
@@ -8065,21 +8100,10 @@ static int RunBuffs(ProcessHandle process, MemoryReader reader, nint? entityOver
                 for (long i = 0; i < count; i++)
                 {
                     var entry = first + (nint)(i * stride);
-                    foreach (var defOff in new[] { 0x00, 0x08 })
+                    if (TryBuffId(entry, stride) is { } h)
                     {
-                        var defPtr = SafePtr(reader, entry + defOff);
-                        if (defPtr == 0) continue;
-                        foreach (var idOff in new[] { 0x00, 0x08 })
-                        {
-                            var idPtr = SafePtr(reader, defPtr + idOff);
-                            if (idPtr == 0) continue;
-                            var id = reader.ReadStringUtf16(idPtr, 128);
-                            if (string.IsNullOrEmpty(id) || id.Length < 3 || !id.All(c => c < 0x7f && (char.IsLetterOrDigit(c) || c == '_')))
-                                continue;
-                            reader.TryReadStruct<float>(entry + 0x10, out var timer);
-                            ids.Add($"{id}({timer:F1}s)");
-                            break;
-                        }
+                        reader.TryReadStruct<float>(entry + 0x10, out var timer);
+                        ids.Add($"{h.id}({timer:F1}s)");
                     }
                 }
                 if (ids.Count > 0) break;
