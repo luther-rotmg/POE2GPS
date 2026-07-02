@@ -1546,7 +1546,7 @@ public sealed class RadarApp : IDisposable
             ZoneSummaryHud: _settings.ZoneSummary,
             AffixTargets: _affixFrame,
             AffixNameplates: _settings.AffixNameplates,
-            BuffTargets: _buffFrame,
+            BuffTargets: worldFresh ? (IReadOnlyList<BuffNameplateTarget>)_buffFrame : System.Array.Empty<BuffNameplateTarget>(),
             BuffNameplates: _settings.BuffNameplates,
             AtlasRouteArrowSpacing: _settings.AtlasRouteArrowSpacing,
             AtlasContentIcons: _settings.AtlasShowContentIcons,
