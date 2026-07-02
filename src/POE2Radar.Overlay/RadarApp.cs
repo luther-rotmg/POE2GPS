@@ -367,7 +367,7 @@ public sealed class RadarApp : IDisposable
     /// up within its ~1.5 s cadence). The user's escape hatch when stuck on the health banner after a patch.</summary>
     public void RequestRescan() => _resolvedSlot = 0;
 
-    public RadarApp(ProcessHandle process, MemoryReader reader)
+    internal RadarApp(ProcessHandle process, MemoryReader reader, Task<UpdateChecker.Result>? updateTask = null)
     {
         _process = process;
         _reader = reader;
@@ -681,16 +681,17 @@ public sealed class RadarApp : IDisposable
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
-        // Best-effort version check against GitHub (non-blocking; never fails startup). The only outbound
-        // request the overlay makes beyond loopback — opt out via CheckForUpdates for zero network egress.
-        if (_settings.CheckForUpdates)
+        // Update result comes from Program.cs (checked pre-attach so Mode gating lives in one place).
+        if (updateTask != null)
         {
-            _ = Task.Run(async () =>
+            _ = updateTask.ContinueWith(t =>
             {
-                var u = await UpdateChecker.CheckAsync();
+                if (t.Status != TaskStatus.RanToCompletion) return;
+                var u = t.Result;
                 _update = u;
                 if (u.UpdateAvailable)
-                    ConsoleTheme.WarnLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}. Download: {u.Url} ***\n");
+                    ConsoleTheme.WarnLine($"\n*** UPDATE AVAILABLE: {u.Latest} — you have v{u.Current}." +
+                        (_settings.AutoUpdate.Mode == "silent" ? " Installing automatically on next launch." : $" Download: {u.Url}") + " ***\n");
                 else
                     ConsoleTheme.Accent($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
             });
@@ -908,6 +909,8 @@ public sealed class RadarApp : IDisposable
             latest = u?.Latest,
             updateAvailable = u?.UpdateAvailable ?? false,
             url = u?.Url ?? UpdateChecker.ReleasesPage,
+            mode = _settings.AutoUpdate.Mode,
+            pendingVersion = POE2Radar.Overlay.Update.AutoUpdater.PendingVersion(Path.GetDirectoryName(Environment.ProcessPath) ?? "."),
         };
     }
 
@@ -923,6 +926,17 @@ public sealed class RadarApp : IDisposable
 
     public void Run()
     {
+        // v0.19.1: if this launch applied a staged update, mark it good after running briefly without crashing.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(8));
+                var d = Path.GetDirectoryName(Environment.ProcessPath);
+                if (d != null) POE2Radar.Overlay.Update.AutoUpdater.ConfirmHealthy(d);
+            }
+            catch { }
+        });
         _gameHwnd = OverlayNative.FindWindowForProcess(_process.ProcessId);
         // The heavy world-rate walk runs on its OWN thread (Phase 3); the render loop below only does
         // fast per-frame reads + draw, so a slow world pass (big pack, zone load) never hitches frames.

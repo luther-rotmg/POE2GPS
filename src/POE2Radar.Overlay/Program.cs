@@ -4,6 +4,7 @@ using ComTypes = System.Runtime.InteropServices.ComTypes;
 using POE2Radar.Core;
 using POE2Radar.Core.Stealth;
 using POE2Radar.Overlay;
+using POE2Radar.Overlay.Config;
 
 // ── Self-relaunch under a random hardlink name (identity hygiene) ──
 if (!args.Contains("--launched"))
@@ -29,6 +30,18 @@ if (!args.Contains("--launched"))
     }
 }
 
+// ── v0.19.1 auto-update (runs only in the --launched real instance, before attaching to the game) ──
+var installDir = Path.GetDirectoryName(Environment.ProcessPath);
+var startupSettings = RadarSettings.Load();
+if (installDir != null)
+{
+    // A crash-looping update rolls back to Overlay.old.exe (safety — runs regardless of mode).
+    if (POE2Radar.Overlay.Update.AutoUpdater.RollbackIfCrashLooping(installDir)) return 0;
+    // Apply an update staged by a previous session, then relaunch into it.
+    if (startupSettings.AutoUpdate.Mode == "silent"
+        && POE2Radar.Overlay.Update.AutoUpdater.ApplyStagedIfPresent(UpdateChecker.Current, installDir)) return 0;
+}
+
 var myName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "Overlay");
 Console.Title = myName;                 // neutral/randomized — anti-detection (do NOT brand the title)
 POE2Radar.Overlay.Overlay.ConsoleTheme.Banner();
@@ -46,7 +59,15 @@ var reader = new MemoryReader(process);
 Console.WriteLine();
 POE2Radar.Overlay.Overlay.ConsoleTheme.Accent("Running. The overlay connects automatically once you're in a zone. Ctrl+C to exit.");
 
-using var app = new RadarApp(process, reader);
+// Update check (banner) + silent background staging for NEXT launch — never blocks startup.
+System.Threading.Tasks.Task<UpdateChecker.Result>? updateTask = null;
+if (startupSettings.AutoUpdate.Mode != "off")
+    updateTask = System.Threading.Tasks.Task.Run(() => UpdateChecker.CheckAsync());
+if (startupSettings.AutoUpdate.Mode == "silent" && installDir != null)
+    _ = System.Threading.Tasks.Task.Run(() =>
+        POE2Radar.Overlay.Update.AutoUpdater.CheckAndStageAsync("silent", UpdateChecker.Current, installDir, System.Threading.CancellationToken.None));
+
+using var app = new RadarApp(process, reader, updateTask);
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; app.RequestShutdown(); };
 app.Run();
 
