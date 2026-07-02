@@ -14,7 +14,9 @@ PoE2 stops updating a UI element's `RelativePos` once the game culls it off-scre
 
 ## Architecture (2–3 sentences)
 
-A pure, unit-tested Core solver (`AffineFit2D`) fits a 2D affine `screen = M·grid + b` by least squares from the on-screen nodes' `(grid, screen)` pairs. `AtlasMark` gains `GridX/GridY` (already read; just forwarded). In `OverlayRenderer.DrawAtlas`, on-screen nodes are collected as anchors, the affine is fit once per frame, and each off-screen **arrowed** node's target screen position is computed from its grid via the fit, then the existing `DrawEdgeArrow` points there.
+A pure, unit-tested Core solver (`AffineFit2D`) fits a 2D affine `canvas = M·grid + b` by least squares. The **world thread** (which reads ALL atlas nodes, not just the tracked ones) collects every on-screen node as a `(grid, canvas)` anchor and fits the affine once per tick, publishing just the 6 coefficients in `RenderContext.AtlasGridFit`. `AtlasMark` forwards each node's `GridX/GridY`. In `OverlayRenderer.DrawAtlas`, an **off-screen arrowed** node's canvas position is recomputed from its grid via the fit (`grid → canvas`), projected `canvas → screen` with the existing atlas homography, and the existing `DrawEdgeArrow` points there.
+
+**Why the world thread fits (not the renderer):** `DrawAtlas` only receives the *tracked* marks (Citadels etc.), which are sparse — usually too few on-screen to fit against. The world thread sees all ~600 nodes, so it has plenty of on-screen anchors. Only the 6-coefficient affine crosses to the render thread (tiny, no per-frame node-list copy).
 
 ## Tech Stack
 
@@ -41,31 +43,57 @@ A pure, unit-tested Core solver (`AffineFit2D`) fits a 2D affine `screen = M·gr
 
 Rationale for affine (not perspective): `AtlasProjection` is already affine (persp coeffs 0), and the atlas grid is a near-regular lattice, so `grid → canvas → screen` is affine. Minor lattice jitter only perturbs the estimate slightly — for an **arrow (direction only, clamped to the screen edge)** that is more than accurate enough.
 
-### 2. Overlay plumbing — carry grid into the mark
+### 2. Overlay plumbing — carry grid into the mark + the fit into RenderContext
 
-`src/POE2Radar.Overlay/Overlay/RenderContext.cs` — add `int GridX = 0, int GridY = 0` to `AtlasMark` (append as optional params so no other call site breaks).
-`src/POE2Radar.Overlay/RadarApp.cs` (~3261, `BuildAtlasMarks`) — pass `n.GridX, n.GridY` into the `new AtlasMark(...)`. The SR-10 cull's `m with { X=…, Y=… }` (RadarApp.cs ~1388) preserves the new fields automatically (record `with`), so they reach the renderer unchanged.
+- `src/POE2Radar.Overlay/Overlay/RenderContext.cs`:
+  - Add `int GridX = 0, int GridY = 0` to `AtlasMark` (append as optional params — no other call site breaks).
+  - Add `AffineFit2D.Affine? AtlasGridFit = null` to the `RenderContext` record (the world-thread `grid → canvas` fit, or null when it couldn't be fit).
+- `src/POE2Radar.Overlay/RadarApp.cs`:
+  - `BuildAtlasMarks` (~3261): pass `n.GridX, n.GridY` into `new AtlasMark(...)`. The SR-10 cull's `m with { X=…, Y=… }` (~1388) preserves the new fields (record `with`), so they reach the renderer unchanged.
+  - Publish the fit into the `RenderContext` (`AtlasGridFit: _atlasGridFit`).
 
-### 3. Render — grid-based arrow direction in `DrawAtlas`
+### 3. World thread — fit `grid → canvas` from all on-screen nodes
 
-`src/POE2Radar.Overlay/Overlay/OverlayRenderer.cs` (`DrawAtlas`, ~306-382):
+`src/POE2Radar.Overlay/RadarApp.cs` — a small **isolated, additive** helper (does NOT modify the fragile freeze / mark-build logic), called in the atlas world-tick where the node list and the atlas scale `pscale = (winH/1600)·zoom` are known:
 
-- **Pass 1 (existing loop):** as it iterates marks and computes each `(sx, sy)` + `onScreen`, when a node is on-screen collect an anchor `(GridX, GridY, sx, sy)` into a reused scratch list. Draw on-screen rings exactly as today (unchanged).
-- **Off-screen arrowed nodes:** instead of drawing an arrow toward the (garbage) projected relPos, **defer** them — collect the off-screen `n.Arrow` marks into a small scratch list during pass 1 (they need the fit, which isn't ready until all anchors are seen).
-- **After pass 1:** `if (AffineFit2D.TryFit(anchors, out var fit) && anchors.Count >= MIN_ANCHORS)` then for each deferred off-screen arrowed node compute `(ax, ay) = AffineFit2D.Apply(fit, n.GridX, n.GridY)` and `DrawEdgeArrow(rt, ax, ay, ccx, ccy, W, H, col, n.Label)`. If the fit fails (too few anchors / degenerate), draw no off-screen arrows (graceful — same as v0.19.5).
-- `MIN_ANCHORS` = a small constant (e.g. 4) for a stable fit.
-- Reuse scratch lists (fields on `OverlayRenderer`) to avoid per-frame allocation, matching the renderer's existing allocation discipline.
+- `Affine? FitAtlasGrid(IReadOnlyList<AtlasNodeLive> nodes, float pscale, float w, float h)`:
+  - Iterate `nodes`; for each, compute its mark-space canvas centre `cx = AtlasCentre(n.X, n.W)`, `cy = AtlasCentre(n.Y, n.H)` and a rough screen `sx = cx·pscale, sy = cy·pscale`. If `sx,sy` are within `[0,w]×[0,h]` (a generous on-screen test — on-screen nodes have VALID relPos), add anchor `(n.GridX, n.GridY, cx, cy)` to a reused scratch list.
+  - `return AffineFit2D.TryFit(anchors, out var fit) && anchors.Count >= MIN_ANCHORS ? fit : (Affine?)null;` (`MIN_ANCHORS = 4`).
+  - Store into `_atlasGridFit` (a field) for `RenderContext`. Reuse a scratch anchor list (field) — no per-tick allocation.
+- Note: the fit is `grid → canvas` (canvas = mark-space `AtlasCentre(relPos)`), matching how on-screen ring marks are positioned, so the renderer can reuse the existing homography for `canvas → screen`.
+
+### 4. Render — grid-based arrow direction in `DrawAtlas`
+
+`src/POE2Radar.Overlay/Overlay/OverlayRenderer.cs` (`DrawAtlas`, ~306-382) — replace v0.19.5's `if (!onScreen) continue;` off-screen branch with:
+
+```csharp
+if (!onScreen)
+{
+    // Grid-based arrow: recompute the target from its STABLE grid coord (off-screen relPos is garbage).
+    if (n.Arrow && ctx.AtlasGridFit is { } gf)
+    {
+        var (cx, cy) = AffineFit2D.Apply(gf, n.GridX, n.GridY);        // grid → canvas (world-thread fit)
+        var aw = h6 * cx + h7 * cy + 1f;                               // canvas → screen (same homography)
+        if (MathF.Abs(aw) >= 1e-6f)
+            DrawEdgeArrow(rt, (h0*cx + h1*cy + h2) / aw, (h3*cx + h4*cy + h5) / aw, ccx, ccy, W, H, col, n.Label);
+    }
+    continue;
+}
+```
+
+On-screen rings, route lines, and chevrons are untouched. If `AtlasGridFit` is null (fit failed), no off-screen arrows draw (graceful — same as v0.19.5).
 
 ### Edge cases
 
-- **< MIN_ANCHORS on-screen** (panned to sparse/empty area): no fit → no off-screen arrows that frame. Acceptable (rare; nothing to anchor against anyway).
-- **Degenerate/collinear anchors:** `det(N) ≈ 0` → `TryFit` false → no arrows.
-- **A node with grid (0,0):** used as an anchor like any other if on-screen (its grid is real). No special-casing needed — on-screen nodes have valid grid reads.
-- **Numerical:** `double` math in the solver; results cast to `float` for the draw. The edge-arrow already clamps to the screen border, so a mildly-off estimate still yields the right border direction.
+- **< MIN_ANCHORS on-screen** (panned to a sparse/empty area, or window dims not yet set): `FitAtlasGrid` returns null → `AtlasGridFit` null → no off-screen arrows that tick. Acceptable (rare; nothing to anchor against anyway).
+- **Degenerate/collinear anchors:** `det(N) ≈ 0` → `TryFit` false → null → no arrows.
+- **Grid (0,0):** used as an anchor like any other if on-screen (its grid is real). On-screen nodes have valid grid reads.
+- **Numerical:** `double` math in the solver; result cast to `float` at draw. `DrawEdgeArrow` clamps to the screen border, so a mildly-off estimate still yields the right border direction.
+- **Off-screen node with garbage relPos that projects on-screen:** its ring may still mis-draw (pre-existing, separate from arrows); not addressed here.
 
 ## Data flow
 
-`Poe2Atlas.ReadNodes` (GridX/GridY already read) → `BuildAtlasMarks` bakes `GridX/GridY` into `AtlasMark` → SR-10 cull passes them through (`with`) → `RenderContext.AtlasNodes` → `DrawAtlas`: on-screen anchors → `AffineFit2D.TryFit` → off-screen arrowed nodes projected via `Apply` → `DrawEdgeArrow`.
+`Poe2Atlas.ReadNodes` (GridX/GridY + relPos already read) → **world thread**: `FitAtlasGrid(nodes, pscale, w, h)` collects all on-screen nodes as `(grid, canvas)` anchors → `AffineFit2D.TryFit` → `_atlasGridFit` (`Affine?`); `BuildAtlasMarks` forwards `GridX/GridY` into `AtlasMark` → published in `RenderContext` (`AtlasNodes` + `AtlasGridFit`). **Render thread** `DrawAtlas`: for an off-screen arrowed mark, `AffineFit2D.Apply(AtlasGridFit, GridX, GridY)` → canvas → existing homography → screen → `DrawEdgeArrow`.
 
 ## Testing
 
