@@ -134,6 +134,7 @@ public sealed class OverlayRenderer : IDisposable
                 DrawEntityArrows(rt, ctx);                 // off-screen entity edge arrows (uniques/bosses/etc.)
                 DrawItemLabels(rt, ctx);                   // priced unique drops over their loot icons
                 DrawAffixNameplates(rt, ctx);              // tiered affix text above elite mobs
+                DrawBuffNameplates(rt, ctx);               // tier-colored buff tags below elite mobs
                 if (ctx.Map.IsVisible)
                     DrawMap(rt, ctx);                      // terrain + dots + on-map path polylines
                 else
@@ -703,6 +704,53 @@ public sealed class OverlayRenderer : IDisposable
                     _                 => minor,
                 };
                 rt.DrawText(line.Name, _tf!,
+                    new Rect(sx - panelW/2f + 3f, cy + 1f, sx + panelW/2f - 2f, cy + lineH),
+                    _bStyle, DrawTextOptions.Clip);
+                cy += lineH;
+            }
+        }
+    }
+
+    /// <summary>Tier-colored buff tags drawn BELOW each elite mob (affixes sit above). Same camera-matrix
+    /// projection as affix nameplates; lines pre-filtered/pre-formatted (with timers) by BuildBuffSpecs.</summary>
+    private void DrawBuffNameplates(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        var cfg = ctx.BuffNameplates;
+        if (cfg is null || !cfg.Enabled) return;
+        if (ctx.CameraMatrix is not { } m || ctx.BuffTargets is not { Count: > 0 } targets) return;
+        float W = ctx.WindowWidth, H = ctx.WindowHeight;
+        var deadly  = ParseColor(cfg.DeadlyColor,  1f);
+        var notable = ParseColor(cfg.NotableColor, 1f);
+        var minor   = ParseColor(cfg.MinorColor,   1f);
+        const float lineH = 15f;
+        foreach (var t in targets)
+        {
+            var w = t.World;
+            var cw = w.X*m[3] + w.Y*m[7] + w.Z*m[11] + m[15];
+            if (cw <= 0.0001f) continue;
+            var cxp = w.X*m[0] + w.Y*m[4] + w.Z*m[8] + m[12];
+            var cyp = w.X*m[1] + w.Y*m[5] + w.Z*m[9] + m[13];
+            var sx = (cxp/cw/2f + 0.5f) * W;
+            var sy = (0.5f - cyp/cw/2f) * H;
+            if (sx < 0 || sx > W || sy < 0 || sy > H) continue;
+
+            var lines = t.Lines;
+            if (lines.Length == 0) continue;
+            var longest = 0; foreach (var l in lines) if (l.Text.Length > longest) longest = l.Text.Length;
+            float panelW = MathF.Max(60f, 4.5f * longest + 8f);
+            float topY = sy + cfg.OffsetY;                          // stack DOWNWARD from OffsetY (below the mob)
+            var panel = new Vortice.RawRectF(sx - panelW/2f, topY, sx + panelW/2f, topY + lines.Length * lineH);
+            rt.FillRectangle(panel, _bPanel!);
+            float cy = topY;
+            foreach (var line in lines)
+            {
+                _bStyle!.Color = line.Tier switch
+                {
+                    BuffTier.Deadly  => deadly,
+                    BuffTier.Notable => notable,
+                    _                => minor,
+                };
+                rt.DrawText(line.Text, _tf!,
                     new Rect(sx - panelW/2f + 3f, cy + 1f, sx + panelW/2f - 2f, cy + lineH),
                     _bStyle, DrawTextOptions.Clip);
                 cy += lineH;
