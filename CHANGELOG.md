@@ -3,6 +3,11 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.19.2] — 2026-07-02
+### Fixed — 🧭 **Atlas markers piling up at the top**
+- 🧭 **Fixed Atlas node markers / route arrows piling up at the top of the screen** instead of sitting on their nodes. This was a regression from the v0.18.0 Stealth-Reads pass: the Atlas overlay could **freeze its layout on an indeterminate view** (most often right after the new auto-updater relaunched the app, before the window size was known) and hold stale positions. It now never freezes on an unresolved view and always uses live node positions.
+- 🔬 **Reads were never the problem.** An in-game diagnostic confirmed the memory reads, offsets, and panel detection were all correct on 0.5.4 — this was purely overlay render logic. Still **100% read-only**. Huge thanks to the community members who reported it and ran the diagnostic. ❤️
+
 ## [0.19.1] — 2026-07-02
 ### Added — 🔄 **Silent Auto-Update** & 🧭 **True-North Map**
 - 🔄 **POE2GPS updates itself.** When a newer release exists on our GitHub, POE2GPS downloads it in the background, verifies it (**SHA-256**), and installs it on your next launch — no more hunting for a zip. Fully **opt-out-able**: **⚙️ Settings → Auto-Update → Silent / Notify only / Off**.
