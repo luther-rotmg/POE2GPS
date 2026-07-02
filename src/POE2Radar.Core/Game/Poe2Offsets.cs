@@ -115,16 +115,19 @@ public static class Poe2
 
     // ── Components (offsets from the component object base) ───────────────────
 
-    /// <summary>Life — ✓ re-validated live 2026-06-04 after the patch (980/980 HP, 427 mana, 274 ES).
-    /// The vital blocks slid (each grew ~8 bytes): Health 0x1A8→0x1B0, Mana 0x1F8→0x208, ES 0x230→0x248.
-    /// The VitalStruct's internal layout (Max@+0x2C, Current@+0x30) was UNCHANGED — only these
-    /// per-vital offsets moved. (Prior build: 442/442 HP, 271 mana, 186/186 ES at 0x1A8/0x1F8/0x230.)</summary>
+    /// <summary>Life — vital blocks. History: pre-0.5.4 Health/Mana/ES = 0x1A8/0x1F8/0x230; 0.5.4 (re-validated
+    /// 2026-06-04, 980/980 HP, 427 mana, 274 ES) slid to 0x1B0/0x208/0x248. 2026-07-02 patch: **EnergyShield
+    /// drifted again 0x248→0x264** (confirmed by 2 users + the vital-offset auto-heal); Health/Mana unchanged
+    /// (no drift warning). The VitalStruct internal layout (Max@+0x2C, Current@+0x30) is UNCHANGED throughout.
+    /// TODO: re-validate the full table in-game via Research --vitals and bump the README badge once the new
+    /// PoE2 patch version is confirmed. The auto-heal (Poe2Live.EnsureVitalOffsets) still self-heals any
+    /// further per-user drift, so a wrong constant degrades gracefully rather than breaking.</summary>
     public static class Life
     {
         public const int Owner        = 0x008; // ComponentHeader.EntityPtr (back-pointer to entity)
-        public const int Health       = 0x1B0; // ✓ VitalStruct (was 0x1A8 pre-patch)
-        public const int Mana         = 0x208; // ✓ VitalStruct (was 0x1F8 pre-patch)
-        public const int EnergyShield = 0x248; // ✓ VitalStruct (was 0x230 pre-patch)
+        public const int Health       = 0x1B0; // ✓ VitalStruct (was 0x1A8 pre-0.5.4)
+        public const int Mana         = 0x208; // ✓ VitalStruct (was 0x1F8 pre-0.5.4)
+        public const int EnergyShield = 0x264; // ✓ VitalStruct — drifted 0x248→0x264 on the 2026-07-02 patch (was 0x230 pre-0.5.4)
     }
 
     /// <summary>VitalStruct — ✓ (Max/Current confirmed). Reuse <see cref="VitalStruct"/> for reads.</summary>

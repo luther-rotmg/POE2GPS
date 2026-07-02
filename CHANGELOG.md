@@ -3,6 +3,14 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.19.3] — 2026-07-02
+### Fixed
+- 🖥️ **No more freeze/crash when you click or select text in the console.** Windows "Quick Edit" mode pauses a console app's output the instant you select text — which froze POE2GPS (it stops reading the game) and looked like a crash, especially when trying to copy a diagnostic line. Quick Edit is now disabled, so interacting with the console window never freezes the overlay.
+- 🩸 **Energy Shield read corrected for the current patch** — the ES vital offset drifted (`0x248 → 0x264`) and is now updated. (POE2GPS already self-heals per-user offset drift, so ES kept working — this just makes the built-in value correct and silences the drift notice.)
+### Added
+- 📝 **`config/poe2gps.log`** — everything printed to the console is now also written to a log file next to the exe, so diagnostics are easy to copy and report, and any unhandled error writes a full stack trace there. Bug reports just got a lot more actionable.
+- 🙏 Thanks to **Diamondsr** for the reports + diagnostics that drove these fixes (added to Credits).
+
 ## [0.19.2] — 2026-07-02
 ### Fixed — 🧭 **Atlas markers piling up at the top**
 - 🧭 **Fixed Atlas node markers / route arrows piling up at the top of the screen** instead of sitting on their nodes. This was a regression from the v0.18.0 Stealth-Reads pass: the Atlas overlay could **freeze its layout on an indeterminate view** (most often right after the new auto-updater relaunched the app, before the window size was known) and hold stale positions. It now never freezes on an unresolved view and always uses live node positions.

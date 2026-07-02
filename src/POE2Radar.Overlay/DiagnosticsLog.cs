@@ -38,17 +38,18 @@ internal static class DiagnosticsLog
             // recreates Console.Out, which would discard our tee if done afterwards. (ConsoleTheme no
             // longer sets it — this is the single place the console encoding is configured.)
             try { Console.OutputEncoding = Encoding.UTF8; } catch { /* redirected/legacy — leave default */ }
-            // Tee the console through us so every line printed is also captured to the file.
+            // Tee the console (stdout AND stderr) through us so every line printed is captured to the file.
             Console.SetOut(new TeeTextWriter(Console.Out));
-            WriteRaw($"\n=== POE2GPS v{UpdateChecker.Current} session start ===\n");
+            try { Console.SetError(new TeeTextWriter(Console.Error)); } catch { }
+            WriteRaw($"\r\n=== POE2GPS v{UpdateChecker.Current} session start ===\r\n");
         }
         catch { _fw = null; }
 
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            WriteRaw($"[UNHANDLED] {(e.ExceptionObject as Exception)?.ToString() ?? e.ExceptionObject?.ToString()}\n");
+            WriteRaw($"[UNHANDLED] {(e.ExceptionObject as Exception)?.ToString() ?? e.ExceptionObject?.ToString()}\r\n");
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            WriteRaw($"[UNOBSERVED-TASK] {e.Exception}\n");
+            WriteRaw($"[UNOBSERVED-TASK] {e.Exception}\r\n");
             e.SetObserved();   // don't escalate an unobserved task fault into a process kill
         };
     }
@@ -72,7 +73,7 @@ internal static class DiagnosticsLog
         public override Encoding Encoding => _console.Encoding;
         public override void Write(char value) { _console.Write(value); WriteRaw(value.ToString()); }
         public override void Write(string? value) { _console.Write(value); if (value != null) WriteRaw(value); }
-        public override void WriteLine(string? value) { _console.WriteLine(value); WriteRaw((value ?? "") + "\n"); }
+        public override void WriteLine(string? value) { _console.WriteLine(value); WriteRaw((value ?? "") + "\r\n"); }
         public override void Flush() { _console.Flush(); }
     }
 }
