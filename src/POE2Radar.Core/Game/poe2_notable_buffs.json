@@ -1,0 +1,14 @@
+{
+  "igniting_presence_aura": { "name": "Igniting Presence", "tier": "Notable" },
+  "chilling_presence_aura": { "name": "Chilling Presence", "tier": "Notable" },
+  "shocking_presence_aura": { "name": "Shocking Presence", "tier": "Notable" },
+  "physical_damage_aura": { "name": "Physical Aura", "tier": "Notable" },
+  "monster_enrage": { "name": "Enraged", "tier": "Deadly" },
+  "monster_berserk": { "name": "Berserk", "tier": "Deadly" },
+  "damage_reflection": { "name": "Reflects Damage", "tier": "Deadly" },
+  "energy_shield_regen": { "name": "Shielded", "tier": "Notable" },
+  "unwavering_stance": { "name": "Unstoppable", "tier": "Notable" },
+  "temporal_bubble": { "name": "Temporal Bubble", "tier": "Deadly" },
+  "haste_aura": { "name": "Haste", "tier": "Notable" },
+  "grace_aura": { "name": "Grace", "tier": "Minor" }
+}

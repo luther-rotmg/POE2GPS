@@ -27,6 +27,7 @@
     <EmbeddedResource Include="Game\atlas_maps.json" />
     <EmbeddedResource Include="Game\atlas_content.json" />
     <EmbeddedResource Include="Game\preload_catalog.json" />
+    <EmbeddedResource Include="Game\poe2_notable_buffs.json" />
   </ItemGroup>
 
 </Project>
