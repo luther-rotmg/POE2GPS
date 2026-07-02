@@ -774,8 +774,10 @@ public sealed class Poe2Live
                 _buffId[se] = id;
             }
             if (string.IsNullOrEmpty(id)) continue;
-            _reader.TryReadStruct<float>(se + Poe2.StatusEffect.Timer, out var t);
-            var perm = float.IsInfinity(t) || float.IsNaN(t) || t <= 0f;
+            // Keep the buff (its id read cleanly); a failed/Inf/≤0 timer read → treat as permanent (no
+            // countdown), never dropping a known buff. Folding the read result in keeps Permanent authoritative.
+            var perm = !_reader.TryReadStruct<float>(se + Poe2.StatusEffect.Timer, out var t)
+                || float.IsInfinity(t) || float.IsNaN(t) || t <= 0f;
             result.Add(new BuffState(id, perm ? 0f : t, perm));
         }
         return result;
