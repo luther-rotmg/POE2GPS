@@ -23,7 +23,7 @@ Remove-Item "$root/publish/*.pdb" -Force -ErrorAction SilentlyContinue
 & "$PSScriptRoot/scripts/scrub-strings.ps1" -ExePath "$root/publish/Overlay.exe"
 if ($LASTEXITCODE -ne 0) { throw "string-scrub failed" }
 
-Copy-Item "$root/README.md", "$root/LICENSE" "$root/publish/" -Force
+Copy-Item "$root/README.md", "$root/LICENSE", "$root/CHANGELOG.md" "$root/publish/" -Force
 $zip = "$root/POE2GPS-$Version-win-x64.zip"
 Compress-Archive -Path "$root/publish/*" -DestinationPath $zip -Force
 Write-Host "Built: $zip"

@@ -43,7 +43,7 @@ POE2GPS does three things **never** — and an automated compliance gate *fails 
 |---|---|
 | Sends input to the game (no `SendInput`, no auto-flask, no automation) | Just **draws** — you press every key yourself |
 | Writes to / injects into the game (no `WriteProcessMemory`, no byte-patching) | Opens the game **read-only** (`PROCESS_VM_READ`) |
-| Phones home (no poe.ninja pricing, no telemetry) | Everything is **local** |
+| Phones home (no poe.ninja pricing, no telemetry) | Makes one **update check + opt-out-able silent auto-update**, from `github.com/luther-rotmg/POE2GPS` only (HTTPS, **SHA-256 verified**); no telemetry, no pricing — see **⚙️ Settings → Auto-Update** (Silent / Notify only / Off). `Overlay.old.exe` is kept for one generation as a manual rollback. |
 
 > **Honest note on risk.** Reading another process's memory is a gray area — GGG has long been agnostic toward passive read-only overlays, but it's *tolerated, not blessed*. POE2GPS removes the categories GGG explicitly prohibits (input automation, process modification) to sit in the lowest-risk bucket. It's a personal/educational tool; you're responsible for how you use it. SmartScreen/AV may warn on an unsigned memory-reading exe — expected. **For the strongest setup, run PoE2 as a *limited Windows user* that's denied access to the POE2GPS folder — [step-by-step below](#-recommended-the-limited-user-setup).**
 
@@ -129,7 +129,7 @@ Pick your next objective, fast-cycle to the boss across the zone, pop the menu o
 
 ## 🚀 Download (no build required)
 
-Grab the latest **`POE2GPS-vX.Y.Z-win-x64.zip`** from the [**Releases**](https://github.com/luther-rotmg/POE2GPS/releases) page, unzip, and run **`Overlay.exe` as Administrator** (memory reads require it) with PoE2 already running. Self-contained — no .NET install needed. *(It relaunches itself once under a random name — that's the process-randomization feature, not malware.)*
+Grab the latest **`POE2GPS-vX.Y.Z-win-x64.zip`** from the [**Releases**](https://github.com/luther-rotmg/POE2GPS/releases) page, unzip, and run **`Overlay.exe` as Administrator** (memory reads require it) with PoE2 already running. Self-contained — no .NET install needed. *(It relaunches itself once under a random name — that's the process-randomization feature, not malware.)* On launch POE2GPS may update itself from our GitHub Releases; set Auto-Update to 'Notify only' or 'Off' in the dashboard to disable.
 
 ## ⌨️ Hotkeys
 

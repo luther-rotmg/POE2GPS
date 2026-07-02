@@ -47,8 +47,17 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ github.ref_name }}"
-          Copy-Item README.md, LICENSE publish/
+          Copy-Item README.md, LICENSE, CHANGELOG.md publish/
           Compress-Archive -Path publish/* -DestinationPath "POE2GPS-$tag-win-x64.zip" -Force
+
+      - name: Write SHA-256 checksum
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $zip = "POE2GPS-$tag-win-x64.zip"
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          # sha256sum format: "<hash><space><space><filename>"
+          "$hash  $zip" | Set-Content -Path "POE2GPS-$tag-sha256.txt" -Encoding ascii -NoNewline
 
       - name: Extract changelog notes for this tag
         shell: pwsh
@@ -73,6 +82,8 @@ jobs:
       - name: Create / update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: POE2GPS-*-win-x64.zip
+          files: |
+            POE2GPS-*-win-x64.zip
+            POE2GPS-*-sha256.txt
           body_path: RELEASE_NOTES.md
           generate_release_notes: true

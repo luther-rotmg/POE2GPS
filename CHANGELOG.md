@@ -3,6 +3,13 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.19.1] — 2026-07-02
+### Added — 🔄 **Silent Auto-Update** & 🧭 **True-North Map**
+- 🔄 **POE2GPS updates itself.** When a newer release exists on our GitHub, POE2GPS downloads it in the background, verifies it (**SHA-256**), and installs it on your next launch — no more hunting for a zip. Fully **opt-out-able**: **⚙️ Settings → Auto-Update → Silent / Notify only / Off**.
+- 🛡️ **Safe by design.** Downloads only from `github.com/luther-rotmg/POE2GPS` over HTTPS, verifies the checksum before installing, swaps only `Overlay.exe`, and **never touches your `config/` or `icons/`**. Keeps `Overlay.old.exe` for one generation and auto-rolls-back if a new build fails to start. No telemetry, no pricing — still 100% read-only of the game.
+- 🧭 **Web minimap now matches the game.** The `/map` view renders **isometrically**, aligned with the in-game overlay instead of the old top-down/rotated look — with a one-tap **iso ↔ top-down** toggle.
+- 📄 **`CHANGELOG.md` now ships next to the exe** (and lands beside it on auto-update).
+
 ## [0.19.0] — 2026-07-01
 ### Added — 🩸 **Buff Icons** *(opt-in — see what dangerous buff an elite is running)*
 - 🩸 **Know why that rare just got scary.** When enabled, POE2GPS reads the **active buffs on elite monsters** (Rare / Unique / Boss) and floats short **tier-colored tags below the mob** — a **fire/cold/lightning aura**, **enrage**, a **shield**, **haste**, a temporal bubble, etc. — with a **countdown** for temporary ones. Now you can *see* the empowering aura before it deletes you.
