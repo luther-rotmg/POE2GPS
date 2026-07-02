@@ -13,12 +13,10 @@ public class BuffCatalogTests
 
     [Fact] public void Resolve_uncurated_uses_heuristic_tier()
     {
-        // "*aura*" heuristic → Notable
-        Assert.Equal(BuffTier.Notable, BuffCatalog.Shared.Resolve("some_fire_aura").Tier);
-        // enrage → Deadly
-        Assert.Equal(BuffTier.Deadly, BuffCatalog.Shared.Resolve("monster_enrage").Tier);
-        // plain → Minor
-        Assert.Equal(BuffTier.Minor, BuffCatalog.Shared.Resolve("something_plain").Tier);
+        // all three ids are UNCURATED (not in poe2_notable_buffs.json) so the heuristic path is exercised:
+        Assert.Equal(BuffTier.Notable, BuffCatalog.Shared.Resolve("some_fire_aura").Tier);   // "*aura*" → Notable
+        Assert.Equal(BuffTier.Deadly,  BuffCatalog.Shared.Resolve("boss_enrage_phase").Tier); // "*enrage*" → Deadly
+        Assert.Equal(BuffTier.Minor,   BuffCatalog.Shared.Resolve("something_plain").Tier);   // no signal → Minor
     }
 
     [Fact] public void Select_junk_suppressed_by_default_shown_under_displayAll()
@@ -35,14 +33,13 @@ public class BuffCatalogTests
     {
         var lines = BuffCatalog.Shared.Select(new[] { B("some_fire_aura", timer: 3.2f, perm: false) }, F(BuffTier.Minor));
         Assert.Single(lines);
-        Assert.EndsWith("4s", lines[0].Text);   // ceil(3.2) = 4
-        Assert.DoesNotContain("s", lines[0].Text.Replace("4s", ""));  // only the timer suffix carries an 's'... (sanity)
+        Assert.Equal("Some Fire Aura 4s", lines[0].Text);   // prettified name + ceil(3.2)s
     }
 
     [Fact] public void Select_permanent_has_no_timer_suffix()
     {
         var lines = BuffCatalog.Shared.Select(new[] { B("some_fire_aura", perm: true) }, F(BuffTier.Minor));
-        Assert.False(lines[0].Text.EndsWith("s") && char.IsDigit(lines[0].Text[^2]));
+        Assert.Equal("Some Fire Aura", lines[0].Text);   // permanent → name only, no timer suffix
     }
 
     [Fact] public void Select_caps_at_maxLines_and_orders_deadly_first()
