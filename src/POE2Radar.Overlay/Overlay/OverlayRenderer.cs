@@ -321,18 +321,13 @@ public sealed class OverlayRenderer : IDisposable
             var onScreen = sx >= 0 && sx <= W && sy >= 0 && sy <= H;
             var col = string.IsNullOrEmpty(n.Color) ? new Color4(0.235f, 0.86f, 1f, 1f) : ParseColor(n.Color, 1f);
 
-            // OFF-SCREEN: if this map has the arrow rule, draw an edge arrow pointing toward it; else skip.
-            // GHOST-ARROW GUARD (v0.19.4): PoE2 stops updating a node's RelativePos once the game culls it
-            // off-screen, so a far-off node's read position is stale/garbage — projecting to hundreds of
-            // thousands of pixels. An arrow toward that points at nothing real ("ghost arrow"). Only draw
-            // the arrow when the target projects to a PLAUSIBLE distance (a legit near-off-screen node lands
-            // within a few screen-widths; garbage lands 50×+ out). Also rejects NaN (Abs(NaN) < x is false).
-            if (!onScreen)
-            {
-                if (n.Arrow && MathF.Abs(sx) < W * 10f && MathF.Abs(sy) < H * 10f)
-                    DrawEdgeArrow(rt, sx, sy, ccx, ccy, W, H, col, n.Label);
-                continue;
-            }
+            // OFF-SCREEN: skip. Off-screen atlas edge-arrows are DISABLED (v0.19.5). PoE2 stops updating a
+            // node's RelativePos once the game culls it off-screen, so the position is stale/garbage and the
+            // arrow pointed at nothing real ("ghost arrows to nothing"). The codebase already handles this
+            // same problem for route chevrons (drawn only when both endpoints are on-screen). On-screen node
+            // rings below are unaffected. A grid-based reliable-direction version (using each node's stable
+            // GridX/GridY instead of the unreliable off-screen RelativePos) is the planned follow-up.
+            if (!onScreen) continue;
 
             var c = new NumVec2(sx, sy);
             if (n.Selected || n.Arrow || n.Nav)

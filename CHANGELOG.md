@@ -3,6 +3,10 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.19.5] — 2026-07-02
+### Changed
+- 🧭 **Off-screen Atlas arrows turned off** (the "ghost arrows pointing at nothing"). PoE2 stops updating a map node's position the moment it scrolls off-screen, so any arrow toward an off-screen target was aiming at stale/garbage coordinates — there's no reliable way to point at it from the off-screen position. On-screen node **rings are unchanged**. Bringing off-screen arrows back *accurately* (using each node's stable grid coordinate instead of the unreliable position) is a planned follow-up.
+
 ## [0.19.4] — 2026-07-02
 ### Fixed
 - 🧭 **No more "ghost" Atlas arrows pointing at nothing.** PoE2 stops updating an Atlas node's position the moment it scrolls off-screen, so arrows toward far-off tracked maps/Citadels were aiming at stale/garbage positions — arrows to empty space. The overlay now suppresses an arrow whose target projects to an implausible distance (the tell-tale of a culled node's junk position), so you only see arrows that actually point at something. On-screen node rings are unchanged. (Accurate arrows to *never-seen* distant nodes need a grid-based follow-up — those were the ghosts, and never pointed correctly.)
