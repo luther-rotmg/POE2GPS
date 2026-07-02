@@ -66,7 +66,8 @@ public readonly record struct AtlasMark(
     int Biome, int IconType,
     string? Label = null, string? Color = null,
     bool Arrow = false, bool Nav = false, nint Element = 0,
-    IReadOnlyList<string>? ContentIcons = null, bool Visible = false);
+    IReadOnlyList<string>? ContentIcons = null, bool Visible = false,
+    int GridX = 0, int GridY = 0);
 
 /// <summary>One auto-route polyline from the player's current atlas node (or the accessible frontier) to a
 /// tracked target tile. <see cref="Points"/> are canvas-space node centers (relPos), projected with the
@@ -264,6 +265,9 @@ public sealed record RenderContext(
     // AtlasContentIcons mirrors AtlasShowContentIcons from settings; AtlasContentIconSize is the glyph size px.
     bool                                  AtlasContentIcons = true,
     float                                 AtlasContentIconSize = 26f,
+    // Grid→canvas affine fit (world thread, from all on-screen nodes); null when it couldn't be fit.
+    // The renderer uses it to place OFF-screen arrowed atlas nodes from their stable grid coordinate.
+    POE2Radar.Core.AffineFit2D.Affine?    AtlasGridFit = null,
     // ── Preload Alert: zone-scoped hits (built once on zone entry, persisted until next zone change).
     // Gated on zone-load guard (PreloadEnabled && worldFresh && snap.AreaHash == _areaHash).
     // Null/empty → nothing drawn. Anchor/Offset mirror ZoneSummary/SessionHud layout conventions. ──
