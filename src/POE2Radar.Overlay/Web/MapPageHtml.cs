@@ -14,16 +14,23 @@ internal static class MapPageHtml
 </style></head><body>
 <canvas id="c"></canvas>
 <div id="hud">connecting…</div>
-<div id="z"><button id="zo">&minus;</button><button id="zi">+</button></div>
+<div id="z"><button id="vt" title="Isometric / Top-down">◇</button><button id="zo">&minus;</button><button id="zi">+</button></div>
 <script>
   const cv=document.getElementById('c'),ctx=cv.getContext('2d'),hud=document.getElementById('hud');
   const TAU=Math.PI*2;
+  const COS=0.780430, SIN=0.625243;                         // cos/sin(38.7°) — mirrors MapProjection.cs
+  let mapView=localStorage.getItem('poe2gps.mapView')||'iso'; // 'iso' (default, matches in-game) | 'top'
   let scale=4, terrain=null, tw=0, th=0, thash=null, player={x:0,y:0}, ents=[], areaLabel='—';
   const RC={Normal:'#b9b9c0',Magic:'#6a8bff',Rare:'#ffd52e',Unique:'#ff7a1a'}; // monster rarity palette
+  // Grid delta (dx,dy) -> canvas delta. Isometric matches the in-game overlay; top-down keeps the old axis-aligned look.
+  function proj(dx,dy){ return mapView==='iso'
+      ? { sx: scale*(dx-dy)*COS, sy: scale*(-(dx+dy))*SIN }
+      : { sx: dx*scale,          sy: dy*scale }; }
   function fit(){ cv.width=innerWidth; cv.height=innerHeight; }
   addEventListener('resize',fit); fit();
   document.getElementById('zi').onclick=()=>{ scale=Math.min(16,scale+1); draw(); };
   document.getElementById('zo').onclick=()=>{ scale=Math.max(1,scale-1); draw(); };
+  document.getElementById('vt').onclick=()=>{ mapView=(mapView==='iso'?'top':'iso'); localStorage.setItem('poe2gps.mapView',mapView); draw(); };
   async function j(u){const r=await fetch(u,{cache:'no-store'});if(!r.ok)throw 0;return r.json();}
   function buildTerrain(b64,w,h){
     const bin=atob(b64), off=document.createElement('canvas'); off.width=w; off.height=h;
@@ -47,13 +54,26 @@ internal static class MapPageHtml
     draw();
   }
   function draw(){
+    ctx.setTransform(1,0,0,1,0,0);                          // reset any prior transform
     ctx.clearRect(0,0,cv.width,cv.height);
     const cx=cv.width/2, cy=cv.height/2;
-    if(terrain){ ctx.imageSmoothingEnabled=false;
-      ctx.drawImage(terrain, cx-player.x*scale, cy-player.y*scale, tw*scale, th*scale); }
+    if(terrain){
+      ctx.imageSmoothingEnabled=false;
+      if(mapView==='iso'){
+        // Warp the grid-space bitmap into isometric screen-space (same affine as the in-game overlay).
+        const p00=proj(-player.x,-player.y);
+        ctx.save();
+        ctx.setTransform(COS*scale, -SIN*scale, -COS*scale, -SIN*scale, cx+p00.sx, cy+p00.sy);
+        ctx.drawImage(terrain, 0, 0, tw, th);
+        ctx.restore();
+      } else {
+        ctx.drawImage(terrain, cx-player.x*scale, cy-player.y*scale, tw*scale, th*scale);
+      }
+    }
     for(const e of ents){
       if(e.hpMax>0 && e.hpCur<=0) continue;                 // skip corpses
-      const x=cx+(e.x-player.x)*scale, y=cy+(e.y-player.y)*scale;
+      const d=proj(e.x-player.x, e.y-player.y);
+      const x=cx+d.sx, y=cy+d.sy;
       if(x<-4||y<-4||x>cv.width+4||y>cv.height+4) continue;  // off-canvas cull
       let col='#8a8a90';
       if(e.poi) col='#e0b341';
@@ -64,7 +84,7 @@ internal static class MapPageHtml
     }
     ctx.fillStyle='#39d353'; ctx.beginPath(); ctx.arc(cx,cy,4,0,TAU); ctx.fill();
     ctx.strokeStyle='#0a0'; ctx.lineWidth=1.5; ctx.stroke();
-    hud.textContent=areaLabel+'  ·  '+ents.length+'  dots  ·  z'+scale;
+    hud.textContent=areaLabel+'  ·  '+ents.length+'  dots  ·  '+(mapView==='iso'?'iso':'top')+'  ·  z'+scale;
   }
   tick(); setInterval(tick,1000);
 </script></body></html>
