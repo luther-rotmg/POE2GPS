@@ -34,8 +34,10 @@ internal static class ConsoleTheme
     {
         if (_inited) return;
         _inited = true;
-        try { Console.OutputEncoding = Encoding.UTF8; } catch { /* leave default */ }
+        // Console encoding is set once, earlier, by DiagnosticsLog.Init (before it tees Console.Out —
+        // setting the encoding here would recreate Console.Out and drop that tee). Just colors + modes here.
         if (!EnableVt()) _noColor = true;
+        DisableQuickEdit();
     }
 
     public static void Banner()
@@ -78,7 +80,10 @@ internal static class ConsoleTheme
     };
 
     private const int STD_OUTPUT_HANDLE = -11;
+    private const int STD_INPUT_HANDLE = -10;
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
+    private const uint ENABLE_QUICK_EDIT_INPUT = 0x0040;   // click-drag text selection (pauses output → freeze)
+    private const uint ENABLE_EXTENDED_FLAGS   = 0x0080;   // required for the QuickEdit change to take effect
     [DllImport("kernel32.dll", SetLastError = true)] private static extern nint GetStdHandle(int nStdHandle);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetConsoleMode(nint hConsoleHandle, out uint lpMode);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetConsoleMode(nint hConsoleHandle, uint dwMode);
@@ -93,5 +98,22 @@ internal static class ConsoleTheme
             return SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
         }
         catch { return false; }
+    }
+
+    /// <summary>Turn OFF the console's "Quick Edit" mode. With it ON (the Windows default), clicking or
+    /// drag-selecting text in the console window PAUSES all output — which freezes the overlay's reader
+    /// threads until you deselect, and reads to users as a crash/hang (esp. when trying to copy a
+    /// diagnostic line). Diagnostics remain copyable from <c>config/poe2gps.log</c> (see DiagnosticsLog).
+    /// Best-effort: no-op if there's no real console (redirected/service).</summary>
+    private static void DisableQuickEdit()
+    {
+        try
+        {
+            var h = GetStdHandle(STD_INPUT_HANDLE);
+            if (h == 0 || h == -1) return;
+            if (!GetConsoleMode(h, out var mode)) return;
+            SetConsoleMode(h, (mode | ENABLE_EXTENDED_FLAGS) & ~ENABLE_QUICK_EDIT_INPUT);
+        }
+        catch { /* no console / not permitted — leave as-is */ }
     }
 }

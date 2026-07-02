@@ -30,6 +30,10 @@ if (!args.Contains("--launched"))
     }
 }
 
+// Diagnostics: tee console → config/poe2gps.log + capture unhandled exceptions (so crash/offset reports
+// are copyable from a file and carry a stack trace). Must run FIRST in the --launched instance.
+POE2Radar.Overlay.DiagnosticsLog.Init();
+
 // ── v0.19.1 auto-update (runs only in the --launched real instance, before attaching to the game) ──
 var installDir = Path.GetDirectoryName(Environment.ProcessPath);
 var startupSettings = RadarSettings.Load();

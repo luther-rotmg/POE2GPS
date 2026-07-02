@@ -211,6 +211,8 @@ Forked from **[Sikaka/POE2Radar](https://github.com/Sikaka/POE2Radar)** (MIT); p
 
 Huge thanks to **torx** and **Kaonashi** for their reverse-engineering legwork, in-game testing, and tireless memory-capture work on the Expedition rumours research — going dump after dump to help crack the game's layout. This project runs on exactly that kind of community effort. 🙌
 
+And thanks to **Diamondsr** for sharp bug reports, in-game testing, and running the diagnostics that pinpointed the Atlas and vitals issues. 🐛🔍
+
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE).
