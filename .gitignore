@@ -436,3 +436,6 @@ probes/output/
 
 # v0.11.0 perf before/after comparison builds (local dev)
 perf-compare/
+
+# Cloudflare Wrangler local cache (account id/email — never commit)
+cloudflare-worker/.wrangler/
