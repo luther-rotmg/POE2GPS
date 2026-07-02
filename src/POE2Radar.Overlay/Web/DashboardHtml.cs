@@ -1012,6 +1012,18 @@ internal static class DashboardHtml
               </span></div>
             <div class="row"><div class="rl hint-row">Only does work while a browser has it open &mdash; it costs nothing when nobody's viewing. Turn on Remote Access (LAN) above to open it from another device.</div></div>
           </div>
+          <div class="card collapsed" data-card="auto-update">
+            <h3>Auto-Update</h3>
+            <label>Mode
+              <select id="au-mode">
+                <option value="silent">Silent (download &amp; install automatically)</option>
+                <option value="notify">Notify only (tell me, don't install)</option>
+                <option value="off">Off (no update check)</option>
+              </select>
+            </label>
+            <div id="au-pending" class="muted" style="margin-top:6px"></div>
+            <p class="muted" style="margin-top:6px">Updates come only from github.com/luther-rotmg/POE2GPS over HTTPS (SHA-256 verified). No telemetry, no pricing.</p>
+          </div>
         </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsg">&#10003; saved to config</span></div>
       </section>
@@ -1136,8 +1148,10 @@ async function loadSettings(){
     ea = s.entityArrows || {};
     obsOvr = s.obsOverlay || {};
     discordPres = s.discordPresence || {};
+    autoUpd = s.autoUpdate || { mode: 'silent' };
     renderHpBars(); renderTerrain(); renderGround();
     renderEntityArrows(); renderObsOverlay(); renderDiscordPresence(); renderLanInfo();
+    renderAutoUpdate(s);
     const mc=document.getElementById('mapCopyUrl'); if(mc) mc.onclick=()=>{ navigator.clipboard.writeText(location.origin+'/map').catch(()=>{}); const t=mc.textContent; mc.textContent='Copied!'; setTimeout(()=>mc.textContent=t,1200); };
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
     bn = await getJSON('/api/buff-nameplates').catch(()=>null); renderBuffNameplates();
@@ -2215,6 +2229,7 @@ async function checkVersion(){
       const m=$('#updateMsg'); if(m) m.textContent=' — '+(v.latest||'')+' (you have v'+(v.current||'?')+')';
       b.href=v.url||'#'; b.hidden=false; b.style.display='flex';
     }
+    renderAuPending(v);
   }catch(e){}
 }
 
@@ -2334,6 +2349,25 @@ async function renderLanInfo(){
   }catch(e){}
 }
 
+/* ── auto-update card (writes via /api/settings as autoUpdate object) ── */
+let autoUpd = { mode: 'silent' };
+function renderAutoUpdate(s){
+  if(s && s.autoUpdate) autoUpd = s.autoUpdate;
+  const sel=document.getElementById('au-mode'); if(sel) sel.value = autoUpd.mode || 'silent';
+}
+function saveAutoUpdate(){
+  const sel=document.getElementById('au-mode'); if(!sel) return;
+  autoUpd = { mode: sel.value };
+  saveSetting('autoUpdate', autoUpd);
+}
+function wireAutoUpdate(){
+  const sel=document.getElementById('au-mode'); if(sel) sel.onchange = saveAutoUpdate;
+}
+function renderAuPending(v){
+  const el=document.getElementById('au-pending'); if(!el) return;
+  el.textContent = (v && v.pendingVersion) ? ('Update '+v.pendingVersion+' downloaded — installs on next launch.') : '';
+}
+
 /* ── affix nameplates card (own endpoint /api/affix-nameplates) ── */
 function renderAffixNameplates(){
   if(!an) return;
@@ -2398,7 +2432,7 @@ async function renderBnObserved(){
                                 : '<div class="row"><div class="rl"><small>none observed yet</small></div></div>';
   }catch(e){}
 }
-wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireBuffNameplates(); wireEntityArrows(); wireObsOverlay(); wireDiscordPresence();
+wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireBuffNameplates(); wireEntityArrows(); wireObsOverlay(); wireDiscordPresence(); wireAutoUpdate();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab
