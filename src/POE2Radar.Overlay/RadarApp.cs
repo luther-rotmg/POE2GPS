@@ -84,11 +84,17 @@ public sealed class RadarApp : IDisposable
     // element scrolled off-screen, or garbage) — without the fallback those bad reads streaked lines.
     private readonly record struct AtlasPoint(nint El, float Bx, float By, float W = 40f, float H = 40f);
     private sealed record AtlasAutoSpec(IReadOnlyList<AtlasPoint> Points, string? Color, int Hops);
-    private sealed record AtlasRender(bool Open, IReadOnlyList<AtlasMark> Marks, AtlasPoint? Start, AtlasPoint? End, IReadOnlyList<AtlasPoint>? Route, AtlasPoint? Current, IReadOnlyList<AtlasAutoSpec> AutoRoutes)
+    private sealed record AtlasRender(bool Open, IReadOnlyList<AtlasMark> Marks, AtlasPoint? Start, AtlasPoint? End, IReadOnlyList<AtlasPoint>? Route, AtlasPoint? Current, IReadOnlyList<AtlasAutoSpec> AutoRoutes,
+        POE2Radar.Core.AffineFit2D.Affine? GridFit = null)   // v0.19.6: world-thread grid→canvas fit; render thread places off-screen arrows from stable grid coords. null default keeps Closed unchanged.
     {
         public static readonly AtlasRender Closed = new(false, Array.Empty<AtlasMark>(), null, null, null, null, Array.Empty<AtlasAutoSpec>());
     }
     private volatile AtlasRender _atlasRender = AtlasRender.Closed;
+    // v0.19.6 grid-arrow fit: world-thread scratch — reused per tick (no per-tick alloc). Collects on-screen
+    // nodes as (grid, canvas) anchors; AffineFit2D fits grid→canvas so the render thread can place OFF-screen
+    // arrows from each node's STABLE grid coord (its off-screen relPos is garbage once the game culls it).
+    private readonly List<(float Gx, float Gy, float Sx, float Sy)> _atlasAnchorBuf = new();
+    private const int AtlasMinAnchors = 4;   // need a well-conditioned fit; fewer on-screen anchors → skip arrows this tick
     private readonly List<AtlasMark> _atlasMarkFrame = new();   // render-thread scratch: marks with per-frame-fresh relPos
     private readonly List<NumVec2> _atlasRouteFrame = new();               // render-thread scratch (rebuilt per frame)
     private readonly List<AtlasRouteInfo> _atlasAutoRoutesFrame = new();   // render-thread scratch (rebuilt per frame)
@@ -1521,6 +1527,7 @@ public sealed class RadarApp : IDisposable
             ResolveTile: _resolveTileDraw,
             AtlasOpen: ar.Open,
             AtlasNodes: _atlasMarkFrame,   // marks with per-frame-fresh relPos (smooth pan), not the baked world-walk positions
+            AtlasGridFit: ar.GridFit,      // v0.19.6: world-thread grid→canvas fit for off-screen arrows (null → none)
             // Projection: derived live from the window height (UIscale = winH/1600) × live zoom. relPos is
             // read live so pan is already handled; the zoom term is folded into the scale. atlasProj is the
             // 8-coeff homography layout {h0..h7}. This is what makes non-1080p resolutions line up.
@@ -3264,7 +3271,8 @@ public sealed class RadarApp : IDisposable
                 n.W, n.H,
                 isTracked, n.HasContent, n.Visited, n.Unlocked,
                 n.Biome, n.IconType, label, color, isArrow, isNav, n.Element,
-                contentIcons, n.Visible));
+                contentIcons, n.Visible,
+                n.GridX, n.GridY));   // v0.19.6: stable grid coord for off-screen grid-based arrows
         }
 
         // ── Auto-routing (improvement 1): "you are here" + a route to each tracked tile ──────────────
@@ -3299,7 +3307,32 @@ public sealed class RadarApp : IDisposable
         }
 
         var (start, end, route) = BuildAtlasRoute(nodes, startGrid, goalGrid);
-        _atlasRender = new AtlasRender(true, marks, start, end, route, currentPt, autoRoutes);   // publish atomically
+        // v0.19.6: fit grid→canvas from all on-screen nodes (world thread sees every node — plenty of anchors),
+        // published in the record so the render thread reads it lock-free with the marks. Recomputed only when
+        // not frozen; when frozen the previous fit rides the retained record (view is static → still valid).
+        var gridFit = FitAtlasGrid(nodes, pscale, vw, vh);
+        _atlasRender = new AtlasRender(true, marks, start, end, route, currentPt, autoRoutes, gridFit);   // publish atomically
+    }
+
+    /// <summary>v0.19.6 — fit an affine <c>grid → canvas</c> (canvas = mark-space <c>AtlasCentre(relPos)</c>) from
+    /// every ON-screen atlas node, so the render thread can place OFF-screen arrowed nodes from their STABLE grid
+    /// coordinate (a culled node's live relPos is garbage). On-screen nodes have valid relPos, giving good anchors.
+    /// Returns null (→ no off-screen arrows that tick) with fewer than <see cref="AtlasMinAnchors"/> anchors or a
+    /// degenerate/collinear set. World-thread only; reuses <see cref="_atlasAnchorBuf"/>.</summary>
+    private POE2Radar.Core.AffineFit2D.Affine? FitAtlasGrid(IReadOnlyList<Poe2Atlas.AtlasNodeLive> nodes, float pscale, float vw, float vh)
+    {
+        if (vw <= 0 || vh <= 0) return null;   // window dims not known yet → no reliable on-screen test
+        _atlasAnchorBuf.Clear();
+        const float vm = 80f;   // same generous inset as the freeze on-screen test
+        foreach (var n in nodes)
+        {
+            float cx = AtlasGeometry.AtlasCentre(n.X, n.W), cy = AtlasGeometry.AtlasCentre(n.Y, n.H);
+            float sx = cx * pscale, sy = cy * pscale;   // rough screen — good enough to reject clearly off-screen nodes
+            if (sx > vm && sx < vw - vm && sy > vm && sy < vh - vm)
+                _atlasAnchorBuf.Add((n.GridX, n.GridY, cx, cy));
+        }
+        return _atlasAnchorBuf.Count >= AtlasMinAnchors && POE2Radar.Core.AffineFit2D.TryFit(_atlasAnchorBuf, out var fit)
+            ? fit : (POE2Radar.Core.AffineFit2D.Affine?)null;
     }
 
     /// <summary>Resolve the F10 START/END grid coords to canvas-space (relPos) points for the markers, and —
