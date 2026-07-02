@@ -28,6 +28,7 @@ $map = @{
   watch    = @{ probes=@('--watch');                                long=$true;  doThis='Leave this running, then walk through 2-3 ZONE CHANGES.' }
   metadata = @{ probes=@('--rune-dump');                            long=$false; doThis='Stand near the mechanic whose audio cue did NOT fire.' }
   preload  = @{ probes=@('--preload');                              long=$false; doThis='Be standing in a zone that has a visible league mechanic (a Breach, Ritual, Expedition, Strongbox, etc.) loaded.' }
+  buffs    = @{ probes=@('--buffs');                                long=$false; doThis='Have at least one BUFF active on your character (easiest: pop a Flask right before running, or stand in a Shrine / aura). This decodes the Buffs component layout — a monster''s buffs use the same struct.' }
 }
 
 if (-not $map.ContainsKey($Label)) {

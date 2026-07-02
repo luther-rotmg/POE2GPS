@@ -156,6 +156,10 @@ if (HasFlag(args, "--quest"))
 if (HasFlag(args, "--preload"))
     return RunPreload(process, reader);
 
+if (HasFlag(args, "--buffs"))
+    return RunBuffs(process, reader, TryGetHexArg(args, "--entity"), HasFlag(args, "--watch"),
+        TryGetIntArg(args, "--interval") ?? 1000);
+
 if (HasFlag(args, "--presence"))
     return RunPresence(process, reader, HasFlag(args, "--diff"));
 
@@ -367,6 +371,7 @@ Console.WriteLine("  --dump <hexAddr> [--dump-len <N>]   hex-dump a region for i
 Console.WriteLine("  --dump <hexAddr> [--dump-len <N>]   hex-dump a region for inspection");
 Console.WriteLine("  --entity <hexAddr>         walk a PoE2 entity: id, metadata path, component map, Render→grid, Life");
 Console.WriteLine("  --rune-dump [--radius N]   dump nearby entities (path/components/MinimapIcon/small-ints) + tile paths near you");
+Console.WriteLine("  --buffs [--entity <hex>] [--watch] [--interval <ms>]  discover/decode the Buffs component (buff list vector, ids, timers)");
 Console.WriteLine("  --presence [--diff]        baseline (then --diff) player components to find the presence-radius float");
 Console.WriteLine("  --devtree [--port N]       browser-based live memory/UI/entity explorer (default port 7778)");
 Console.WriteLine("  --serverdata               dump ServerData (AreaInstance+0x598): strings + StdVector quest-list candidates");
@@ -7849,6 +7854,245 @@ static int RunDump(MemoryReader reader, nint addr, int len)
         Console.WriteLine($"  +0x{i:X3}  {hex}");
     }
     return 0;
+}
+
+// ── Buffs component discovery ──────────────────────────────────────────────────────────────────────
+//
+// PURPOSE
+//   Locate and decode the PoE2 Buffs component on the local player (or a named entity).
+//   The Buffs component carries the list of active status effects (flasks, shrine buffs, ailments,
+//   skill-effect buffs, etc.) as a std::vector of buff-entry objects.  This probe discovers:
+//     1. Whether the "Buffs" component name resolves on the entity.
+//     2. The raw layout of the component (hex dump +0x00..+0x200).
+//     3. The buff-list std::vector offset: scans +0x00..+0x180 for plausible {First,Last,End} triples
+//        and, for each entry-count-in-range hit, tries to read a buff-definition pointer at various
+//        intra-entry offsets and print the id string it dereferences to.
+//     4. In --watch mode: polls every --interval ms and prints the full resolved buff list so
+//        you can observe buffs appearing/disappearing in real time (apply/remove a flask to validate).
+//
+// ARCHITECTURE (GameHelper2 Buffs, PoE2 lineage)
+//   Buffs component (component name "Buffs") carries a std::vector of BuffEntry objects.
+//   Each BuffEntry is typically 0x28..0x38 bytes; entry+0x00 is a pointer to a BuffDefinition row
+//   whose first qword → UTF-16 buff id (e.g. "flask_effect_life", "shrine_buff_damage").
+//   entry+0x10 is a float timer (remaining duration, 0 for permanent), entry+0x18 / +0x1C are
+//   charge/stack counts (int).  The vector lives at some offset in the component — this probe
+//   discovers that offset by scanning for plausible vectors and cross-checking the id strings.
+//
+// UNCERTAIN ASPECTS THIS PROBE RESOLVES
+//   • The exact component offset of the buff list vector (GH2 uses a private field ~+0x18 or +0x20,
+//     but drift is common — the scan finds it empirically).
+//   • The exact BuffEntry stride (0x28, 0x30, or 0x38 are all seen in GH2 forks).
+//   • Whether buff definition uses a direct pointer at entry+0x00 vs entry+0x08.
+//   • Whether the timer / charge fields are at +0x10/+0x18 or shifted by +0x04.
+//
+// READING THE OUTPUT
+//   - "vec candidate" lines: a StdVector triple {First,Last,End} that has 1..64 entries at a given
+//     stride.  Multiple candidates are shown — the one printing recognisable buff id strings is right.
+//   - "  [N] defPtr→idPtr→id" lines: the decoded buff id string for that entry.  A flask buff will
+//     read "flask_effect_life" / "flask_effect_mana" etc.; shrine/ritual buffs have long internal ids.
+//   - The hex dump lets you spot additional scalar fields (timer float, charges int) by hand after the
+//     vector offset is pinned.
+//   - --watch mode prints one snapshot per interval so you can toggle a flask and watch the list change.
+//
+// USAGE
+//   <Research.exe> --buffs                     probe LocalPlayer's Buffs component
+//   <Research.exe> --buffs --entity <hexAddr>  probe a specific entity by address
+//   <Research.exe> --buffs --watch             poll every 1 s (change --interval <ms>)
+//   <Research.exe> --buffs --watch --interval 500
+static int RunBuffs(ProcessHandle process, MemoryReader reader, nint? entityOverride,
+    bool watch, int intervalMs)
+{
+    var (_, _, ai, lp) = ResolveChain(process, reader);
+    if (ai == 0) { Console.Error.WriteLine("Could not resolve chain (in game?)."); return 1; }
+
+    var target = entityOverride ?? lp;
+    var targetLabel = entityOverride.HasValue ? $"entity 0x{target:X}" : "LocalPlayer";
+    Console.WriteLine($"AreaInstance 0x{ai:X}  {targetLabel} 0x{target:X}  ({ReadEntityMetadata(reader, target)})");
+
+    // ── 1) Resolve Buffs component ─────────────────────────────────────────────────────────────────
+    var buffsComp = ResolveComponentAddr(reader, target, "Buffs");
+    if (buffsComp == 0)
+    {
+        Console.Error.WriteLine("\"Buffs\" component not found on this entity.");
+        Console.WriteLine("  All components present:");
+        foreach (var (nm, addr) in WalkComponents(reader, target))
+            Console.WriteLine($"    {nm,-24} @ 0x{addr:X}");
+        return 1;
+    }
+    Console.WriteLine($"Buffs component @ 0x{buffsComp:X}");
+
+    // ── 2) Raw hex dump +0x00..+0x200 ─────────────────────────────────────────────────────────────
+    var dumpLen = 0x200;
+    var dumpBuf = new byte[dumpLen];
+    var dumpGot = reader.TryReadBytes(buffsComp, dumpBuf);
+    Console.WriteLine($"\n--- Buffs component hex dump +0x000..+0x{dumpGot:X} ---");
+    for (var i = 0; i < dumpGot; i += 16)
+    {
+        var n = Math.Min(16, dumpGot - i);
+        var hexPart = string.Join(' ', Enumerable.Range(0, n).Select(j => dumpBuf[i + j].ToString("X2")));
+        Console.WriteLine($"  +0x{i:X3}  {hexPart}");
+    }
+
+    // ── 3) Static single-shot analysis ────────────────────────────────────────────────────────────
+    void PrintBuffList(nint comp)
+    {
+        Console.WriteLine($"\n--- Buff-list vector scan (Buffs @ 0x{comp:X}) ---");
+        var buf = new byte[0x200];
+        var got = reader.TryReadBytes(comp, buf);
+        if (got < 24) { Console.WriteLine("  (could not read component)"); return; }
+
+        var found = false;
+        // Candidate entry strides to try (GH2 forks show 0x28, 0x30, 0x38).
+        var strides = new[] { 0x28, 0x30, 0x38, 0x20, 0x18 };
+        for (var off = 0; off + 24 <= got; off += 8)
+        {
+            var first = (nint)BitConverter.ToInt64(buf, off);
+            var last  = (nint)BitConverter.ToInt64(buf, off + 8);
+            var end   = got >= off + 24 ? (nint)BitConverter.ToInt64(buf, off + 16) : last;
+
+            // Sanity: plausible heap pointers, last >= first, end >= last, span not crazy.
+            if ((ulong)first < 0x10000 || (ulong)first > 0x7FFFFFFFFFFF) continue;
+            if ((ulong)last  < 0x10000 || (ulong)last  > 0x7FFFFFFFFFFF) continue;
+            var span = (long)last - (long)first;
+            if (span < 0 || span > 0x8000) continue;
+            if ((long)end < (long)last || (long)end - (long)last > 0x4000) continue;
+
+            foreach (var stride in strides)
+            {
+                if (stride == 0 || span % stride != 0) continue;
+                var count = span / stride;
+                if (count is <= 0 or > 64) continue;
+
+                Console.WriteLine($"  vec candidate @ comp+0x{off:X2}: first=0x{first:X} count={count} stride=0x{stride:X}");
+                found = true;
+
+                // Try to decode buff id strings from several intra-entry pointer slots.
+                // GH2 layout: entry+0x00 = BuffDefinition ptr → first qword = UTF-16 id ptr.
+                // Also try entry+0x08 in case the first qword is a vtable.
+                for (long i = 0; i < count; i++)
+                {
+                    var entry = first + (nint)(i * stride);
+                    var decoded = false;
+                    foreach (var defOff in new[] { 0x00, 0x08 })
+                    {
+                        var defPtr = SafePtr(reader, entry + defOff);
+                        if (defPtr == 0) continue;
+                        // The definition's first qword should be a pointer to the UTF-16 id string.
+                        foreach (var idOff in new[] { 0x00, 0x08 })
+                        {
+                            var idPtr = SafePtr(reader, defPtr + idOff);
+                            if (idPtr == 0) continue;
+                            var id = reader.ReadStringUtf16(idPtr, 128);
+                            if (string.IsNullOrEmpty(id) || id.Length < 3 || !id.All(c => c < 0x7f && (char.IsLetterOrDigit(c) || c == '_')))
+                                continue;
+                            // Read timer float and charge int from common offsets.
+                            reader.TryReadStruct<float>(entry + 0x10, out var timer);
+                            reader.TryReadStruct<int>(entry + 0x18, out var charges);
+                            reader.TryReadStruct<int>(entry + 0x1C, out var charges2);
+                            Console.WriteLine($"    [{i,2}] defOff+0x{defOff:X2} idOff+0x{idOff:X2}  id=\"{id}\"  timer={timer:F2}s  charges={charges}/{charges2}");
+                            decoded = true;
+                            break;
+                        }
+                        if (decoded) break;
+                    }
+                    if (!decoded)
+                    {
+                        // Print the raw first three qwords as hex so the output is still actionable.
+                        var raw = new byte[Math.Min(stride, 0x20)];
+                        if (reader.TryReadBytes(entry, raw) >= 8)
+                        {
+                            var hex = string.Join(' ', Enumerable.Range(0, raw.Length).Select(j => raw[j].ToString("X2")));
+                            Console.WriteLine($"    [{i,2}] (no id decoded)  raw: {hex}");
+                        }
+                    }
+                }
+                break; // only report the first matching stride per vector offset
+            }
+        }
+        if (!found)
+        {
+            Console.WriteLine("  No plausible buff-list vector found in +0x00..+0x1F8.");
+            Console.WriteLine("  Hints:");
+            Console.WriteLine("    • Use --dump <compAddr> [--dump-len 0x400] to widen the window.");
+            Console.WriteLine("    • The Buffs component may hold the vector at a higher offset — compare");
+            Console.WriteLine("      the hex dump pointer pattern above with the heap range reported at attach.");
+            Console.WriteLine("    • Run --entity <localPlayerAddr> to see all component names and confirm");
+            Console.WriteLine("      the component is named \"Buffs\" (not \"CharacterBuffs\" or similar).");
+        }
+    }
+
+    if (!watch)
+    {
+        PrintBuffList(buffsComp);
+        Console.WriteLine("\nNext steps:");
+        Console.WriteLine("  • Pin the vec-candidate offset that printed recognisable ids.");
+        Console.WriteLine("  • Run --buffs --watch (apply/remove a flask) to confirm the list changes.");
+        Console.WriteLine("  • Record confirmed offsets in Poe2Offsets.cs as Poe2.BuffsComponent.*");
+        return 0;
+    }
+
+    // ── 4) Watch mode ──────────────────────────────────────────────────────────────────────────────
+    Console.WriteLine($"\n[watch] polling every {intervalMs} ms — apply/remove a flask or enter a shrine to see changes. Ctrl+C to stop.\n");
+    while (true)
+    {
+        // Re-resolve on every tick so a zone change doesn't leave us reading stale memory.
+        var (_, _, aiW, lpW) = ResolveChain(process, reader);
+        if (aiW == 0) { Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] chain lost — waiting..."); Thread.Sleep(intervalMs); continue; }
+
+        var tW = entityOverride.HasValue ? entityOverride.Value : lpW;
+        var bW = ResolveComponentAddr(reader, tW, "Buffs");
+        Console.Write($"[{DateTime.Now:HH:mm:ss}] Buffs @ 0x{bW:X}  ");
+        if (bW == 0) { Console.WriteLine("(component not found)"); Thread.Sleep(intervalMs); continue; }
+
+        // Quick list: scan for the first plausible vector and print just the ids.
+        var wbuf = new byte[0x200];
+        var wgot = reader.TryReadBytes(bW, wbuf);
+        var ids = new List<string>();
+        var strides = new[] { 0x28, 0x30, 0x38, 0x20, 0x18 };
+        for (var off = 0; off + 24 <= wgot && ids.Count == 0; off += 8)
+        {
+            var first = (nint)BitConverter.ToInt64(wbuf, off);
+            var last  = (nint)BitConverter.ToInt64(wbuf, off + 8);
+            if ((ulong)first < 0x10000 || (ulong)first > 0x7FFFFFFFFFFF) continue;
+            if ((ulong)last  < 0x10000 || (ulong)last  > 0x7FFFFFFFFFFF) continue;
+            var span = (long)last - (long)first;
+            if (span < 0 || span > 0x8000) continue;
+            foreach (var stride in strides)
+            {
+                if (stride == 0 || span % stride != 0) continue;
+                var count = span / stride;
+                if (count is <= 0 or > 64) continue;
+                for (long i = 0; i < count; i++)
+                {
+                    var entry = first + (nint)(i * stride);
+                    foreach (var defOff in new[] { 0x00, 0x08 })
+                    {
+                        var defPtr = SafePtr(reader, entry + defOff);
+                        if (defPtr == 0) continue;
+                        foreach (var idOff in new[] { 0x00, 0x08 })
+                        {
+                            var idPtr = SafePtr(reader, defPtr + idOff);
+                            if (idPtr == 0) continue;
+                            var id = reader.ReadStringUtf16(idPtr, 128);
+                            if (string.IsNullOrEmpty(id) || id.Length < 3 || !id.All(c => c < 0x7f && (char.IsLetterOrDigit(c) || c == '_')))
+                                continue;
+                            reader.TryReadStruct<float>(entry + 0x10, out var timer);
+                            ids.Add($"{id}({timer:F1}s)");
+                            break;
+                        }
+                    }
+                }
+                if (ids.Count > 0) break;
+            }
+        }
+
+        if (ids.Count == 0)
+            Console.WriteLine("(no buff ids decoded — see single-shot output for vec-offset hints)");
+        else
+            Console.WriteLine(string.Join("  ", ids));
+
+        Thread.Sleep(intervalMs);
+    }
 }
 
 static int RunAobScan(ProcessHandle process, MemoryReader reader)
