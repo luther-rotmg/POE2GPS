@@ -321,13 +321,25 @@ public sealed class OverlayRenderer : IDisposable
             var onScreen = sx >= 0 && sx <= W && sy >= 0 && sy <= H;
             var col = string.IsNullOrEmpty(n.Color) ? new Color4(0.235f, 0.86f, 1f, 1f) : ParseColor(n.Color, 1f);
 
-            // OFF-SCREEN: skip. Off-screen atlas edge-arrows are DISABLED (v0.19.5). PoE2 stops updating a
-            // node's RelativePos once the game culls it off-screen, so the position is stale/garbage and the
-            // arrow pointed at nothing real ("ghost arrows to nothing"). The codebase already handles this
-            // same problem for route chevrons (drawn only when both endpoints are on-screen). On-screen node
-            // rings below are unaffected. A grid-based reliable-direction version (using each node's stable
-            // GridX/GridY instead of the unreliable off-screen RelativePos) is the planned follow-up.
-            if (!onScreen) continue;
+            // OFF-SCREEN: the node's own RelativePos is stale/garbage once PoE2 culls it (v0.19.5 disabled the
+            // old arrows that pointed at it — "ghosts to nothing"). v0.19.6: for an ARROWED node, recompute the
+            // target from its STABLE grid coord via the world-thread grid→canvas fit, then the SAME homography
+            // canvas→screen, and point a border arrow there. Rings/labels below never draw off-screen. No fit
+            // (too few anchors / degenerate) ⇒ no off-screen arrows this frame (graceful, same as v0.19.5).
+            if (!onScreen)
+            {
+                if (n.Arrow && ctx.AtlasGridFit is { } gf)
+                {
+                    var (gcx, gcy) = POE2Radar.Core.AffineFit2D.Apply(gf, n.GridX, n.GridY);   // grid → canvas
+                    var gw = h6 * gcx + h7 * gcy + 1f;                                          // canvas → screen (same homography)
+                    if (MathF.Abs(gw) >= 1e-6f)
+                    {
+                        float gsx = (h0 * gcx + h1 * gcy + h2) / gw, gsy = (h3 * gcx + h4 * gcy + h5) / gw;
+                        DrawEdgeArrow(rt, gsx, gsy, ccx, ccy, W, H, col, n.Label);
+                    }
+                }
+                continue;
+            }
 
             var c = new NumVec2(sx, sy);
             if (n.Selected || n.Arrow || n.Nav)
