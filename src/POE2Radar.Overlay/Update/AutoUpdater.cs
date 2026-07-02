@@ -45,6 +45,8 @@ internal static class AutoUpdater
             if (!AutoUpdatePolicy.ShouldAttempt(state, tag)) return;
 
             var ok = await TryStageAsync(tag, installDir, ct);
+            // Note: only a definitive false (bad checksum / wrong content) burns a retry; a thrown transient
+            // failure (offline/timeout) is swallowed below without incrementing the counter — by design.
             if (ok) { WriteState(installDir, new AutoUpdatePolicy.UpdateState(tag, 0)); }
             else    { BumpFailure(installDir, tag); }
         }
@@ -133,7 +135,13 @@ internal static class AutoUpdater
             Relaunch(canon, installDir);
             return true;
         }
-        catch { return false; }   // any failure -> continue booting the current version unchanged
+        catch
+        {
+            // If the promote failed after the backup move, restore Overlay.exe so a cold launch still works.
+            try { var canon = CanonExe(installDir); var backup = BackupExe(installDir);
+                  if (!File.Exists(canon) && File.Exists(backup)) File.Move(backup, canon); } catch { }
+            return false;   // any failure -> continue booting the current version unchanged
+        }
     }
 
     // ─────────────────────────── crash-loop rollback ───────────────────────────
