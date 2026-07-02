@@ -1384,7 +1384,11 @@ public sealed class RadarApp : IDisposable
                     if (Math.Abs(bw) < 1e-6) bw = 1e-6;  // guard degenerate perspective
                     float bsx = (float)((bh0 * m.X + bh1 * m.Y + bh2) / bw);
                     float bsy = (float)((bh3 * m.X + bh4 * m.Y + bh5) / bw);
-                    bool onScreen = bsx > -200 && bsx < _window.Width + 200 && bsy > -200 && bsy < _window.Height + 200;
+                    // v0.19.2 fix: with unknown window dims (0, before TrackGameWindow), the cull would
+                    // misclassify nearly everything as off-screen and skip the live refresh — snapping marks to
+                    // stale baked positions. Treat all as on-screen until dims are known (pre-SR-10 behavior).
+                    bool onScreen = _window.Width <= 0 || _window.Height <= 0
+                        || (bsx > -200 && bsx < _window.Width + 200 && bsy > -200 && bsy < _window.Height + 200);
                     _atlasMarkFrame.Add(
                         onScreen && m.Element != 0 && _liveRender.TryRelPos(m.Element, out var mx, out var my)
                             ? m with { X = AtlasGeometry.AtlasCentre(mx, m.W), Y = AtlasGeometry.AtlasCentre(my, m.H) }
@@ -3131,7 +3135,13 @@ public sealed class RadarApp : IDisposable
         sig = sig * 1000003L ^ (long)(_settings.AtlasNavTags?.Count ?? 0);          // re-solve when the nav set changes
         sig = sig * 1000003L ^ (long)(_settings.AtlasGroups?.Count ?? 0);           // re-solve when colour groups change
         sig = sig * 1000003L ^ (_settings.AtlasShowContentIcons ? 1L : 0L);        // re-solve when content-icon toggle changes
-        if (_builtAtlasOnce && _atlas.AllTagsResolved && sig == _lastAtlasSig)
+        // v0.19.2 fix: never freeze on an INDETERMINATE view (onCount==0 → viewSig collapsed to 0). That
+        // happens when the overlay window dims aren't set yet (vw=vh=0, e.g. the first world tick right after
+        // an auto-update relaunch, before TrackGameWindow runs) or the atlas is panned to empty space — the
+        // centroid is meaningless there, so a constant sig could lock the marks onto a stale/degenerate build
+        // (the "markers piled at the top of the atlas" bug). Keep rebuilding until a real on-screen view exists;
+        // the jitter-freeze still engages normally once nodes are firmly on-screen (onCount>0).
+        if (_builtAtlasOnce && _atlas.AllTagsResolved && onCount > 0 && sig == _lastAtlasSig)
             return;   // view + inputs unchanged → marks/route stay frozen (off-screen arrows don't jitter)
         _lastAtlasSig = sig; _builtAtlasOnce = true;
 
