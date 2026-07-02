@@ -848,6 +848,21 @@ internal static class DashboardHtml
             <input id="anSearch" class="numin" placeholder="filter affixes…" style="width:100%">
             <div id="anOverrides" style="max-height:240px;overflow:auto"></div>
           </div>
+          <div class="card collapsed" data-card="buff-nameplates">
+            <h3>Buff icons <small class="tag">opt-in</small></h3>
+            <div class="row"><div class="rl">Show buffs on elite monsters<small>tier-colored tags below the mob — off by default; reads nothing when off</small></div>
+              <label class="sw"><input type="checkbox" data-bn="enabled"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Danger tier</div>
+              <select class="numin" data-bn="tier"><option value="Deadly">Deadly only</option><option value="NotableAndAbove">Deadly + Notable</option><option value="All">All buffs</option></select></div>
+            <div class="row"><div class="rl">Display ALL buff ids<small>diagnostic — show every buff (incl. engine junk) to help grow the catalog</small></div>
+              <label class="sw"><input type="checkbox" data-bn="displayAll"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">On Rare</div><label class="sw"><input type="checkbox" data-bn="showOnRare"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">On Unique</div><label class="sw"><input type="checkbox" data-bn="showOnUnique"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">On Magic</div><label class="sw"><input type="checkbox" data-bn="showOnMagic"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Max lines</div><input type="number" class="numin" data-bn="maxLines" min="1" max="10"></div>
+            <div class="row"><div class="rl hint-row">Observed buffs this session (from nearby elites) — turn on "Display ALL" to populate:</div></div>
+            <div id="bnObserved" style="max-height:200px;overflow:auto"></div>
+          </div>
           <div class="card collapsed" data-card="entity-arrows">
             <h3>Entity Arrows <small class="tag">opt-in</small></h3>
             <div class="row"><div class="rl">Enable off-screen arrows<small>edge arrows pointing toward rule-flagged entities outside the radar &mdash; flag rules in the Rules tab</small></div>
@@ -1083,7 +1098,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   activeTab=t.dataset.tab;
   $$('.tab').forEach(x=>x.classList.toggle('on',x===t));
   $$('.view').forEach(v=>v.hidden = v.dataset.view!==activeTab);
-  if(activeTab==='settings'){ loadSettings(); loadKeybinds(); loadQuickStart(); loadAffixCatalog(); }
+  if(activeTab==='settings'){ loadSettings(); loadKeybinds(); loadQuickStart(); loadAffixCatalog(); renderBnObserved(); }
   if(activeTab==='filters') loadFilters();
   if(activeTab==='landmarks') loadLandmarks();
   if(activeTab==='atlas'){ if(!atlasData) loadAtlas(); else renderAtlas(); loadDynasty(); loadSettings(); loadAtlasGroups(); }
@@ -1125,6 +1140,8 @@ async function loadSettings(){
     renderEntityArrows(); renderObsOverlay(); renderDiscordPresence(); renderLanInfo();
     const mc=document.getElementById('mapCopyUrl'); if(mc) mc.onclick=()=>{ navigator.clipboard.writeText(location.origin+'/map').catch(()=>{}); const t=mc.textContent; mc.textContent='Copied!'; setTimeout(()=>mc.textContent=t,1200); };
     an = await getJSON('/api/affix-nameplates').catch(()=>null); renderAffixNameplates();
+    bn = await getJSON('/api/buff-nameplates').catch(()=>null); renderBuffNameplates();
+    renderBnObserved();
     if(window._syncDiagPanel) window._syncDiagPanel();
   }catch(e){}
 }
@@ -1158,6 +1175,8 @@ $('#qsReopenBtn')?.addEventListener('click',()=>{
 
 /* ── affix nameplates (own endpoint: POST the whole an object to /api/affix-nameplates) ── */
 let an=null, anCatalog=[];
+/* ── buff icons (own endpoint: POST the whole bn object to /api/buff-nameplates) ── */
+let bn=null;
 /* ── ground-item labels (nested object: POST the whole {groundItems}) ── */
 let gi = null;
 function renderGround(){
@@ -2353,7 +2372,33 @@ function renderAnOverrides(){
     saveAffixNameplates();
   };});
 }
-wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireEntityArrows(); wireObsOverlay(); wireDiscordPresence();
+/* ── buff icons card (own endpoint /api/buff-nameplates) ── */
+function renderBuffNameplates(){
+  if(!bn) return;
+  document.querySelectorAll('[data-bn]').forEach(el=>{
+    const k=el.dataset.bn;
+    if(el.type==='checkbox') el.checked=!!bn[k];
+    else if(bn[k]!==undefined) el.value=bn[k];
+  });
+}
+async function saveBuffNameplates(){
+  try{ await fetch('/api/buff-nameplates',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(bn)});
+    const m=$('#savedMsg'); if(m){m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1100);} }catch(e){}
+}
+function wireBuffNameplates(){
+  document.querySelectorAll('[data-bn]').forEach(el=>{
+    const k=el.dataset.bn;
+    el.onchange=()=>{ bn = bn||{}; bn[k] = el.type==='checkbox'?el.checked : (el.type==='number'?parseInt(el.value||'0',10):el.value); saveBuffNameplates(); };
+  });
+}
+async function renderBnObserved(){
+  const box=document.getElementById('bnObserved'); if(!box) return;
+  try{ const r=await getJSON('/api/buffs'); const list=r.buffs||[];
+    box.innerHTML = list.length ? list.slice(0,200).map(b=>`<div class="row"><div class="rl">${b.id} <small>${b.tier}</small></div></div>`).join('')
+                                : '<div class="row"><div class="rl"><small>none observed yet</small></div></div>';
+  }catch(e){}
+}
+wireSettings(); wireHpBars(); wireTerrain(); wireGround(); wireAffixNameplates(); wireBuffNameplates(); wireEntityArrows(); wireObsOverlay(); wireDiscordPresence();
 document.querySelectorAll('[data-audiotest]').forEach(b=>b.onclick=()=>fetch('/api/audio-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cue:b.dataset.audiotest})}));
 loadLabelVocab();
 loadIcons().then(()=>{ loadSettings(); loadFilters(); loadPresets(); loadKeybinds(); loadQuickStart(); }); // Rules is the default tab
