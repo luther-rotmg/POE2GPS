@@ -37,9 +37,16 @@ if (installDir != null)
 {
     // A crash-looping update rolls back to Overlay.old.exe (safety — runs regardless of mode).
     if (POE2Radar.Overlay.Update.AutoUpdater.RollbackIfCrashLooping(installDir)) return 0;
-    // Apply an update staged by a previous session, then relaunch into it.
-    if (startupSettings.AutoUpdate.Mode == "silent"
-        && POE2Radar.Overlay.Update.AutoUpdater.ApplyStagedIfPresent(UpdateChecker.Current, installDir)) return 0;
+    // Apply an update staged by a previous session (silent mode), then relaunch into it.
+    // Non-silent: prune any stale staged file so PendingVersion() can't show a false banner.
+    if (startupSettings.AutoUpdate.Mode == "silent")
+    {
+        if (POE2Radar.Overlay.Update.AutoUpdater.ApplyStagedIfPresent(UpdateChecker.Current, installDir)) return 0;
+    }
+    else
+    {
+        POE2Radar.Overlay.Update.AutoUpdater.DiscardStaged(installDir);
+    }
 }
 
 var myName = Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "Overlay");
@@ -60,12 +67,14 @@ Console.WriteLine();
 POE2Radar.Overlay.Overlay.ConsoleTheme.Accent("Running. The overlay connects automatically once you're in a zone. Ctrl+C to exit.");
 
 // Update check (banner) + silent background staging for NEXT launch — never blocks startup.
+// updateTask is non-null whenever Mode != "off"; CheckAndStageAsync reuses it (precheck) so
+// silent mode makes exactly ONE GitHub request per launch instead of two.
 System.Threading.Tasks.Task<UpdateChecker.Result>? updateTask = null;
 if (startupSettings.AutoUpdate.Mode != "off")
     updateTask = System.Threading.Tasks.Task.Run(() => UpdateChecker.CheckAsync());
 if (startupSettings.AutoUpdate.Mode == "silent" && installDir != null)
     _ = System.Threading.Tasks.Task.Run(() =>
-        POE2Radar.Overlay.Update.AutoUpdater.CheckAndStageAsync("silent", UpdateChecker.Current, installDir, System.Threading.CancellationToken.None));
+        POE2Radar.Overlay.Update.AutoUpdater.CheckAndStageAsync("silent", UpdateChecker.Current, installDir, System.Threading.CancellationToken.None, precheck: updateTask));
 
 using var app = new RadarApp(process, reader, updateTask);
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; app.RequestShutdown(); };

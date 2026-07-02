@@ -8,6 +8,12 @@
   Default tokens are credit/author/URL strings only. "POE2Radar" is intentionally NOT scrubbed:
   it appears in .NET type metadata (namespaces/type names) and blanking it would break reflection.
   That residual is documented; removing it would require a full namespace rename.
+
+  The auto-updater's repo slug ("luther-rotmg/POE2GPS") and User-Agent ("POE2GPS-AutoUpdate") are
+  intentionally NOT included in the scrub token list. They are the load-bearing GitHub URL target
+  for the silent self-update feature — the same target already present in the pre-existing
+  UpdateChecker. Scrubbing them would break the update check entirely. This is a known, accepted
+  retained artifact identical in nature to the UpdateChecker's repo reference.
 #>
 [CmdletBinding()]
 param(

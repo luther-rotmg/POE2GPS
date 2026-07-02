@@ -694,7 +694,7 @@ public sealed class RadarApp : IDisposable
                         (_settings.AutoUpdate.Mode == "silent" ? " Installing automatically on next launch." : $" Download: {u.Url}") + " ***\n");
                 else
                     ConsoleTheme.Accent($"POE2GPS v{u.Current}" + (u.Latest != null ? " (up to date)." : " (update check unavailable)."));
-            });
+            }, TaskScheduler.Default);
         }
     }
 

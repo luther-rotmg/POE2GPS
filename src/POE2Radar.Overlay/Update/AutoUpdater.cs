@@ -17,7 +17,11 @@ namespace POE2Radar.Overlay.Update;
 internal static class AutoUpdater
 {
     private const string Repo = "luther-rotmg/POE2GPS";
-    private const int RollbackThreshold = 3;                 // healthy boot clears by attempt 2 (hardlink adds one pass)
+    // RollbackThreshold = 3: boot.json is written with Attempts=1 at promote time; the hardlink-bounce
+    // pass (non-`--launched`) does NOT touch boot.json; each `--launched` boot increments by one via
+    // RollbackIfCrashLooping. A healthy first --launched boot reaches Attempts=2 and is cleared by
+    // ConfirmHealthy. Rollback fires when Attempts >= 3 (i.e., two consecutive crash-loop boots).
+    private const int RollbackThreshold = 3;
     private static readonly TimeSpan DownloadTimeout = TimeSpan.FromSeconds(120);
     private const long MaxBytes = 250L * 1024 * 1024;        // sanity cap on the download
 
@@ -33,12 +37,12 @@ internal static class AutoUpdater
 
     // ─────────────────────────── background check + stage (never blocks startup) ───────────────────────────
 
-    public static async Task CheckAndStageAsync(string mode, string current, string installDir, CancellationToken ct)
+    public static async Task CheckAndStageAsync(string mode, string current, string installDir, CancellationToken ct, Task<UpdateChecker.Result>? precheck = null)
     {
         if (mode != "silent") return;
         try
         {
-            var res = await UpdateChecker.CheckAsync();
+            var res = precheck != null ? await precheck : await UpdateChecker.CheckAsync();
             if (res.Latest is not { Length: > 0 } tag || !AutoUpdatePolicy.IsNewer(current, tag)) return;
 
             var state = ReadState(installDir);
@@ -110,6 +114,13 @@ internal static class AutoUpdater
         finally { try { File.Delete(zipPath); } catch { } }
     }
 
+    /// <summary>Delete any staged update files (called on non-silent launch so stale stages don't linger).</summary>
+    public static void DiscardStaged(string installDir)
+    {
+        SafeDelete(StagedExe(installDir));
+        SafeDelete(StagedLog(installDir));
+    }
+
     // ─────────────────────────── apply a staged update at startup (then relaunch) ───────────────────────────
 
     /// <returns>true if it swapped + relaunched (caller must return 0 immediately).</returns>
@@ -127,8 +138,9 @@ internal static class AutoUpdater
             SafeDelete(backup);
             if (File.Exists(canon)) File.Move(canon, backup, overwrite: true);  // keep old for rollback
             File.Move(staged, canon);                                            // atomic swap (we hold the hardlink inode)
-            if (File.Exists(StagedLog(installDir)))
-                try { File.Copy(StagedLog(installDir), Path.Combine(installDir, "CHANGELOG.md"), overwrite: true); } catch { }
+            // Changelog copy is best-effort: a locked/missing file must NEVER unwind a successful exe swap.
+            try { if (File.Exists(StagedLog(installDir)))
+                      File.Copy(StagedLog(installDir), Path.Combine(installDir, "CHANGELOG.md"), overwrite: true); } catch { }
 
             WriteBoot(installDir, new Boot(NormV(fv), 1));
             SafeDelete(StagedLog(installDir));
@@ -140,6 +152,9 @@ internal static class AutoUpdater
             // If the promote failed after the backup move, restore Overlay.exe so a cold launch still works.
             try { var canon = CanonExe(installDir); var backup = BackupExe(installDir);
                   if (!File.Exists(canon) && File.Exists(backup)) File.Move(backup, canon); } catch { }
+            // Purge the staged exe so a persistently-failing promote (e.g. AV lock) doesn't retry every launch.
+            // Do NOT call BumpFailure — a promote failure is transient/local; re-staging fresh next session is correct.
+            SafeDelete(StagedExe(installDir));
             return false;   // any failure -> continue booting the current version unchanged
         }
     }
@@ -169,11 +184,15 @@ internal static class AutoUpdater
         catch { return false; }
     }
 
-    /// <summary>Called once the app has run briefly without crashing: the applied update is good.</summary>
+    /// <summary>Called once the app has run briefly without crashing: the applied update is good.
+    /// Clears boot.json (the crash-loop counter) but retains Overlay.old.exe for one full generation —
+    /// it is only replaced when the NEXT update's ApplyStagedIfPresent runs SafeDelete(backup) before
+    /// writing a fresh backup. This matches the README's "kept for one generation" promise.</summary>
     public static void ConfirmHealthy(string installDir)
     {
         SafeDelete(BootPath(installDir));
-        SafeDelete(BackupExe(installDir));
+        // NOTE: BackupExe (Overlay.old.exe) is intentionally NOT deleted here; it persists until
+        // the next update's ApplyStagedIfPresent replaces it, giving users a one-generation rollback.
     }
 
     /// <summary>The version currently staged for next launch (for the /api/version "pending" line), or null.</summary>
@@ -191,7 +210,10 @@ internal static class AutoUpdater
     // ─────────────────────────── helpers ───────────────────────────
 
     private static void Relaunch(string exe, string installDir)
-        => Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = installDir });
+    {
+        var p = Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = installDir });
+        if (p is null) throw new InvalidOperationException("relaunch failed");
+    }
 
     private static string Sha256Hex(string path)
     {
@@ -225,7 +247,8 @@ internal static class AutoUpdater
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            var tmp = path + ".tmp";
+            // Process-unique temp name so two instances sharing an install dir can't collide.
+            var tmp = path + "." + Environment.ProcessId + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(value));
             File.Move(tmp, path, overwrite: true);
         }

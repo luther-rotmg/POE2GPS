@@ -1139,7 +1139,6 @@ public sealed class ApiServer : IDisposable
         enableCampaignGps = _settings.EnableCampaignGps,
         enableQuestMemory = _settings.EnableQuestMemory,
         excludeFromCapture = _settings.ExcludeFromCapture,
-        checkForUpdates = _settings.CheckForUpdates,
         enableGearScorer = _settings.EnableGearScorer,
         enableTargetHotkeys = _settings.EnableTargetHotkeys,
         enableControllerCycle = _settings.EnableControllerCycle,
@@ -1247,7 +1246,6 @@ public sealed class ApiServer : IDisposable
                 case "enableCampaignGps" when TryBool(p.Value, out var b): _settings.EnableCampaignGps = b; applied.Add(p.Name); break;
                 case "enableQuestMemory" when TryBool(p.Value, out var b): _settings.EnableQuestMemory = b; applied.Add(p.Name); break;
                 case "excludeFromCapture" when TryBool(p.Value, out var b): _settings.ExcludeFromCapture = b; applied.Add(p.Name); break;
-                case "checkForUpdates" when TryBool(p.Value, out var b): _settings.CheckForUpdates = b; applied.Add(p.Name); break;
                 case "enableGearScorer" when TryBool(p.Value, out var b): _settings.EnableGearScorer = b; applied.Add(p.Name); break;
                 case "enableTargetHotkeys" when TryBool(p.Value, out var b): _settings.EnableTargetHotkeys = b; applied.Add(p.Name); break;
                 case "enableControllerCycle" when TryBool(p.Value, out var b): _settings.EnableControllerCycle = b; applied.Add(p.Name); break;
