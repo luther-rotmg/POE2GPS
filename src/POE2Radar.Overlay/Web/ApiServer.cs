@@ -66,6 +66,7 @@ public sealed class ApiServer : IDisposable
     private readonly EntityNameStore _entityNames;
     private readonly Func<object> _gear;
     private readonly Func<object> _preload;
+    private readonly Func<object> _buffsDiag;
     private readonly GearWeightStore _gearWeights;
     // Atlas map-data provider (catalog + current-region map set). Read-only, computed on demand (it
     // scans memory + caches), returns a JSON-ready object. Null when atlas reading is unavailable.
@@ -112,6 +113,7 @@ public sealed class ApiServer : IDisposable
         EntityNameStore entityNames,
         Func<object> gearProvider,
         Func<object> preloadProvider,
+        Func<object> buffsDiagProvider,
         GearWeightStore gearWeights,
         Func<object>? atlasProvider = null,
         Action<IReadOnlyList<long>>? atlasSelect = null,
@@ -148,6 +150,7 @@ public sealed class ApiServer : IDisposable
         _entityNames = entityNames;
         _gear = gearProvider;
         _preload = preloadProvider;
+        _buffsDiag = buffsDiagProvider;
         _gearWeights = gearWeights;
         _presetStore = presetStore ?? new PresetStore();
         _terrainProvider = terrainProvider;
@@ -964,6 +967,29 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/buff-nameplates":
+            {
+                if (ctx.Request.HttpMethod == "GET")
+                    Write(ctx, 200, JsonSerializer.Serialize(_settings.BuffNameplates, Json));
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                    if (TryParseBuffNameplates(ReadBody(ctx), out var bn))
+                    {
+                        _settings.BuffNameplates = bn; _settings.Save();
+                        Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, buffNameplates = bn }, Json));
+                    }
+                    else Write(ctx, 400, JsonSerializer.Serialize(new { error = "bad body" }, Json));
+                }
+                else Write(ctx, 405, JsonSerializer.Serialize(new { error = "method" }, Json));
+                break;
+            }
+
+            case "/api/buffs":
+                if (ctx.Request.HttpMethod != "GET") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                Write(ctx, 200, JsonSerializer.Serialize(_buffsDiag(), Json));
+                break;
+
             case "/api/affix-catalog":
             {
                 var cat = POE2Radar.Core.Game.MonsterAffixCatalog.Shared;
@@ -1508,6 +1534,31 @@ public sealed class ApiServer : IDisposable
             p.AlwaysShow = SanitizeStringList(p.AlwaysShow);
             p.Hide = SanitizeStringList(p.Hide);
             an = p;
+            return true;
+        }
+        catch (JsonException) { return false; }
+    }
+
+    /// <summary>Deserialize + sanitize a full <see cref="BuffNameplateSettings"/> from a posted JSON body.
+    /// Clamps MaxLines (1..10) and OffsetY (-200..200); coerces Tier to a valid value; validates colors;
+    /// sanitizes AlwaysShow/Hide lists (trim, drop empty, dedupe, cap 128, max 64 chars each).
+    /// Returns false on malformed JSON — never throws.</summary>
+    private static bool TryParseBuffNameplates(string body, out BuffNameplateSettings bn)
+    {
+        bn = new BuffNameplateSettings();
+        try
+        {
+            var p = JsonSerializer.Deserialize<BuffNameplateSettings>(body, Json);
+            if (p == null) return false;
+            p.MaxLines = Math.Clamp(p.MaxLines, 1, 10);
+            p.OffsetY = Math.Clamp(p.OffsetY, -200f, 200f);
+            p.Tier = p.Tier is "All" or "NotableAndAbove" or "Deadly" ? p.Tier : "NotableAndAbove";
+            p.DeadlyColor = ValidHexOr(p.DeadlyColor, "#FF3333");
+            p.NotableColor = ValidHexOr(p.NotableColor, "#FF9900");
+            p.MinorColor = ValidHexOr(p.MinorColor, "#66CCFF");
+            p.AlwaysShow = SanitizeStringList(p.AlwaysShow);
+            p.Hide = SanitizeStringList(p.Hide);
+            bn = p;
             return true;
         }
         catch (JsonException) { return false; }
