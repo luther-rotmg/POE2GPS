@@ -3,6 +3,11 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.19.6] — 2026-07-02
+### Fixed — 🧭 **Off-screen Atlas arrows are back — and now they point true**
+- 🧭 **Off-screen Atlas arrows restored, accurate.** v0.19.5 turned them off because PoE2 stops updating a node's on-screen position the moment it scrolls off-screen, so the old arrows aimed at stale/garbage coordinates ("ghost arrows to nothing"). POE2GPS now derives each off-screen arrow's direction from the target node's **stable grid coordinate** instead: it fits the grid→screen mapping from all the nodes currently **on**-screen (whose positions are valid) and uses that to place any off-screen target reliably. So your tracked Citadels/maps get a border arrow that actually points at them, and it stays correct as you pan.
+- 🎯 Arrows follow the **same per-tag rules** as before (⚙️ Settings → Atlas) — no new toggle. On-screen node **rings, routes, and chevrons are unchanged**. If the view is too sparse to fit the mapping, off-screen arrows simply don't draw that frame (never a ghost). Still **100% read-only** — pure render-side math over data already read.
+
 ## [0.19.5] — 2026-07-02
 ### Changed
 - 🧭 **Off-screen Atlas arrows turned off** (the "ghost arrows pointing at nothing"). PoE2 stops updating a map node's position the moment it scrolls off-screen, so any arrow toward an off-screen target was aiming at stale/garbage coordinates — there's no reliable way to point at it from the off-screen position. On-screen node **rings are unchanged**. Bringing off-screen arrows back *accurately* (using each node's stable grid coordinate instead of the unreliable position) is a planned follow-up.
