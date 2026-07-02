@@ -45,6 +45,18 @@ public sealed class Poe2Live
     /// <summary>When false, dropped-item identity reads (art/name/rarity) are skipped — the ground-item
     /// label overlay is off. Set by RadarApp per world tick. Default true = fail-safe.</summary>
     public bool EnableItemIdentityReads { get; set; } = true;
+
+    /// <summary>One active buff on an entity. Id = internal name (e.g. "igniting_presence_aura");
+    /// Timer = seconds remaining (0 when Permanent); Permanent = the timer read as Inf/≤0.</summary>
+    public readonly record struct BuffState(string Id, float Timer, bool Permanent);
+
+    /// <summary>When false, the Buffs component is never read (no consumer). Set by RadarApp each world tick
+    /// from the Buff-nameplate feature state. Default true = fail-safe. Mirrors <see cref="EnableModReads"/>.</summary>
+    public bool EnableBuffReads { get; set; } = true;
+
+    private readonly Dictionary<nint, nint> _buffsAddr = new();    // entity → Buffs component (0 = none)
+    private readonly Dictionary<nint, string> _buffId = new();     // StatusEffect addr → id (static per instance)
+
     private readonly Dictionary<nint, string[]> _mods = new();     // entity → affix mod ids (static per spawn; cached; empty = no mods)
     private readonly Dictionary<nint, (Rarity rarity, string? art, bool identified, string? name)> _itemIdent = new(); // WorldItem entity → dropped-item identity (static; cached)
     private readonly Dictionary<nint, uint> _idAt = new();         // entity address → last-seen std::map key id (recycle guard)
@@ -104,7 +116,7 @@ public sealed class Poe2Live
         _gameStateSlot = gameStateSlot;
         _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
         _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear();
-        _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear();
+        _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear(); _buffsAddr.Clear(); _buffId.Clear();
         _entCacheKey = 0;
         _league = ""; _leagueFor = -1;
         _areaCode = ""; _areaCodeFor = -1;
@@ -468,7 +480,7 @@ public sealed class Poe2Live
         if (areaInstance != _entCacheKey)
         {
             _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
-            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear();
+            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear(); _buffsAddr.Clear(); _buffId.Clear();
             _entCacheKey = areaInstance;
         }
 
@@ -562,7 +574,7 @@ public sealed class Poe2Live
     {
         _renderAddr.Remove(entity); _lifeAddr.Remove(entity); _posAddr.Remove(entity);
         _ompAddr.Remove(entity); _chestAddr.Remove(entity); _openedChests.Remove(entity); _completedPois.Remove(entity); _iconState.Remove(entity); _category.Remove(entity);
-        _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _reaction.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity); _monolithCache.Remove(entity);
+        _meta.Remove(entity); _iconAddr.Remove(entity); _rarity.Remove(entity); _reaction.Remove(entity); _mods.Remove(entity); _itemIdent.Remove(entity); _monolithCache.Remove(entity); _buffsAddr.Remove(entity);
     }
 
     /// <summary>
@@ -733,6 +745,40 @@ public sealed class Poe2Live
         var arr = list.Count == 0 ? Array.Empty<string>() : list.ToArray();
         _mods[entity] = arr;
         return arr.Length == 0 ? null : arr;
+    }
+
+    /// <summary>Active buffs on an entity: walk the Buffs component's StatusEffect vector, decode each buff's
+    /// internal id (cached per StatusEffect — static per instance) + timer. Empty when the feature is off
+    /// (EnableBuffReads) or the entity has no Buffs component. Read-only; the only new memory read this release.</summary>
+    public IReadOnlyList<BuffState> Buffs(nint entity)
+    {
+        var result = new List<BuffState>();
+        if (!EnableBuffReads) return result;
+        if (!_buffsAddr.TryGetValue(entity, out var comp)) { comp = ResolveComponent(entity, "Buffs"); _buffsAddr[entity] = comp; }
+        if (comp == 0) return result;
+
+        var first = Ptr(comp + Poe2.BuffsComponent.BuffVector);
+        if (first == 0 || !_reader.TryReadStruct<nint>(comp + Poe2.BuffsComponent.BuffVector + 8, out var last) || last == 0) return result;
+        var count = (int)(((long)last - (long)first) / 8);
+        if (count <= 0 || count > 128) return result;   // sanity bound
+
+        for (var i = 0; i < count; i++)
+        {
+            var se = Ptr(first + (nint)(i * 8));
+            if (se == 0) continue;
+            if (!_buffId.TryGetValue(se, out var id))
+            {
+                var def = Ptr(se + Poe2.StatusEffect.Definition);
+                var idPtr = def == 0 ? 0 : Ptr(def + Poe2.BuffDefinition.IdPtr);
+                id = idPtr == 0 ? "" : _reader.ReadStringUtf16(idPtr, 128);
+                _buffId[se] = id;
+            }
+            if (string.IsNullOrEmpty(id)) continue;
+            _reader.TryReadStruct<float>(se + Poe2.StatusEffect.Timer, out var t);
+            var perm = float.IsInfinity(t) || float.IsNaN(t) || t <= 0f;
+            result.Add(new BuffState(id, perm ? 0f : t, perm));
+        }
+        return result;
     }
 
     /// <summary>

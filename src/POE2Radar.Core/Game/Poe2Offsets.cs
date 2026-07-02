@@ -267,6 +267,29 @@ public static class Poe2
         public const int ModRecordIdPtr = 0x00; // ✓ row's first qword → UTF-16 internal mod id
     }
 
+    /// <summary>Buffs component — the entity's active status-effect list. ✓ validated live 2026-07-01
+    /// (Research --buffs): +0x160 is a StdVector&lt;StatusEffect*&gt; (First/Last/End, stride 8).</summary>
+    public static class BuffsComponent
+    {
+        public const int BuffVector = 0x160; // ✓ StdVector<StatusEffect*> (First @ +0x160, Last @ +0x168)
+    }
+
+    /// <summary>One active buff/debuff. ✓ validated live 2026-07-01. +0x08 → Definition; +0x18 timer float
+    /// (Inf/∞ = permanent aura, finite = temporary — the popped Life flask read 3.2).</summary>
+    public static class StatusEffect
+    {
+        public const int Definition = 0x08; // ✓ ptr → BuffDefinition
+        public const int Timer      = 0x18; // ✓ float — remaining time; Inf = permanent
+        public const int MaxTimer   = 0x1C; // float — total/base (semantics unconfirmed; not shipped)
+        public const int Charges    = 0x40; // int — stack/charge count (not shipped)
+    }
+
+    /// <summary>Buff definition row. ✓ validated live 2026-07-01: +0x00 = ptr to the UTF-16 internal id.</summary>
+    public static class BuffDefinition
+    {
+        public const int IdPtr = 0x00; // ✓ ptr → UTF-16 buff id string (e.g. "igniting_presence_aura")
+    }
+
     /// <summary>Stack component (on stackable items) — current stack count. ✓ validated live 2026-06-16
     /// (currency/gem stacks in the player inventory read their true counts; matches GH2 StackOffsets).</summary>
     public static class StackComponent
