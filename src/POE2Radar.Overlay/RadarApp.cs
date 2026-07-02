@@ -197,6 +197,9 @@ public sealed class RadarApp : IDisposable
     private readonly List<ItemLabel> _itemFrame = new();   // render-thread scratch (rebuilt per frame)
     private readonly record struct AffixNameplateSpec(nint Render, AffixLine[] Lines);
     private readonly List<AffixNameplateTarget> _affixFrame = new();   // render-thread scratch (rebuilt per frame)
+    private readonly record struct BuffNameplateSpec(nint Render, POE2Radar.Core.Game.BuffLine[] Lines);
+    private readonly List<BuffNameplateTarget> _buffFrame = new();   // render-thread scratch (rebuilt per frame)
+    private volatile IReadOnlyList<(string Id, string Tier)> _buffsSeen = System.Array.Empty<(string, string)>(); // /api/buffs diagnostic
     // Off-screen entity arrow pipeline: the SPEC (Render component address + packed color + label) is built
     // at WORLD rate for each entity whose DisplayRule has OffScreenArrow=true; the render thread re-reads each
     // entity's live world position via _liveRender.TryLiveBarAt every frame (same pattern as affix nameplates).
@@ -239,13 +242,17 @@ public sealed class RadarApp : IDisposable
         IReadOnlyList<PreloadHit>? PreloadHits = null,
         // Off-screen entity arrows: per-entity specs built at world rate (Render addr + color + label);
         // the render thread converts each to a live world position via TryLiveBarAt every frame.
-        IReadOnlyList<EntityArrowSpec>? EntityArrowSpecs = null)
+        IReadOnlyList<EntityArrowSpec>? EntityArrowSpecs = null,
+        // Buff nameplates: per-elite specs built at world rate (Render addr + filtered buff lines);
+        // the render thread converts each to a live world position via TryLiveBarAt every frame.
+        IReadOnlyList<BuffNameplateSpec>? BuffSpecs = null)
     {
         public static readonly WorldSnapshot Empty = new(
             false, 0, 0, "", 0, Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), null,
             Array.Empty<HpBarSpec>(), Array.Empty<ItemLabelSpec>(), Array.Empty<AffixNameplateSpec>(), Array.Empty<SelectedPath>(),
             Array.Empty<LegendEntry>(), Array.Empty<string>(),
-            PreloadHits: null, EntityArrowSpecs: Array.Empty<EntityArrowSpec>());
+            PreloadHits: null, EntityArrowSpecs: Array.Empty<EntityArrowSpec>(),
+            BuffSpecs: Array.Empty<BuffNameplateSpec>());
     }
     private volatile WorldSnapshot _world = WorldSnapshot.Empty;
     private NumVec2 _worldPlayer;          // the world tick's current player grid (for off-thread replans)
@@ -1320,6 +1327,15 @@ public sealed class RadarApp : IDisposable
                         _affixFrame.Add(new AffixNameplateTarget(w, spec.Lines));
             }
 
+            // Buff nameplates: same HP-bar pattern — re-read each mob's live world pos this frame.
+            _buffFrame.Clear();
+            if (snap.BuffSpecs is { Count: > 0 } buffSpecs && _settings.BuffNameplates.Enabled)
+            {
+                foreach (var spec in buffSpecs)
+                    if (_liveRender.TryLiveBarAt(spec.Render, 0, out var w, out _, out _))
+                        _buffFrame.Add(new BuffNameplateTarget(w, spec.Lines));
+            }
+
             // Off-screen entity arrows: re-read each flagged entity's live world position THIS frame so
             // the arrow direction is current even when the entity is moving. life arg 0 → world-pos only.
             _entityArrowFrame.Clear();
@@ -1388,7 +1404,7 @@ public sealed class RadarApp : IDisposable
                 }
             }
         }
-        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_affixFrame.Count > 0) _affixFrame.Clear(); if (_entityArrowFrame.Count > 0) _entityArrowFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); if (_atlasRouteFrame.Count > 0) _atlasRouteFrame.Clear(); if (_atlasAutoRoutesFrame.Count > 0) _atlasAutoRoutesFrame.Clear(); }
+        else { if (_hpFrame.Count > 0) _hpFrame.Clear(); if (_itemFrame.Count > 0) _itemFrame.Clear(); if (_affixFrame.Count > 0) _affixFrame.Clear(); if (_buffFrame.Count > 0) _buffFrame.Clear(); if (_entityArrowFrame.Count > 0) _entityArrowFrame.Clear(); if (_atlasMarkFrame.Count > 0) _atlasMarkFrame.Clear(); if (_atlasRouteFrame.Count > 0) _atlasRouteFrame.Clear(); if (_atlasAutoRoutesFrame.Count > 0) _atlasAutoRoutesFrame.Clear(); }
 
         // Zone-load guard: the world snapshot lags the live chain by up to one world pass, so right after a
         // zone change its entities/terrain/route still belong to the PREVIOUS area. Only draw them once the
@@ -1528,6 +1544,8 @@ public sealed class RadarApp : IDisposable
             ZoneSummaryHud: _settings.ZoneSummary,
             AffixTargets: _affixFrame,
             AffixNameplates: _settings.AffixNameplates,
+            BuffTargets: _buffFrame,
+            BuffNameplates: _settings.BuffNameplates,
             AtlasRouteArrowSpacing: _settings.AtlasRouteArrowSpacing,
             AtlasContentIcons: _settings.AtlasShowContentIcons,
             AtlasContentIconSize: _settings.AtlasContentIconSize,
@@ -1709,6 +1727,9 @@ public sealed class RadarApp : IDisposable
         // Affix nameplates for elite monsters (shares the _resolveCache populated above).
         var affixSpecs = BuildAffixSpecs();
 
+        // Buff nameplates for elite monsters (stealth-gated; gates EnableBuffReads on cfg.Enabled).
+        var buffSpecs = BuildBuffSpecs();
+
         // Off-screen entity arrows (shares the _resolveCache populated above).
         var entityArrowSpecs = BuildEntityArrowSpecs();
 
@@ -1821,7 +1842,8 @@ public sealed class RadarApp : IDisposable
         _world = new WorldSnapshot(true, areaHash, areaLevel, areaCode, _charLevel,
             _entities, _landmarks, _terrain, hpSpecs, itemLabels, affixSpecs, _selectedPaths, _legend, _selectedSnapshot,
             PreloadHits: _preloadFrame,
-            EntityArrowSpecs: entityArrowSpecs);
+            EntityArrowSpecs: entityArrowSpecs,
+            BuffSpecs: buffSpecs);
     }
 
     /// <summary>
@@ -1987,6 +2009,54 @@ public sealed class RadarApp : IDisposable
             if (!_live.TryBarComponents(e.Address, out var render, out _)) continue;
             specs.Add(new AffixNameplateSpec(render, System.Linq.Enumerable.ToArray(lines)));
         }
+        return specs;
+    }
+
+    /// <summary>
+    /// Build the buff-nameplate spec list (world rate, stealth-gated): for each elite monster whose rarity
+    /// is enabled in BuffNameplates settings, call <see cref="POE2Radar.Core.Game.BuffCatalog.Select"/> to
+    /// filter its active buff list down to displayable <see cref="POE2Radar.Core.Game.BuffLine"/>s, capture
+    /// the Render component address, and emit a spec. Gates <c>EnableBuffReads</c> on cfg.Enabled so that
+    /// when disabled, Poe2Live.Buffs no-ops entirely (zero extra memory reads).
+    /// </summary>
+    private List<BuffNameplateSpec> BuildBuffSpecs()
+    {
+        var specs = new List<BuffNameplateSpec>();
+        var cfg = _settings.BuffNameplates;
+        _live.EnableBuffReads = cfg.Enabled;      // gate the read (stealth): off → Poe2Live.Buffs no-ops
+        if (!cfg.Enabled) { _buffsSeen = System.Array.Empty<(string, string)>(); return specs; }
+        var threshold = cfg.Tier switch
+        {
+            "All" => POE2Radar.Core.Game.BuffTier.Minor,
+            "NotableAndAbove" => POE2Radar.Core.Game.BuffTier.Notable,
+            _ => POE2Radar.Core.Game.BuffTier.Deadly,
+        };
+        var filter = new POE2Radar.Core.Game.BuffFilter(threshold,
+            new HashSet<string>(cfg.AlwaysShow), new HashSet<string>(cfg.Hide),
+            cfg.DisplayAll, Math.Clamp(cfg.MaxLines, 1, 10));
+        var seen = new Dictionary<string, string>(StringComparer.Ordinal);   // diagnostic: id → tier
+        foreach (var e in _entities)
+        {
+            if (e.Category != Poe2Live.EntityCategory.Monster) continue;
+            var on = e.Rarity switch
+            {
+                Poe2Live.Rarity.Magic  => cfg.ShowOnMagic,
+                Poe2Live.Rarity.Rare   => cfg.ShowOnRare,
+                Poe2Live.Rarity.Unique => cfg.ShowOnUnique,
+                _                      => false,
+            };
+            if (!on) continue;
+            var buffs = _live.Buffs(e.Address);
+            if (buffs.Count == 0) continue;
+            // adapt BuffState → the catalog's tuple shape
+            var tuples = new (string, float, bool)[buffs.Count];
+            for (var i = 0; i < buffs.Count; i++) { var b = buffs[i]; tuples[i] = (b.Id, b.Timer, b.Permanent); seen[b.Id] = POE2Radar.Core.Game.BuffCatalog.Shared.Resolve(b.Id).Tier.ToString(); }
+            var lines = POE2Radar.Core.Game.BuffCatalog.Shared.Select(tuples, filter);
+            if (lines.Count == 0) continue;
+            if (!_live.TryBarComponents(e.Address, out var render, out _)) continue;
+            specs.Add(new BuffNameplateSpec(render, System.Linq.Enumerable.ToArray(lines)));
+        }
+        _buffsSeen = seen.Select(kv => (kv.Key, kv.Value)).ToArray();   // publish for /api/buffs diagnostic
         return specs;
     }
 

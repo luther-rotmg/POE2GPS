@@ -40,6 +40,10 @@ public readonly record struct HpBarTarget(Vector3 World, float Frac, float Width
 /// projects <see cref="World"/> and draws the lines above the HP bar. Null/empty list → skip.</summary>
 public readonly record struct AffixNameplateTarget(Vector3 World, POE2Radar.Core.Game.AffixLine[] Lines);
 
+/// <summary>One mob whose buff tags should be drawn this frame. World = live position (re-read each frame);
+/// Lines = pre-filtered buff labels (with timers) from BuildBuffSpecs. Drawn BELOW the mob.</summary>
+public readonly record struct BuffNameplateTarget(Vector3 World, POE2Radar.Core.Game.BuffLine[] Lines);
+
 /// <summary>A priced ground-item label drawn over the in-world loot icon. <see cref="World"/> is the
 /// dropped item's world position (projected via the camera matrix, like HP bars). <see cref="Name"/> is
 /// the resolved unique name (from the art→price map — shown even for UNIDENTIFIED items), <see cref="Value"/>
@@ -252,6 +256,8 @@ public sealed record RenderContext(
     // Null/empty → none drawn. Settings mirrored so the renderer needs no settings reference. ──
     IReadOnlyList<AffixNameplateTarget>?  AffixTargets       = null,
     Config.AffixNameplateSettings?        AffixNameplates    = null,
+    IReadOnlyList<BuffNameplateTarget>?   BuffTargets        = null,
+    Config.BuffNameplateSettings?         BuffNameplates     = null,
     // Directional chevron spacing along atlas route lines (in chevron-heights). Default 8f matches upstream.
     float                                 AtlasRouteArrowSpacing = 8f,
     // #5 on-node content icons: draw content-type glyphs on FOGGED atlas nodes (the game hides these).
