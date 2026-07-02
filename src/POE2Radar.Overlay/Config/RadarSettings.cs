@@ -210,6 +210,11 @@ public sealed class RadarSettings
     // beyond loopback). On by default so you hear about updates; turn OFF for zero network egress.
     public bool CheckForUpdates { get; set; } = true;
 
+    // ── Auto-update (v0.19.1): "off" = no outbound update contact; "notify" = check only (banner);
+    //    "silent" = check + download + apply on next launch. Default "silent" (owner-approved; disclosed
+    //    in README + release notes). This supersedes the legacy CheckForUpdates bool (migrated in Load()).
+    public AutoUpdateSettings AutoUpdate { get; set; } = new();
+
     // ── God-Roll Detector (experimental). ──
     // Read inventory on a slow cadence and score each item 0–100 against your stat weights. OFF by
     // default; when off, no inventory is read at all. See the dashboard "Gear ⭐" tab.
@@ -307,6 +312,18 @@ public sealed class RadarSettings
 
             var json = File.ReadAllText(FilePath);
             var loaded = JsonSerializer.Deserialize<RadarSettings>(json, Json) ?? new RadarSettings();
+            // v0.19.1 migration: honor a legacy explicit CheckForUpdates=false as AutoUpdate.Mode="off".
+            // (A fresh install / any config without the key defaults to "silent".)
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(json);   // `json` = the raw file text read above
+                var root = doc.RootElement;
+                var hasAutoUpdate = root.TryGetProperty("autoUpdate", out _);
+                if (!hasAutoUpdate && root.TryGetProperty("checkForUpdates", out var cfu)
+                    && cfu.ValueKind == System.Text.Json.JsonValueKind.False)
+                    loaded.AutoUpdate.Mode = "off";
+            }
+            catch { }
             // Existing configs are loaded verbatim (never re-seeded from defaults), so repair stale
             // patterns shipped by older builds in place, then persist the upgrade.
             if (loaded.Migrate())
@@ -489,6 +506,12 @@ public sealed class BuffNameplateSettings
     public string DeadlyColor { get; set; } = "#FF3333";
     public string NotableColor { get; set; } = "#FF9900";
     public string MinorColor { get; set; } = "#66CCFF";
+}
+
+public sealed class AutoUpdateSettings
+{
+    // one of: "off" | "notify" | "silent"
+    public string Mode { get; set; } = "silent";
 }
 
 /// <summary>

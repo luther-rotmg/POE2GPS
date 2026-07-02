@@ -1208,6 +1208,7 @@ public sealed class ApiServer : IDisposable
         // OBS overlay + Discord Presence settings. ClientId is intentionally omitted from the GET
         // response — it is write-only (set via POST) and must not appear in screenshots or streams.
         obsOverlay               = _settings.ObsOverlay,
+        autoUpdate               = _settings.AutoUpdate,
         discordPresence          = new {
             enabled         = _settings.DiscordPresence.Enabled,
             // clientId intentionally omitted — write-only, never echoed
@@ -1351,6 +1352,10 @@ public sealed class ApiServer : IDisposable
                         if (string.IsNullOrEmpty(dp.ClientId)) dp.ClientId = _settings.DiscordPresence.ClientId;
                         _settings.DiscordPresence = dp; applied.Add(p.Name);
                     }
+                    break;
+                // Auto-update: whole-object write; Mode validated against the allowed set.
+                case "autoUpdate" when p.Value.ValueKind == JsonValueKind.Object:
+                    if (TryParseAutoUpdate(p.Value, out var au)) { _settings.AutoUpdate = au; applied.Add(p.Name); }
                     break;
                 // Anything else (apiPort, unknown keys) is ignored by design.
             }
@@ -1638,6 +1643,15 @@ public sealed class ApiServer : IDisposable
             var t = (s ?? "").Trim();
             return t.Length > 128 ? t[..128] : t;
         }
+    }
+
+    private static bool TryParseAutoUpdate(JsonElement e, out Config.AutoUpdateSettings v)
+    {
+        v = new Config.AutoUpdateSettings();
+        var mode = e.TryGetProperty("mode", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
+        if (mode is not ("off" or "notify" or "silent")) return false;
+        v.Mode = mode;
+        return true;
     }
 
     private static List<string> SanitizeStringList(List<string>? raw)
