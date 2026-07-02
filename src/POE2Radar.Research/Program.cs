@@ -8056,9 +8056,62 @@ static int RunBuffs(ProcessHandle process, MemoryReader reader, nint? entityOver
         }
     }
 
+    // ── 3b) StatusEffect scan: an ACTIVE buff object back-points to the Buffs component at its +0x00.
+    //    Enumerate them (direct pointer slots + heap-vector elements the component references), then
+    //    decode timer (+0x18/+0x1C floats) + name (follow each early pointer to a definition, string-scan).
+    void ScanStatusEffects(nint comp)
+    {
+        Console.WriteLine($"\n--- StatusEffect scan (structs whose +0x00 == comp 0x{comp:X}) ---");
+        var buf = new byte[0x200];
+        var got = reader.TryReadBytes(comp, buf);
+        var found = new List<nint>();
+        void Consider(nint s) { if (s != 0 && !found.Contains(s) && SafePtr(reader, s) == comp) found.Add(s); }
+        for (var off = 0; off + 8 <= got; off += 8)
+        {
+            var p = (nint)BitConverter.ToInt64(buf, off);
+            if ((ulong)p < 0x10000 || (ulong)p > 0x7FFFFFFFFFFF) continue;
+            Consider(p);                                    // p may itself be a StatusEffect*
+            for (var k = 0; k < 64; k++)                    // or p may be a heap array of StatusEffect*
+            {
+                var e = SafePtr(reader, p + k * 8);
+                if (e == 0) break;
+                Consider(e);
+            }
+        }
+        Console.WriteLine($"  {found.Count} StatusEffect(s) found.");
+        foreach (var s in found)
+        {
+            reader.TryReadStruct<float>(s + 0x18, out var t0);
+            reader.TryReadStruct<float>(s + 0x1C, out var t1);
+            var name = "?"; var hop = "";
+            foreach (var defOff in new[] { 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38 })
+            {
+                var def = SafePtr(reader, s + defOff);
+                if (def == 0) continue;
+                for (var so = 0; so <= 0x30 && name == "?"; so += 8)
+                {
+                    if (ReadStr(SafePtr(reader, def + so)) is { } viaPtr) { name = viaPtr; hop = $"S+0x{defOff:X}=>+0x{so:X}=>*"; }
+                    else if (ReadStr(def + so) is { } inl)                { name = inl;   hop = $"S+0x{defOff:X}=>+0x{so:X}(inline)"; }
+                }
+                if (name != "?") break;
+            }
+            Console.WriteLine($"  buff 0x{s:X}  timer={t0:F1}/{t1:F1}  name=\"{name}\"  {hop}");
+            var d = new byte[0x48]; var dg = reader.TryReadBytes(s, d);
+            for (var k = 0; k < dg; k += 16)
+            {
+                var n2 = Math.Min(16, dg - k);
+                var hx = string.Join(' ', Enumerable.Range(0, n2).Select(j => d[k + j].ToString("X2")));
+                var s16 = reader.ReadStringUtf16(s + k, 48);
+                var ann = !string.IsNullOrEmpty(s16) && IdLike(s16) ? $"   \"{s16}\"" : "";
+                Console.WriteLine($"        +0x{k:X2}  {hx}{ann}");
+            }
+        }
+    }
+
     if (!watch)
     {
         PrintBuffList(buffsComp);
+        ScanStatusEffects(buffsComp);
         Console.WriteLine("\nNext steps:");
         Console.WriteLine("  • Pin the vec-candidate offset that printed recognisable ids.");
         Console.WriteLine("  • Run --buffs --watch (apply/remove a flask) to confirm the list changes.");
