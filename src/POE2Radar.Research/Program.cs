@@ -295,6 +295,9 @@ if (HasFlag(args, "--atlas-watch"))
 if (HasFlag(args, "--atlas-xform"))
     return RunAtlasXform(process, reader);
 
+if (HasFlag(args, "--atlas-diag"))
+    return RunAtlasDiag(process, reader);
+
 if (HasFlag(args, "--atlas-probe"))
     return RunAtlasProbe(process, reader);
 
@@ -6158,6 +6161,111 @@ static int RunAtlasProbe(ProcessHandle process, MemoryReader reader)
     Console.WriteLine($"    node-class vtable (drifts every patch): module +0x{(long)nodeVt - (long)process.MainModuleBase:X}");
     Console.WriteLine("\nDONE. If any line above is ⚠ DRIFT, that offset moved — re-discover with --atlas-canvas / --atlas-nodes2.");
     return 0;
+}
+
+// ── Atlas DIAGNOSTIC (ship to a user): captures what the overlay's OWN atlas read-path returns (Poe2Atlas
+//    .IsAtlasOpen + .ReadNodes) on the atlas AND on the world/act screen (panel-detection check), then runs
+//    the clean-room --atlas-probe for the raw offset truth. READ-ONLY. Tees everything to
+//    atlas-diag-report.txt next to the exe. Guided prompts so a non-technical user can run it. ──
+static int RunAtlasDiag(ProcessHandle process, MemoryReader reader)
+{
+    var path = System.IO.Path.Combine(AppContext.BaseDirectory, "atlas-diag-report.txt");
+    var origOut = Console.Out;
+    System.IO.StreamWriter? fw = null;
+    try
+    {
+        fw = new System.IO.StreamWriter(path, append: false) { AutoFlush = true };
+        Console.SetOut(new TeeTextWriter(origOut, fw));
+
+        void Prompt(string msg) { origOut.Write(msg); origOut.Flush(); try { Console.ReadLine(); } catch { } }
+
+        Console.WriteLine("POE2GPS — ATLAS DIAGNOSTIC");
+        Console.WriteLine("==========================");
+        Console.WriteLine("READ-ONLY memory diagnostic to fix the Atlas marker bug. Target client: PoE2 0.5.4.");
+        Console.WriteLine($"Attached to PID {process.ProcessId}.");
+        Console.WriteLine($"Report file: {path}");
+        Console.WriteLine();
+
+        Console.WriteLine(">> STEP 1: In PoE2, open your ENDGAME ATLAS map (the node map where you see the bug).");
+        Prompt(">> Then click back on THIS window and press ENTER...\n");
+
+        var atlas = new Poe2Atlas(reader);
+        Console.WriteLine("--- OVERLAY READ PATH on the ATLAS (IsAtlasOpen + ReadNodes) ---");
+        int gotChain = AtlasDiagSample(process, reader, atlas, "atlas", 8);
+        if (gotChain == 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("!! WARNING: could NOT read the game state on any sample.");
+            Console.WriteLine("!! Make sure: (1) you are logged in and in-game, and (2) you launched this via");
+            Console.WriteLine("!! \"Run Atlas Diagnostic.bat\" and clicked YES on the admin prompt (memory reads");
+            Console.WriteLine("!! need administrator). If you ran the .exe directly, close it and use the .bat.");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine(">> STEP 2 (optional): switch PoE2 to the plain WORLD / act-select screen (NOT the atlas).");
+        Prompt(">> Then press ENTER (or just press ENTER now to skip this check)...\n");
+        Console.WriteLine("--- OVERLAY READ PATH on the WORLD/ACT screen (panel-detection check) ---");
+        AtlasDiagSample(process, reader, atlas, "world", 1);
+
+        Console.WriteLine();
+        Console.WriteLine(">> STEP 3: open your ENDGAME ATLAS again for the raw-truth probe.");
+        Prompt(">> Press ENTER when the Atlas is open...\n");
+        Console.WriteLine("--- RAW-TRUTH PROBE (independent detection + offset validation) ---");
+        try { RunAtlasProbe(process, reader); } catch (Exception ex) { Console.WriteLine("raw-probe error: " + ex.Message); }
+
+        Console.WriteLine();
+        Console.WriteLine("--- HOW TO READ THIS ---");
+        Console.WriteLine("If the ATLAS samples show nodes ~1000+ with a WIDE relPos range and nearZeroPos near 0,");
+        Console.WriteLine("the raw reads are FINE -> the bug is in the overlay's render/freeze logic (fixable).");
+        Console.WriteLine("If nodes=0, or nearZeroPos is high, or IsAtlasOpen=True on the WORLD screen,");
+        Console.WriteLine("it's a read / panel-detection problem. Either way this report tells us which.");
+        Console.WriteLine("\nDONE.");
+    }
+    catch (Exception ex) { origOut.WriteLine("diag error: " + ex); }
+    finally { Console.SetOut(origOut); fw?.Flush(); fw?.Dispose(); }
+
+    Console.WriteLine($"\nReport saved to:\n  {path}\nPlease send that file back to whoever gave you this tool.");
+    Console.WriteLine("Press any key to close.");
+    try { Console.ReadKey(); } catch { }
+    return 0;
+}
+
+// One diagnostic sample pass: prints IsAtlasOpen + node count + relPos spread + near-zero count + zoom for
+// the overlay's Poe2Atlas read-path, repeated `samples` times at ~1 Hz. `label` tags atlas vs world runs.
+// Returns how many samples successfully resolved the game chain (0 ⇒ not in-game or not running as admin).
+static int AtlasDiagSample(ProcessHandle process, MemoryReader reader, Poe2Atlas atlas, string label, int samples)
+{
+    int chained = 0;
+    for (int s = 0; s < samples; s++)
+    {
+        var (_, igs, _, _) = ResolveChain(process, reader);
+        if (igs != 0) chained++;
+        bool open = igs != 0 && atlas.IsAtlasOpen(igs);
+        var nodes = igs != 0 ? atlas.ReadNodes(igs, true, true) : new List<Poe2Atlas.AtlasNodeLive>();
+        int finite = 0, nearZero = 0;
+        float minX = 1e9f, maxX = -1e9f, minY = 1e9f, maxY = -1e9f, sumX = 0, sumY = 0;
+        var sc = new List<float>();
+        foreach (var nd in nodes)
+        {
+            if (float.IsFinite(nd.X) && float.IsFinite(nd.Y))
+            {
+                finite++; sumX += nd.X; sumY += nd.Y;
+                if (nd.X < minX) minX = nd.X; if (nd.X > maxX) maxX = nd.X;
+                if (nd.Y < minY) minY = nd.Y; if (nd.Y > maxY) maxY = nd.Y;
+                if (Math.Abs(nd.X) < 2f && Math.Abs(nd.Y) < 2f) nearZero++;
+            }
+            if (nd.Scale > 0.01f && nd.Scale < 4f) sc.Add(nd.Scale);
+        }
+        sc.Sort(); float zoom = sc.Count > 0 ? sc[sc.Count / 2] : 0f;
+        var cur = atlas.CurrentNodeGrid();
+        Console.WriteLine($"[{label} {s + 1}/{samples}] IsAtlasOpen={open} nodes={nodes.Count} finitePos={finite} nearZeroPos={nearZero} zoomMedian={zoom:F4} curGrid={(cur.HasValue ? $"({cur.Value.X},{cur.Value.Y})" : "null")}");
+        if (finite > 0)
+            Console.WriteLine($"    relPos X[{minX:F0}..{maxX:F0}] Y[{minY:F0}..{maxY:F0}] mean=({sumX / finite:F0},{sumY / finite:F0})");
+        foreach (var nd in nodes.Take(4))
+            Console.WriteLine($"    node 0x{nd.Element:X} pos=({nd.X:F1},{nd.Y:F1}) scale={nd.Scale:G4} grid=({nd.GridX},{nd.GridY}) map='{nd.MapName}'");
+        if (s < samples - 1) System.Threading.Thread.Sleep(1000);
+    }
+    return chained;
 }
 
 // ── Atlas GRAPH probe: validate the GameHelper2-sourced node GRID COORDINATES + CONNECTION GRAPH ──
