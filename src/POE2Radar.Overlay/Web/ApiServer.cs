@@ -357,7 +357,8 @@ public sealed class ApiServer : IDisposable
                         break;
                     }
                     var applied = ApplySettings(ReadBody(ctx));
-                    var restartRequired = System.Array.IndexOf(applied, "allowLanAccess") >= 0 ? new[] { "allowLanAccess" } : System.Array.Empty<string>();
+                    var restartKeys = new[] { "allowLanAccess", "enableWebMap", "enableWebObs" };
+                    var restartRequired = System.Array.FindAll(applied, k => System.Array.IndexOf(restartKeys, k) >= 0);
                     Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, applied, restartRequired, settings = ReadSettings() }, Json));
                 }
                 else
@@ -1154,6 +1155,8 @@ public sealed class ApiServer : IDisposable
         offY = _settings.OffY,
         apiPort = _settings.ApiPort, // display only — changing it needs a restart
         allowLanAccess = _settings.AllowLanAccess, // opt-in LAN view binding; needs a restart to apply
+        enableWebMap = _settings.EnableWebMap,
+        enableWebObs = _settings.EnableWebObs,
         styles = _settings.Styles,   // per-item icon shapes/colors/sizes + mechanic overrides
         hpBars = _settings.HpBars,   // monster HP-bar geometry (width/height/offset)
         terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
@@ -1324,6 +1327,8 @@ public sealed class ApiServer : IDisposable
                 case "audioToneMechanic"  when TryString(p.Value, out var s): _settings.AudioToneMechanic  = s.Trim(); applied.Add(p.Name); break;
                 case "firstRunSeen" when TryBool(p.Value, out var b): _settings.FirstRunSeen = b; applied.Add(p.Name); break;
                 case "allowLanAccess" when TryBool(p.Value, out var lan): _settings.AllowLanAccess = lan; applied.Add(p.Name); break;
+                case "enableWebMap" when TryBool(p.Value, out var em): _settings.EnableWebMap = em; applied.Add(p.Name); break;
+                case "enableWebObs" when TryBool(p.Value, out var eo): _settings.EnableWebObs = eo; applied.Add(p.Name); break;
                 // Atlas colour groups (#7): the dashboard re-POSTs the full array on edit.
                 case "atlasGroups" when p.Value.ValueKind == JsonValueKind.Array:
                     if (TryParseAtlasGroups(p.Value, out var atlasGrps)) { _settings.AtlasGroups = atlasGrps; _settings.AtlasGroupsSeeded = true; applied.Add(p.Name); }

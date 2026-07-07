@@ -200,6 +200,12 @@ public sealed class RadarSettings
     // regardless — LAN peers get 403 on any settings change. Changing this needs an app restart.
     public bool AllowLanAccess { get; set; } = false;
 
+    /// <summary>Opt-in browser view at http://localhost:{ApiPort}/map (in-game skin, 30 Hz SSE push). Default off; needs an app restart to apply.</summary>
+    public bool EnableWebMap { get; set; } = false;
+
+    /// <summary>Opt-in OBS Browser Source view at http://localhost:{ApiPort}/obs (transparent, in-game skin, 30 Hz SSE push). Default off; needs an app restart to apply.</summary>
+    public bool EnableWebObs { get; set; } = false;
+
     // ── Stealth / footprint. ──
     // Hide the overlay from screen capture / screenshots / OBS (SetWindowDisplayAffinity). On by default
     // for the lowest footprint; turn OFF if you want to screenshot/stream the overlay itself. The overlay

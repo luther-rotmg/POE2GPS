@@ -998,6 +998,10 @@ internal static class DashboardHtml
             <h3>Remote Access (LAN) <small class="tag">&middot; view from other devices</small></h3>
             <div class="row"><div class="rl">Allow LAN access<small>let other devices on your network open /obs and /map (view-only &mdash; nobody on your LAN can change your settings). Needs an app restart to apply.</small></div>
               <label class="sw"><input type="checkbox" data-set="allowLanAccess"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Enable Web Map<small>opt-in browser view at /map with the in-game POE2 visual language, 30 Hz push, 60 fps rAF. Off by default. Needs an app restart to apply.</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableWebMap"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Enable OBS Browser Source<small>opt-in transparent view at /obs for OBS overlays. Same 30 Hz push and in-game skin as /map. Off by default. Needs an app restart to apply.</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableWebObs"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl hint-row">First connection: allow POE2GPS through Windows Firewall (inbound TCP on your API port) when Windows prompts. Reads are unauthenticated over your LAN &mdash; only enable this on a network you trust.</div></div>
             <div class="row"><div class="rl">Your LAN URLs<small>open these from another device once LAN access is on + you&rsquo;ve restarted</small></div>
               <span style="display:flex;flex-direction:column;gap:4px" id="lanUrls"><code style="font-size:12px;color:var(--ink-faint)">turn on LAN access + restart to see URLs</code></span></div>
