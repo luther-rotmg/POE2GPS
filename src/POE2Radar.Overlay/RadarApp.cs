@@ -44,6 +44,8 @@ public sealed class RadarApp : IDisposable
     private readonly OverlayWindow _window;
     private readonly OverlayRenderer _renderer;
     private readonly ApiServer _api;
+    private SseChannel? _sse;
+    private AssetHost? _assetHost;
     private readonly RadarSettings _settings;
     private readonly HiddenEntities _hidden;
     private readonly WatchedEntities _watched;
@@ -670,6 +672,13 @@ public sealed class RadarApp : IDisposable
         // Master gate (EnableAudioAlerts) defaults false — nothing plays until the user opts in.
         // Initialized before ApiServer so the audioTest lambda can capture non-null references.
         RebuildAudioCues();
+        var webViewsOn = _settings.EnableWebMap || _settings.EnableWebObs;
+        _sse       = webViewsOn ? new SseChannel() : null;
+        _assetHost = webViewsOn ? new AssetHost() : null;
+#if DEBUG
+        if (!webViewsOn && (_sse != null || _assetHost != null))
+            throw new System.InvalidOperationException("zero-cost-when-off invariant violated");
+#endif
         _api = new ApiServer(() => _state, _settings, GetNavSelection, ToggleNavTarget, ClearNavSelection,
                              _hidden, _displayRules, _landmarkStore, CurrentTilePaths, () => _modCatalog.All,
                              _campaign, () => _seenPoiLog.All, () => _entityAtlas.All, _entityNameStore,
@@ -683,7 +692,9 @@ public sealed class RadarApp : IDisposable
                              presetStore: _presetStore,
                              terrainProvider: CurrentTerrain,
                              allowLanAccess: _settings.AllowLanAccess,
-                             port: _settings.ApiPort);
+                             port: _settings.ApiPort,
+                             sse: _sse,
+                             assetHost: _assetHost);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
@@ -1477,6 +1488,7 @@ public sealed class RadarApp : IDisposable
             snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
             Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps,
             RpmPerSec: _rpmPerSec);
+        _sse?.Publish(_state);
 
         var realActive = renderActive;   // SR-2: reuse focus check computed before the read block (avoids a second GetForegroundWindow call)
         // "Always show" draws the overlay even when PoE2 isn't focused (for dashboard calibration).
