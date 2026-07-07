@@ -45,6 +45,8 @@
     <EmbeddedResource Include="Web\presets\high_contrast.poe2preset" />
     <EmbeddedResource Include="Web\presets\minimal.poe2preset" />
     <EmbeddedResource Include="Web\presets\boss_hunter.poe2preset" />
+    <EmbeddedResource Include="Web/Assets/map.html" />
+    <EmbeddedResource Include="Web/Assets/map.css" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,57 @@
+/* POE2GPS /map + /obs — locked POE2-authentic palette (v0.20.0 T4 skeleton).
+   The full renderer's paints live in map.js — this file only handles page
+   chrome, the /obs transparency mode, and the GPS-mode class toggle. */
+
+:root {
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: #f0e6c8;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+
+#c {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  cursor: crosshair;
+}
+
+.hud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 232, 180, 0.25);
+  border-radius: 2px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.gps-toggle {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  padding: 4px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #f0e6c8;
+  border: 1px solid rgba(255, 232, 180, 0.35);
+  border-radius: 2px;
+  font: 11px Consolas, monospace;
+  cursor: pointer;
+}
+
+.gps-toggle:hover { background: rgba(255, 232, 180, 0.1); }
+body.gps-mode .gps-toggle { background: rgba(255, 232, 180, 0.2); color: #ffe8b4; }
+
+/* /obs — transparent for OBS Browser Source, no chrome. */
+body.obs { background: transparent; }
+body.obs .hud, body.obs .gps-toggle { display: none; }
