@@ -14,7 +14,7 @@ Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares 
 
 ### Changed
 - 🧰 **Legacy `MapPageHtml.cs` / `ObsOverlayHtml.cs` retired.** Browser assets now ship as embedded resources — smaller diff surface, cleaner rebuilds, no behavior change for viewers.
-- 📚 **Tencent CN client compatibility — recon design doc published.** Not a shipped feature yet; the design notes at `docs/superpowers/specs/2026-07-06-v0.20.0-map-60hz-clone-design.md#tencent-cn-client--recon-appendix` document what the CN client looks like structurally so a future release can support it cleanly.
+- 📚 **Tencent CN client compatibility — recon design doc published.** Not a shipped feature yet; the design notes (`2026-07-06-v0.20.0-map-60hz-clone-design.md`) document what the CN client looks like structurally so a future release can support it cleanly.
 
 ## [0.19.6] — 2026-07-02
 ### Fixed — 🧭 **Off-screen Atlas arrows are back — and now they point true**
