@@ -86,6 +86,7 @@ public sealed class ApiServer : IDisposable
     private readonly Action? _rebuildAudio;
     private readonly PresetStore _presetStore;
     private volatile bool _running;
+    private Task? _loopTask;
     private readonly bool _allowLanAccess;   // bound all-interfaces when true (opt-in LAN view)
     private readonly int _port;              // stored for /api/lan-info + loopback fallback
     private volatile bool _lanBindFailed;    // true if http://+:port bind threw and we fell back to loopback
@@ -184,29 +185,29 @@ public sealed class ApiServer : IDisposable
             _listener.Start();
         }
         _running = true;
-        // Handle() is `async Task` (v0.20.0 T5 — needed so /stream can `await` SseChannel.HandleSubscribe).
-        // Bootstrap the async loop on the existing dedicated thread; the outermost `.GetResult()` here
-        // is only how a `Thread` invokes a `Task`-returning method — inside Loop() we `await` Handle so
-        // no request runs synchronously past its first suspension point. T6 will Task.Run per request.
-        var t = new Thread(() => Loop().GetAwaiter().GetResult()) { IsBackground = true, Name = "POE2Radar.Api" };
-        t.Start();
+        // v0.20.0 T6: LoopAsync now uses GetContextAsync + Task.Run per request, so /stream no longer
+        // serializes the loop and other requests can interleave.
+        _loopTask = Task.Run(LoopAsync);
     }
 
-    private async Task Loop()
+    private async Task LoopAsync()
     {
         while (_running)
         {
             HttpListenerContext ctx;
-            try { ctx = _listener.GetContext(); }
-            catch { return; } // listener stopped
-            try { await Handle(ctx).ConfigureAwait(false); }
-            catch (Exception ex)
+            try { ctx = await _listener.GetContextAsync().ConfigureAwait(false); }
+            catch (HttpListenerException) when (!_running) { return; }
+            catch (ObjectDisposedException) { return; }
+            _ = Task.Run(async () =>
             {
-                // Log the detail locally, but return a GENERIC body — raw exception messages can carry
-                // memory-read internals (addresses / struct names) we don't want on the wire.
-                Console.Error.WriteLine($"API handler error: {ex.Message}");
-                TryWrite(ctx, 500, JsonSerializer.Serialize(new { error = "internal error" }, Json));
-            }
+                try { await Handle(ctx).ConfigureAwait(false); }
+                catch (System.Exception ex)
+                {
+                    // Don't take the loop down on a per-request fault.
+                    try { ctx.Response.StatusCode = 500; ctx.Response.Close(); } catch { }
+                    Console.Error.WriteLine($"api: {ex.Message}");
+                }
+            });
         }
     }
 
@@ -333,7 +334,8 @@ public sealed class ApiServer : IDisposable
                         name = l.Name, curatedName = l.CuratedName, path = l.Path, tiles = l.TileCount,
                         x = l.Center.X, y = l.Center.Y, dist = (int)Dist(l.Center, s.Player),
                     });
-                Write(ctx, 200, JsonSerializer.Serialize(list, Json));
+                var json = JsonSerializer.SerializeToUtf8Bytes(list, Json);
+                WriteMaybeGzipped(ctx, json, "application/json; charset=utf-8");
                 break;
             }
 
@@ -700,7 +702,10 @@ public sealed class ApiServer : IDisposable
                 // Inspection view of the atlas map-data we can read (catalog + current-region map set).
                 // Read-only; the provider scans + caches, so the first call after entering the atlas
                 // may take a moment. Returns {located:false,...} when the catalog can't be found.
-                Write(ctx, 200, JsonSerializer.Serialize(_atlas?.Invoke() ?? new { located = false, note = "atlas reader unavailable" }, Json));
+                {
+                    var json = JsonSerializer.SerializeToUtf8Bytes(_atlas?.Invoke() ?? new { located = false, note = "atlas reader unavailable" }, Json);
+                    WriteMaybeGzipped(ctx, json, "application/json; charset=utf-8");
+                }
                 break;
 
             case "/api/atlas-select":
@@ -1048,7 +1053,8 @@ public sealed class ApiServer : IDisposable
                     _mapCacheJson = TerrainMapPayload.ToJson(walk, w, h, hash);
                     _mapCacheHash = hash;
                 }
-                Write(ctx, 200, _mapCacheJson);
+                var json = Encoding.UTF8.GetBytes(_mapCacheJson);
+                WriteMaybeGzipped(ctx, json, "application/json; charset=utf-8");
                 break;
             }
 
@@ -2300,6 +2306,33 @@ public sealed class ApiServer : IDisposable
     private static void TryWrite(HttpListenerContext ctx, int status, string body)
     {
         try { Write(ctx, status, body); } catch { /* client gone */ }
+    }
+
+    static bool WantsGzip(HttpListenerRequest req)
+    {
+        var enc = req.Headers["Accept-Encoding"];
+        return enc != null && enc.IndexOf("gzip", System.StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    static void WriteMaybeGzipped(HttpListenerContext ctx, byte[] payload, string mime)
+    {
+        ctx.Response.ContentType = mime;
+        if (WantsGzip(ctx.Request))
+        {
+            ctx.Response.Headers["Content-Encoding"] = "gzip";
+            using (var gz = new System.IO.Compression.GZipStream(ctx.Response.OutputStream,
+                                                                System.IO.Compression.CompressionLevel.Fastest,
+                                                                leaveOpen: false))
+            {
+                gz.Write(payload, 0, payload.Length);
+            }
+        }
+        else
+        {
+            ctx.Response.ContentLength64 = payload.Length;
+            ctx.Response.OutputStream.Write(payload, 0, payload.Length);
+            ctx.Response.OutputStream.Close();
+        }
     }
 
     public void Dispose()
