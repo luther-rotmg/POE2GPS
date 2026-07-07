@@ -155,8 +155,14 @@ public class SseChannelTests
     public async Task Subscriber_receives_seed_snapshot_on_connect()
     {
         using var c = new SseChannel();
-        c.Publish(MakeState()); // sets _latest, but no subscribers yet — must not throw
 
+        // A first subscriber must exist so the Publish call actually stores _latest.
+        var dummy = new RecordingSink();
+        c.AddSubscriberWithSeed(dummy);
+
+        c.Publish(MakeState()); // this populates _latest (dummy has ≥ 1 sub)
+
+        // Now add a new subscriber; it should receive the last snapshot immediately.
         var seed = new RecordingSink();
         c.AddSubscriberWithSeed(seed);
 

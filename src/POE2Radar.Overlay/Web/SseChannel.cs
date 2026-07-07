@@ -49,10 +49,9 @@ public sealed class SseChannel : IDisposable
     /// </summary>
     public void Publish(RadarState state)
     {
-        if (_disposed) return;
+        if (_disposed || _subs.IsEmpty) return;
         var frame = SerializeFrame(state);
         lock (_latestLock) _latest = frame;
-        if (_subs.IsEmpty) return;
         foreach (var kv in _subs) FanOutTo(kv.Value, frame);
     }
 
@@ -239,13 +238,11 @@ public sealed class SseChannel : IDisposable
         }
 
         var id = AddSubscriberWithSeed(sink);
-        // Await disconnection via a linked cancellation: HttpListener signals the
-        // request abort by throwing on the next Write, at which point FanOutTo has
-        // already scheduled RemoveSubscriberInternal. We just need to keep this
-        // response coroutine parked until the client goes away.
+        // Park until the client disconnects. There's no HttpListener primitive that
+        // signals disconnect; we poll sink.IsClosed at 200 ms — long enough that idle
+        // tabs don't burn cycles, short enough that Dispose() wakes us promptly.
         try
         {
-            var buf = new byte[1];
             while (!sink.IsClosed)
             {
                 // Sleep in short slices so Dispose() can wake us; there's no
