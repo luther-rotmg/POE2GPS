@@ -25,6 +25,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="POE2Radar.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\POE2Radar.Core\POE2Radar.Core.csproj" />
   </ItemGroup>
 
