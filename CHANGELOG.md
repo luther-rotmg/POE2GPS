@@ -4,15 +4,17 @@ All notable changes to POE2GPS. This project is a strictly read-only, GGG-compli
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
 ## [0.20.0] — 2026-07-06
+### Added — 🖥️ **Web Views v2: Native-Feel** *(monitor-refresh `/map` + `/obs`, opt-in, default off)*
+- 🖥️ **`/map` and `/obs` now render at your monitor's refresh rate with 1:1 in-game visual language.** Point any browser (second monitor, tablet, capture PC) at `http://<your-ip>:7777/map` or `/obs` and you get the same rings, chevrons, terrain mask, off-screen arrows, POIs and landmarks the overlay draws — at the same cadence, laid out the same way. **Opt-in** in ⚙️ Settings → Streaming; **default is off** so nothing new touches the network unless you flip it on.
+- 📡 **New `/stream` SSE endpoint pushes snapshots at 30 Hz.** Server-Sent Events replaces polling for the map surface — the browser stops asking "any change?" ten times a second and just listens. Lower CPU on the overlay side, lower jitter on the browser side, and the render loop can finally keep up with the game.
+- ⚡ **Multithreaded `HttpListener` + gzip on the big payloads.** Request handling is no longer single-file; `/api/map`, `/api/atlas`, and `/landmarks` now negotiate gzip so slower Wi-Fi links (phones, tablets on 2.4 GHz) get the same responsiveness as your desk.
+- 🎯 **`/stream` entity cap raised 600 → 800 per snapshot.** In heavy Breach / Ritual / Delirium moments the browser view no longer clips extra mobs off the edge of the snapshot before you can see them.
+- 🩸 **Monolith reward icons now surface to the browser views.** The reward panel you already have on the in-game overlay is mirrored to `/map` / `/obs`, so a co-pilot watching your second screen sees the same choice you do.
+- 🛡️ **100% read-only.** Every one of the above ships zero new memory reads and zero new input paths. The 60 Hz web renderer is pure math over data POE2GPS already reads for the in-game overlay — same data, more screens.
 
-### Added
-
-- Web `/map` and `/obs` now run at monitor refresh with 1:1 in-game visual language (opt-in, default off).
-- SSE `/stream` endpoint for 30 Hz push.
-- Multithreaded `HttpListener` request handling; gzip on `/api/map`, `/api/atlas`, `/landmarks` payloads.
-- `/stream` entity cap raised from 600 to 800 per snapshot; monolith rewards surfaced to browser views.
-- Legacy `MapPageHtml.cs` and `ObsOverlayHtml.cs` removed; browser assets shipped as embedded resources.
-- Tencent CN client compatibility: recon design doc published at `docs/superpowers/specs/2026-07-06-v0.20.0-map-60hz-clone-design.md#tencent-cn-client--recon-appendix`.
+### Changed
+- 🧰 **Legacy `MapPageHtml.cs` / `ObsOverlayHtml.cs` retired.** Browser assets now ship as embedded resources — smaller diff surface, cleaner rebuilds, no behavior change for viewers.
+- 📚 **Tencent CN client compatibility — recon design doc published.** Not a shipped feature yet; the design notes at `docs/superpowers/specs/2026-07-06-v0.20.0-map-60hz-clone-design.md#tencent-cn-client--recon-appendix` document what the CN client looks like structurally so a future release can support it cleanly.
 
 ## [0.19.6] — 2026-07-02
 ### Fixed — 🧭 **Off-screen Atlas arrows are back — and now they point true**
