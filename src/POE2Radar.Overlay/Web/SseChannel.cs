@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Concurrent;
-using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -32,7 +31,7 @@ public sealed class SseChannel : IDisposable
     }
 
     readonly ConcurrentDictionary<Guid, Subscriber> _subs = new();
-    readonly TimeProvider _time;
+    readonly TimeProvider _time;  // reserved for T3 heartbeat timer; not read in T2
     byte[]? _latest;
     readonly object _latestLock = new();
     volatile bool _disposed;
@@ -40,6 +39,12 @@ public sealed class SseChannel : IDisposable
     public SseChannel(TimeProvider? time = null) { _time = time ?? TimeProvider.System; }
     public bool IsEmpty => _subs.IsEmpty;
 
+    /// <summary>
+    /// Fan out one snapshot to every subscriber. Non-atomic backpressure check-then-increment
+    /// is safe here because <see cref="Publish"/> is called only from the world tick thread
+    /// (single writer); the per-subscriber write task itself runs on the ThreadPool but each
+    /// subscriber's queue is serialised by its own <see cref="Subscriber.WriteLock"/>.
+    /// </summary>
     public void Publish(RadarState state)
     {
         if (_disposed || _subs.IsEmpty) return;
@@ -65,7 +70,12 @@ public sealed class SseChannel : IDisposable
     {
         t = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
         area = s.AreaHash.ToString("x"),
-        player = new { x = s.Player.X, y = s.Player.Y },
+        player = new {
+            x = s.Player.X, y = s.Player.Y,
+            hp = s.HpPct, hpMax = 100f,
+            es = s.EsPct, esMax = 100f,
+            mana = s.ManaPct, manaMax = 100f,
+        },
         entities = SelectEntities(s),
         monoliths = SelectMonoliths(s),
     };
