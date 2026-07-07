@@ -92,6 +92,11 @@ public sealed class ApiServer : IDisposable
     private readonly Func<(byte[]? Walkable, int Width, int Height, uint AreaHash)>? _terrainProvider;
     private uint _mapCacheHash;      // /api/map: 1-entry payload cache keyed by area hash (API loop is single-threaded)
     private string? _mapCacheJson;
+    // v0.20.0 T5: browser-view infrastructure. Both null when EnableWebMap and EnableWebObs are off —
+    // the switch arms feature-gate on these so `/map`, `/obs`, `/stream`, and `/assets/*` all 404
+    // without dereferencing either. RadarApp wires real instances when either toggle is on.
+    private readonly SseChannel? _sse;
+    private readonly AssetHost? _assetHost;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -125,7 +130,9 @@ public sealed class ApiServer : IDisposable
         PresetStore? presetStore = null,
         Func<(byte[]? Walkable, int Width, int Height, uint AreaHash)>? terrainProvider = null,
         bool allowLanAccess = false,
-        int port = 7777)
+        int port = 7777,
+        SseChannel? sse = null,
+        AssetHost? assetHost = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -156,6 +163,8 @@ public sealed class ApiServer : IDisposable
         _terrainProvider = terrainProvider;
         _allowLanAccess = allowLanAccess;
         _port = port;
+        _sse = sse;
+        _assetHost = assetHost;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -175,18 +184,22 @@ public sealed class ApiServer : IDisposable
             _listener.Start();
         }
         _running = true;
-        var t = new Thread(Loop) { IsBackground = true, Name = "POE2Radar.Api" };
+        // Handle() is `async Task` (v0.20.0 T5 — needed so /stream can `await` SseChannel.HandleSubscribe).
+        // Bootstrap the async loop on the existing dedicated thread; the outermost `.GetResult()` here
+        // is only how a `Thread` invokes a `Task`-returning method — inside Loop() we `await` Handle so
+        // no request runs synchronously past its first suspension point. T6 will Task.Run per request.
+        var t = new Thread(() => Loop().GetAwaiter().GetResult()) { IsBackground = true, Name = "POE2Radar.Api" };
         t.Start();
     }
 
-    private void Loop()
+    private async Task Loop()
     {
         while (_running)
         {
             HttpListenerContext ctx;
             try { ctx = _listener.GetContext(); }
             catch { return; } // listener stopped
-            try { Handle(ctx); }
+            try { await Handle(ctx).ConfigureAwait(false); }
             catch (Exception ex)
             {
                 // Log the detail locally, but return a GENERIC body — raw exception messages can carry
@@ -197,7 +210,7 @@ public sealed class ApiServer : IDisposable
         }
     }
 
-    private void Handle(HttpListenerContext ctx)
+    private async Task Handle(HttpListenerContext ctx)
     {
         var path = ctx.Request.Url?.AbsolutePath ?? "/";
         var q = ctx.Request.QueryString;
@@ -210,11 +223,24 @@ public sealed class ApiServer : IDisposable
                 break;
 
             case "/obs":
-                WriteHtml(ctx, ObsOverlayHtml.Page);
+                // v0.20.0 T5: gated on EnableWebObs + assetHost — both null when the toggle is off,
+                // so this arm 404s without touching `_assetHost` (the ?. is defence-in-depth for RadarApp
+                // wiring drift, not a null-safety hedge on the runtime contract).
+                if (!_settings.EnableWebObs || _assetHost == null) { NotFound(ctx); break; }
+                _assetHost.ServeObs(ctx);
                 break;
 
             case "/map":
-                WriteHtml(ctx, MapPageHtml.Page);
+                if (!_settings.EnableWebMap || _assetHost == null) { NotFound(ctx); break; }
+                _assetHost.ServeMap(ctx);
+                break;
+
+            case "/stream":
+                // Push channel for /map + /obs. Gated on EITHER toggle so a user who only enables /obs
+                // still gets 30 Hz updates. `_sse` is null when both are off — the check short-circuits
+                // BEFORE the null-forgiving await so we never dereference a null SseChannel.
+                if ((!_settings.EnableWebMap && !_settings.EnableWebObs) || _sse == null) { NotFound(ctx); break; }
+                await _sse.HandleSubscribe(ctx).ConfigureAwait(false);
                 break;
 
             case "/health":
@@ -297,6 +323,9 @@ public sealed class ApiServer : IDisposable
 
             case "/landmarks":
             {
+                // v0.20.0 T5: gate on EITHER toggle. map.js (shared by /map and /obs) fetches this to
+                // draw label pins, so enabling only /obs must not 404 it.
+                if (!_settings.EnableWebMap && !_settings.EnableWebObs) { NotFound(ctx); break; }
                 var list = s.Landmarks
                     .OrderBy(l => Dist(l.Center, s.Player))
                     .Select(l => new
@@ -665,6 +694,9 @@ public sealed class ApiServer : IDisposable
                 break;
 
             case "/api/atlas":
+                // v0.20.0 T5: same OR-gate as /landmarks — map.js needs atlas data whether /map or /obs
+                // is the entry point. Off when both toggles are off.
+                if (!_settings.EnableWebMap && !_settings.EnableWebObs) { NotFound(ctx); break; }
                 // Inspection view of the atlas map-data we can read (catalog + current-region map set).
                 // Read-only; the provider scans + caches, so the first call after entering the atlas
                 // may take a moment. Returns {located:false,...} when the catalog can't be found.
@@ -1006,6 +1038,8 @@ public sealed class ApiServer : IDisposable
 
             case "/api/map":
             {
+                // v0.20.0 T5: same OR-gate — the shared renderer needs terrain from either entry point.
+                if (!_settings.EnableWebMap && !_settings.EnableWebObs) { NotFound(ctx); break; }
                 var (walk, w, h, hash) = _terrainProvider?.Invoke() ?? (null, 0, 0, 0u);
                 if (walk == null || w <= 0 || h <= 0) { Write(ctx, 200, "{\"ready\":false}"); break; }
                 // The ready-guard above ensures we never cache a payload for an unloaded zone, so the _mapCacheHash==0 default can't collide with a real (loaded) zone here.
@@ -1019,9 +1053,27 @@ public sealed class ApiServer : IDisposable
             }
 
             default:
-                Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found", path }, Json));
+                // v0.20.0 T5: /assets/* prefix falls through here. Gated on EITHER toggle + non-null
+                // assetHost — with both off, `_assetHost` is null and we skip to NotFound without ever
+                // dereferencing it, preserving the zero-cost-when-off contract.
+                if ((_settings.EnableWebMap || _settings.EnableWebObs)
+                    && _assetHost != null
+                    && path.StartsWith("/assets/", System.StringComparison.Ordinal))
+                {
+                    _assetHost.ServeAsset(ctx, path.Substring("/assets/".Length));
+                    break;
+                }
+                NotFound(ctx);
                 break;
         }
+    }
+
+    // v0.20.0 T5: minimal 404 for the feature-gated arms. Empty body — the older `Write(ctx, 404, json)`
+    // path is kept for legacy non-gated routes so their contract stays the same.
+    private static void NotFound(HttpListenerContext ctx)
+    {
+        ctx.Response.StatusCode = 404;
+        ctx.Response.OutputStream.Close();
     }
 
     // Actions that carry the Ctrl+Alt modifier (their label prefix reflects this in the UI).
