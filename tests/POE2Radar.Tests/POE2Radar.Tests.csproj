@@ -24,4 +24,10 @@
     <ProjectReference Include="..\..\src\POE2Radar.Overlay\POE2Radar.Overlay.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="fixtures/*.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

@@ -35,6 +35,33 @@ public sealed class TerrainBitmap : IDisposable
     public int Height => _builtForHeight;
     public uint AreaHash => _builtForAreaHash;
 
+    /// <summary>Test hook: returns the edge mask the JS port at Web/Assets/map.js must byte-match.
+    /// A cell is edge if walkable[i]==1 and any of its 8 Moore-neighborhood cells (OOB counted as wall) is 0.</summary>
+    internal static byte[] ComputeEdgesForTest(byte[] walkable, int w, int h)
+    {
+        var edges = new byte[w * h];
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            if (walkable[y * w + x] == 0) continue;
+            var isEdge = false;
+            for (var dy = -1; dy <= 1 && !isEdge; dy++)
+            {
+                var ny = y + dy;
+                if (ny < 0 || ny >= h) { isEdge = true; break; }
+                for (var dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    var nx = x + dx;
+                    if (nx < 0 || nx >= w) { isEdge = true; break; }
+                    if (walkable[ny * w + nx] == 0) { isEdge = true; break; }
+                }
+            }
+            edges[y * w + x] = (byte)(isEdge ? 1 : 0);
+        }
+        return edges;
+    }
+
     /// <summary>
     /// Build (or rebuild) from a flat 0/1 walkable array. Cheap when dimensions +
     /// <paramref name="areaHash"/> match the cached bitmap. <paramref name="inTransition"/> forces
