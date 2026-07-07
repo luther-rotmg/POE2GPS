@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 using POE2Radar.Overlay.Web;
 using Xunit;
 
+// PeriodicTimer uses Windows multimedia timer for drift-free cadence.
+using PeriodicTimer = System.Threading.PeriodicTimer;
+
 namespace POE2Radar.Tests.Web;
 
 public class SseIntegrationTests
@@ -18,18 +21,21 @@ public class SseIntegrationTests
         var sink = new CountingSink();
         sse.AddSubscriber(sink);
 
-        // Simulate the world thread — publish every ~30 ms for 3 s.
-        var deadline = DateTime.UtcNow.AddSeconds(3);
-        while (DateTime.UtcNow < deadline)
+        // Simulate the world thread — publish every ~33 ms for 3 s.
+        // PeriodicTimer matches the plan's 30Hz cadence without drift.
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(33));
+        var start = DateTime.UtcNow;
+        var span = TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow - start < span)
         {
             sse.Publish(SseChannelTests.MakeState());
-            await Task.Delay(30);
+            if (!await timer.WaitForNextTickAsync()) break;
         }
         // Give writes a moment to drain.
         await Task.Delay(200);
 
         var count = sink.WriteCount;
-        Assert.InRange(count, 60, 99);
+        Assert.InRange(count, 81, 99);
     }
 
     [Fact(Skip = "long — 60s")]
@@ -38,14 +44,18 @@ public class SseIntegrationTests
         using var sse = new SseChannel();
         var sink = new CountingSink();
         sse.AddSubscriber(sink);
-        var deadline = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < deadline)
+
+        // PeriodicTimer matches the plan's 30Hz cadence without drift.
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(33));
+        var start = DateTime.UtcNow;
+        var span = TimeSpan.FromSeconds(60);
+        while (DateTime.UtcNow - start < span)
         {
             sse.Publish(SseChannelTests.MakeState());
-            await Task.Delay(30);
+            if (!await timer.WaitForNextTickAsync()) break;
         }
         await Task.Delay(500);
-        Assert.InRange(sink.WriteCount, 1200, 1980);
+        Assert.InRange(sink.WriteCount, 1620, 1980);
     }
 
     [Fact]
@@ -55,15 +65,18 @@ public class SseIntegrationTests
         var sinks = new CountingSink[4];
         for (var i = 0; i < 4; i++) { sinks[i] = new CountingSink(); sse.AddSubscriber(sinks[i]); }
 
-        var deadline = DateTime.UtcNow.AddSeconds(3);
-        while (DateTime.UtcNow < deadline)
+        // PeriodicTimer matches the plan's 30Hz cadence without drift.
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(33));
+        var start = DateTime.UtcNow;
+        var span = TimeSpan.FromSeconds(3);
+        while (DateTime.UtcNow - start < span)
         {
             sse.Publish(SseChannelTests.MakeState());
-            await Task.Delay(30);
+            if (!await timer.WaitForNextTickAsync()) break;
         }
         await Task.Delay(200);
 
-        foreach (var s in sinks) Assert.InRange(s.WriteCount, 60, 99);
+        foreach (var s in sinks) Assert.InRange(s.WriteCount, 81, 99);
     }
 
     sealed class CountingSink : ISseSink

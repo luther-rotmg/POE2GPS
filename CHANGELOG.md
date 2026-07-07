@@ -3,13 +3,15 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
-## v0.20.0 — 2026-07-06
+## [0.20.0] — 2026-07-06
 
-- Web `/map` and `/obs` now run at monitor refresh with 1:1 in-game visual language: dark terrain outlines, client-inferred fog of war, POE2-authentic entity/monolith/landmark styling. Opt-in, default off — enable via dashboard "Enable Web Map" / "Enable OBS Browser Source".
-- SSE `/stream` endpoint for 30 Hz push, replacing the 1 Hz poll loop. Client interpolates for perceptual 60 Hz smoothness.
+### Added
+
+- Web `/map` and `/obs` now run at monitor refresh with 1:1 in-game visual language (opt-in, default off).
+- SSE `/stream` endpoint for 30 Hz push.
 - Multithreaded `HttpListener` request handling; gzip on `/api/map`, `/api/atlas`, `/landmarks` payloads.
-- `/stream` entity cap raised from 600 to 800 per snapshot; monolith rewards now surfaced to browser views.
-- Legacy `MapPageHtml.cs` and `ObsOverlayHtml.cs` removed; browser assets now shipped as embedded resources.
+- `/stream` entity cap raised from 600 to 800 per snapshot; monolith rewards surfaced to browser views.
+- Legacy `MapPageHtml.cs` and `ObsOverlayHtml.cs` removed; browser assets shipped as embedded resources.
 - Tencent CN client compatibility: recon design doc published at `docs/superpowers/specs/2026-07-06-v0.20.0-map-60hz-clone-design.md#tencent-cn-client--recon-appendix`.
 
 ## [0.19.6] — 2026-07-02
