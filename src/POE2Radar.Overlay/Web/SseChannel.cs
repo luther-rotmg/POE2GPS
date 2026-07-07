@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -35,6 +36,7 @@ public sealed class SseChannel : IDisposable
     byte[]? _latest;
     readonly object _latestLock = new();
     volatile bool _disposed;
+    Timer? _heartbeat;
 
     public SseChannel(TimeProvider? time = null) { _time = time ?? TimeProvider.System; }
     public bool IsEmpty => _subs.IsEmpty;
@@ -47,9 +49,10 @@ public sealed class SseChannel : IDisposable
     /// </summary>
     public void Publish(RadarState state)
     {
-        if (_disposed || _subs.IsEmpty) return;
+        if (_disposed) return;
         var frame = SerializeFrame(state);
         lock (_latestLock) _latest = frame;
+        if (_subs.IsEmpty) return;
         foreach (var kv in _subs) FanOutTo(kv.Value, frame);
     }
 
@@ -161,20 +164,99 @@ public sealed class SseChannel : IDisposable
         });
     }
 
-    internal Guid AddSubscriber(ISseSink sink)
+    internal Guid AddSubscriberWithSeed(ISseSink sink)
     {
         var sub = new Subscriber { Id = Guid.NewGuid(), Sink = sink };
         _subs[sub.Id] = sub;
+        EnsureHeartbeat();
+
+        // Fire the last-known snapshot immediately so the client's first paint
+        // isn't delayed by up to ~33 ms until the next world tick.
+        var seed = LatestSnapshot();
+        if (seed != null) FanOutTo(sub, seed);
         return sub.Id;
     }
 
-    internal bool RemoveSubscriber(Guid id) => _subs.TryRemove(id, out _);
+    // Kept for T2's tests; delegates to the seed variant now that seed is the
+    // default AddSubscriber behavior. The old signature stays available for the
+    // handful of tests that don't seed.
+    internal Guid AddSubscriber(ISseSink sink) => AddSubscriberWithSeed(sink);
 
-    void RemoveSubscriberInternal(Subscriber sub) => _subs.TryRemove(sub.Id, out _);
+    // Peek for tests only.
+    internal Timer? PeekHeartbeat() => _heartbeat;
+
+    void EnsureHeartbeat()
+    {
+        if (_heartbeat != null) return;
+        var t = new Timer(_ => Heartbeat(), null, HeartbeatSeconds * 1000, HeartbeatSeconds * 1000);
+        var prev = Interlocked.CompareExchange(ref _heartbeat, t, null);
+        if (prev != null) t.Dispose();
+    }
+
+    void Heartbeat()
+    {
+        if (_disposed || _subs.IsEmpty) return;
+        var ping = System.Text.Encoding.ASCII.GetBytes(": ping\n\n");
+        foreach (var kv in _subs) FanOutTo(kv.Value, ping);
+    }
+
+    internal bool RemoveSubscriber(Guid id)
+    {
+        if (!_subs.TryRemove(id, out _)) return false;
+        if (_subs.IsEmpty) TeardownHeartbeat();
+        return true;
+    }
+
+    void TeardownHeartbeat()
+    {
+        var t = Interlocked.Exchange(ref _heartbeat, null);
+        t?.Dispose();
+    }
+
+    void RemoveSubscriberInternal(Subscriber sub)
+    {
+        _subs.TryRemove(sub.Id, out _);
+        if (_subs.IsEmpty) TeardownHeartbeat();
+    }
 
     internal byte[]? LatestSnapshot()
     {
         lock (_latestLock) return _latest;
+    }
+
+    public async Task HandleSubscribe(HttpListenerContext ctx)
+    {
+        var sink = new HttpListenerSseSink(ctx.Response);
+        // Write an initial open comment so the browser fires `open` immediately.
+        try
+        {
+            await sink.WriteAsync(System.Text.Encoding.ASCII.GetBytes(":\n\n")).ConfigureAwait(false);
+        }
+        catch
+        {
+            sink.Close();
+            return;
+        }
+
+        var id = AddSubscriberWithSeed(sink);
+        // Await disconnection via a linked cancellation: HttpListener signals the
+        // request abort by throwing on the next Write, at which point FanOutTo has
+        // already scheduled RemoveSubscriberInternal. We just need to keep this
+        // response coroutine parked until the client goes away.
+        try
+        {
+            var buf = new byte[1];
+            while (!sink.IsClosed)
+            {
+                // Sleep in short slices so Dispose() can wake us; there's no
+                // built-in "wait for client disconnect" primitive on HttpListenerResponse.
+                await Task.Delay(200).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            RemoveSubscriber(id);
+        }
     }
 
     public void Dispose()

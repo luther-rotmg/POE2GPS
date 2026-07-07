@@ -150,4 +150,34 @@ public class SseChannelTests
         Assert.True(good.Frames.Count >= 2);
         Assert.True(bad.IsClosed);
     }
+
+    [Fact]
+    public async Task Subscriber_receives_seed_snapshot_on_connect()
+    {
+        using var c = new SseChannel();
+        c.Publish(MakeState()); // sets _latest, but no subscribers yet — must not throw
+
+        var seed = new RecordingSink();
+        c.AddSubscriberWithSeed(seed);
+
+        await WaitFor(() => seed.Frames.Count == 1, 200);
+        Assert.Single(seed.Frames);
+    }
+
+    [Fact]
+    public void No_subscribers_means_heartbeat_timer_null()
+    {
+        using var c = new SseChannel();
+        Assert.Null(c.PeekHeartbeat());
+    }
+
+    [Fact]
+    public void First_subscriber_creates_heartbeat_last_removal_disposes()
+    {
+        using var c = new SseChannel();
+        var id = c.AddSubscriberWithSeed(new RecordingSink());
+        Assert.NotNull(c.PeekHeartbeat());
+        Assert.True(c.RemoveSubscriber(id));
+        Assert.Null(c.PeekHeartbeat());
+    }
 }
