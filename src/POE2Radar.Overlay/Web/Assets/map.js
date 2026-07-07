@@ -137,14 +137,12 @@
 
     const renderTime = performance.now() + state.serverOffset - RENDER_DELAY_MS;
     const bracket = findBracket(renderTime);
-    if (!bracket) {
-      // Not enough samples yet, or the ring hasn't advanced. Hold the newest pose.
-      const newest = state.ring[state.ring.length - 1];
-      draw({ player: newest.snap.player, snap: newest.snap });
-      return;
-    }
-    const [a, b] = bracket;
-    draw(lerpPose(a, b, renderTime));
+    let pose;
+    if (bracket) pose = lerpPose(bracket[0], bracket[1], renderTime);
+    else pose = { player: state.ring[state.ring.length - 1].snap.player, snap: state.ring[state.ring.length - 1].snap };
+
+    computeFogReveal(pose.player.x, pose.player.y);
+    draw(pose);
   }
 
   function updateFps(now) {
@@ -241,6 +239,22 @@
       img.data[j] = r; img.data[j + 1] = g; img.data[j + 2] = b; img.data[j + 3] = a;
     }
     ctx.putImageData(img, 0, 0);
+  }
+
+  // Clear cells within REVEAL_RADIUS_CELLS around the player from fogCanvas.
+  // Called from frame() with the interpolated player pose.
+  function computeFogReveal(playerX, playerY) {
+    if (!state.fogCanvas) return;
+    if (document.body.classList.contains('gps-mode')) return; // full map, no fog
+
+    const fctx = state.fogCanvas.getContext('2d');
+    // Paint transparent (destination-out) inside a disc centred on the player grid cell.
+    const prev = fctx.globalCompositeOperation;
+    fctx.globalCompositeOperation = 'destination-out';
+    fctx.beginPath();
+    fctx.arc(playerX, playerY, REVEAL_RADIUS_CELLS, 0, Math.PI * 2);
+    fctx.fill(); // any fill color works with destination-out; alpha is what clears
+    fctx.globalCompositeOperation = prev;
   }
 
   // Iso transform (matches MapProjection.GridDeltaToMapDelta):
@@ -562,6 +576,21 @@
     loadAtlasIcons().catch(() => {}); // best-effort; empty bundle in v0.20.0 RC1
     openStream();
     state.rafId = requestAnimationFrame(frame);
+  });
+
+  function toggleGpsMode() {
+    const on = !document.body.classList.contains('gps-mode');
+    document.body.classList.toggle('gps-mode', on);
+    localStorage.setItem('gps_mode', on ? '1' : '0');
+  }
+
+  // Initial state — set once at load per state.gpsMode (T9).
+  if (state.gpsMode) document.body.classList.add('gps-mode');
+
+  const gpsBtn = document.getElementById('gpsToggle');
+  if (gpsBtn) gpsBtn.addEventListener('click', toggleGpsMode);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'g' || e.key === 'G') toggleGpsMode();
   });
 
   window.__poe2gpsBuildEdges = buildEdges;
