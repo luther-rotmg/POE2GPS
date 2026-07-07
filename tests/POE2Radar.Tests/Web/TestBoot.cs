@@ -21,7 +21,7 @@ internal static class TestBoot
             ApiPort = port,
             AllowLanAccess = false,
         };
-        var stateProvider = () => (RadarState)default!;
+        var stateProvider = () => SseChannelTests.MakeState();
         var sse = (webMap || webObs) ? new SseChannel() : null;
         var host = (webMap || webObs) ? new AssetHost() : null;
 

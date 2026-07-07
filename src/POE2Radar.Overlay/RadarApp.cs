@@ -3514,6 +3514,7 @@ public sealed class RadarApp : IDisposable
         _entityNameStore.Flush();
         _replanner.Dispose();
         _api.Dispose();
+        _sse?.Dispose();
         _renderer.Dispose();
         _window.Dispose();
     }

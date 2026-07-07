@@ -77,9 +77,9 @@ public class ApiServerRouteGateTests
             Assert.Equal(404, await StatusAsync(port, "/map"));
             // Critical: /api/map, /api/atlas, /landmarks MUST still be registered
             // so /obs's renderer (map.js) can fetch terrain + atlas + landmarks.
-            Assert.NotEqual(404, await StatusAsync(port, "/api/map"));
-            Assert.NotEqual(404, await StatusAsync(port, "/api/atlas"));
-            Assert.NotEqual(404, await StatusAsync(port, "/landmarks"));
+            Assert.Equal(200, await StatusAsync(port, "/api/map"));
+            Assert.Equal(200, await StatusAsync(port, "/api/atlas"));
+            Assert.Equal(200, await StatusAsync(port, "/landmarks"));
         }
         finally { api.Dispose(); }
     }

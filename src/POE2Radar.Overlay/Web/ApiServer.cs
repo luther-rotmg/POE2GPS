@@ -194,20 +194,28 @@ public sealed class ApiServer : IDisposable
     {
         while (_running)
         {
-            HttpListenerContext ctx;
-            try { ctx = await _listener.GetContextAsync().ConfigureAwait(false); }
-            catch (HttpListenerException) when (!_running) { return; }
-            catch (ObjectDisposedException) { return; }
-            _ = Task.Run(async () =>
+            try
             {
-                try { await Handle(ctx).ConfigureAwait(false); }
-                catch (System.Exception ex)
+                HttpListenerContext ctx;
+                try { ctx = await _listener.GetContextAsync().ConfigureAwait(false); }
+                catch (HttpListenerException) when (!_running) { return; }
+                catch (ObjectDisposedException) { return; }
+                _ = Task.Run(async () =>
                 {
-                    // Don't take the loop down on a per-request fault.
-                    try { ctx.Response.StatusCode = 500; ctx.Response.Close(); } catch { }
-                    Console.Error.WriteLine($"api: {ex.Message}");
-                }
-            });
+                    try { await Handle(ctx).ConfigureAwait(false); }
+                    catch (System.Exception ex)
+                    {
+                        // Don't take the loop down on a per-request fault.
+                        try { ctx.Response.StatusCode = 500; ctx.Response.Close(); } catch { }
+                        Console.Error.WriteLine($"api: {ex.Message}");
+                    }
+                });
+            }
+            catch (Exception ex) when (_running)
+            {
+                Console.Error.WriteLine($"api: accept-loop transient fault: {ex.Message}");
+                await Task.Delay(100).ConfigureAwait(false);
+            }
         }
     }
 

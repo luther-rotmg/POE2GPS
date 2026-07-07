@@ -259,6 +259,7 @@ public sealed class SseChannel : IDisposable
     public void Dispose()
     {
         _disposed = true;
+        TeardownHeartbeat();
         foreach (var kv in _subs) kv.Value.Sink.Close();
         _subs.Clear();
     }
