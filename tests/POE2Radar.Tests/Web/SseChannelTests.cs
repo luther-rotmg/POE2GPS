@@ -35,7 +35,7 @@ public class SseChannelTests
         public void Close() => Closed = true;
     }
 
-    static RadarState MakeState(uint areaHash = 0xABC123)
+    internal static RadarState MakeState(uint areaHash = 0xABC123)
         => new RadarState(
             InGame: true,
             AreaHash: areaHash,

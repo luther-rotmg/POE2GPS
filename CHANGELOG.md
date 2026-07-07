@@ -3,6 +3,15 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## v0.20.0 — 2026-07-06
+
+- Web `/map` and `/obs` now run at monitor refresh with 1:1 in-game visual language: dark terrain outlines, client-inferred fog of war, POE2-authentic entity/monolith/landmark styling. Opt-in, default off — enable via dashboard "Enable Web Map" / "Enable OBS Browser Source".
+- SSE `/stream` endpoint for 30 Hz push, replacing the 1 Hz poll loop. Client interpolates for perceptual 60 Hz smoothness.
+- Multithreaded `HttpListener` request handling; gzip on `/api/map`, `/api/atlas`, `/landmarks` payloads.
+- `/stream` entity cap raised from 600 to 800 per snapshot; monolith rewards now surfaced to browser views.
+- Legacy `MapPageHtml.cs` and `ObsOverlayHtml.cs` removed; browser assets now shipped as embedded resources.
+- Tencent CN client compatibility: recon design doc published at `docs/superpowers/specs/2026-07-06-v0.20.0-map-60hz-clone-design.md#tencent-cn-client--recon-appendix`.
+
 ## [0.19.6] — 2026-07-02
 ### Fixed — 🧭 **Off-screen Atlas arrows are back — and now they point true**
 - 🧭 **Off-screen Atlas arrows restored, accurate.** v0.19.5 turned them off because PoE2 stops updating a node's on-screen position the moment it scrolls off-screen, so the old arrows aimed at stale/garbage coordinates ("ghost arrows to nothing"). POE2GPS now derives each off-screen arrow's direction from the target node's **stable grid coordinate** instead: it fits the grid→screen mapping from all the nodes currently **on**-screen (whose positions are valid) and uses that to place any off-screen target reliably. So your tracked Citadels/maps get a border arrow that actually points at them, and it stays correct as you pan.
