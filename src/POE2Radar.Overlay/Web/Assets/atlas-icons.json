@@ -1,0 +1,18 @@
+{
+  "_note": "Placeholder — real harvest lands during the RC smoke pass. Bundle format: { \"name\": \"data:image/png;base64,<...>\" }.",
+  "map_normal": "",
+  "map_magic": "",
+  "map_rare": "",
+  "map_unique": "",
+  "citadel": "",
+  "boss": "",
+  "waypoint": "",
+  "checkpoint": "",
+  "portal": "",
+  "expedition": "",
+  "ritual": "",
+  "breach": "",
+  "delirium": "",
+  "harvest": "",
+  "essence": ""
+}

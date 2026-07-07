@@ -36,7 +36,23 @@
     fogCanvas: null,                       // HTMLCanvasElement, painted per reveal
     atlas: null,                           // /api/atlas response
     landmarks: null,                       // /landmarks response
+    atlasIcons: {},                        // name → HTMLImageElement (already decoded)
   };
+
+  async function loadAtlasIcons() {
+    const r = await fetch('/assets/atlas-icons.json');
+    if (!r.ok) return;
+    const bundle = await r.json();
+    for (const [name, dataUri] of Object.entries(bundle)) {
+      if (!dataUri || name.startsWith('_')) continue;
+      await new Promise((res, rej) => {
+        const img = new Image();
+        img.onload = () => { state.atlasIcons[name] = img; res(); };
+        img.onerror = rej;
+        img.src = dataUri;
+      });
+    }
+  }
 
   function resizeCanvas() {
     const dpr = window.devicePixelRatio || 1;
@@ -145,7 +161,13 @@
     return avg > 0 ? Math.round(1000 / avg) : 0;
   }
 
-  // --- T10: terrain + edges ---
+  // --- T11/T10: terrain, atlas, landmarks ---
+
+  async function fetchJson(url) {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    return r.json();
+  }
 
   async function fetchTerrain(area) {
     const resp = await fetch('/api/map');
@@ -251,12 +273,225 @@
     c.restore();
   }
 
+  // --------- T11: Entity, monolith, landmark, atlas, player draw layers ---------
+
+  const PAL = {
+    hostileNormal: '#ff4a4a',
+    hostileMagic:  '#6a8bff',
+    hostileRare:   '#ffd52e',
+    hostileUnique: '#ff7a1a',
+    friendly:      '#65b6ff',
+    poi:           '#ffd85c',
+    landmark:      '#f0e6c8',
+    monolithRing:  '#c8a24a',
+    monolithLabel: '#f0e6c8',
+    pathBlue:      'rgba(190,210,255,0.9)',
+  };
+
+  function entityColor(cat, rar) {
+    if (cat === 'hostile') {
+      if (rar === 'unique') return { fill: PAL.hostileUnique, ring: PAL.hostileUnique };
+      if (rar === 'rare')   return { fill: PAL.hostileRare,   ring: PAL.hostileRare };
+      if (rar === 'magic')  return { fill: PAL.hostileMagic,  ring: null };
+      return { fill: PAL.hostileNormal, ring: null };
+    }
+    if (cat === 'friendly' || cat === 'npc') return { fill: PAL.friendly, ring: null };
+    if (cat === 'poi') return { fill: PAL.poi, ring: null };
+    return { fill: PAL.hostileNormal, ring: null };
+  }
+
+  // World-grid delta → screen-space delta, iso.
+  function worldToScreen(dx, dy, scale) {
+    if (!state.isoMode) return [scale * dx, scale * dy];
+    return [scale * (dx - dy) * COS, -scale * (dx + dy) * SIN];
+  }
+
+  function drawEntities(pose) {
+    const c = state.ctx;
+    const cw = state.canvas.clientWidth;
+    const ch = state.canvas.clientHeight;
+    const s = state.zoom;
+    const px = pose.player.x, py = pose.player.y;
+    const cx = cw / 2, cy = ch / 2;
+    const halfSpan = Math.max(cw, ch) * 0.5;
+    const ents = pose.snap.entities || [];
+
+    const r = Math.max(2, 3 * s);
+
+    for (const e of ents) {
+      // Client-side dead skip (defense in depth; server already filters).
+      if (e.hp !== undefined && e.hp <= 0 && e.hpMax > 0) continue;
+
+      const [sx, sy] = worldToScreen(e.x - px, e.y - py, s);
+      const drawX = cx + sx, drawY = cy + sy;
+      const col = entityColor(e.cat, e.rar);
+
+      if (drawX < -halfSpan || drawX > cw + halfSpan || drawY < -halfSpan || drawY > ch + halfSpan)
+        continue; // truly off-screen, way beyond arrow zone
+
+      const onScreen = drawX >= 0 && drawX <= cw && drawY >= 0 && drawY <= ch;
+      if (!onScreen) {
+        drawOffScreenArrow(c, drawX, drawY, cx, cy, cw, ch, col.fill);
+        continue;
+      }
+
+      c.fillStyle = col.fill;
+      c.beginPath();
+      c.arc(drawX, drawY, r, 0, Math.PI * 2);
+      c.fill();
+      if (col.ring) {
+        c.strokeStyle = col.ring;
+        c.lineWidth = 1;
+        c.stroke();
+      }
+      if (e.cat === 'poi') {
+        // Crosshair overlay.
+        c.strokeStyle = 'rgba(0,0,0,0.7)';
+        c.lineWidth = 1;
+        c.beginPath();
+        c.moveTo(drawX - 3, drawY); c.lineTo(drawX + 3, drawY);
+        c.moveTo(drawX, drawY - 3); c.lineTo(drawX, drawY + 3);
+        c.stroke();
+      }
+    }
+  }
+
+  function drawOffScreenArrow(c, drawX, drawY, cx, cy, cw, ch, color) {
+    // Clamp to viewport edge along the line from centre to entity.
+    const dx = drawX - cx, dy = drawY - cy;
+    const t = Math.min(cw / 2 / Math.abs(dx || 1), ch / 2 / Math.abs(dy || 1));
+    const ex = cx + dx * t, ey = cy + dy * t;
+    const ang = Math.atan2(dy, dx);
+    c.save();
+    c.translate(ex, ey);
+    c.rotate(ang);
+    c.fillStyle = color;
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(-8, -4);
+    c.lineTo(-8, 4);
+    c.closePath();
+    c.fill();
+    c.restore();
+  }
+
+  function drawMonoliths(pose) {
+    const c = state.ctx;
+    const s = state.zoom;
+    const px = pose.player.x, py = pose.player.y;
+    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    for (const m of pose.snap.monoliths || []) {
+      const [sx, sy] = worldToScreen(m.x - px, m.y - py, s);
+      const dx = cx + sx, dy = cy + sy;
+      const dimmed = !!m.collected;
+      c.strokeStyle = dimmed ? 'rgba(200,162,74,0.4)' : PAL.monolithRing;
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.arc(dx, dy, 8, 0, Math.PI * 2);
+      c.stroke();
+      c.fillStyle = dimmed ? 'rgba(240,230,200,0.4)' : '#ffffff';
+      c.font = '10px Consolas, monospace';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillText(String(m.holes ?? '?'), dx, dy);
+      if (!dimmed && m.bestName) {
+        c.fillStyle = PAL.monolithLabel;
+        c.font = '11px Consolas, monospace';
+        c.textAlign = 'center'; c.textBaseline = 'top';
+        c.fillText(m.bestName, dx, dy + 11);
+        if (m.bestEx > 0) {
+          c.fillStyle = PAL.monolithRing;
+          c.font = '10px Consolas, monospace';
+          c.fillText(`${Math.round(m.bestEx)}ex`, dx, dy + 24);
+        }
+      }
+    }
+  }
+
+  function drawLandmarks(pose) {
+    if (!state.landmarks) return;
+    const c = state.ctx;
+    const s = state.zoom;
+    const px = pose.player.x, py = pose.player.y;
+    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    for (const lm of (state.landmarks.landmarks || state.landmarks || [])) {
+      if (typeof lm.x !== 'number' || typeof lm.y !== 'number') continue;
+      const [sx, sy] = worldToScreen(lm.x - px, lm.y - py, s);
+      const dx = cx + sx, dy = cy + sy;
+      c.fillStyle = PAL.landmark;
+      c.beginPath();
+      c.moveTo(dx, dy - 5); c.lineTo(dx + 5, dy); c.lineTo(dx, dy + 5); c.lineTo(dx - 5, dy);
+      c.closePath();
+      c.fill();
+      if (lm.name) {
+        c.fillStyle = PAL.landmark;
+        c.font = '12px Consolas, monospace';
+        c.textAlign = 'left'; c.textBaseline = 'middle';
+        c.shadowColor = 'rgba(0,0,0,0.7)'; c.shadowBlur = 0;
+        c.shadowOffsetX = 1; c.shadowOffsetY = 1;
+        c.fillText(lm.name, dx + 8, dy);
+        c.shadowColor = 'transparent';
+      }
+    }
+  }
+
+  function drawAtlas(pose) {
+    if (!state.atlas) return;
+    const c = state.ctx;
+    const s = state.zoom;
+    const px = pose.player.x, py = pose.player.y;
+    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    for (const node of (state.atlas.nodes || [])) {
+      const [sx, sy] = worldToScreen(node.x - px, node.y - py, s);
+      const dx = cx + sx, dy = cy + sy;
+      const icon = state.atlasIcons[node.icon];
+      if (icon && icon.width > 0) {
+        c.drawImage(icon, dx - 8, dy - 8, 16, 16);
+      } else {
+        c.fillStyle = PAL.poi;
+        c.beginPath(); c.arc(dx, dy, 3, 0, Math.PI * 2); c.fill();
+      }
+    }
+  }
+
+  function drawPlayer() {
+    const c = state.ctx;
+    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+
+    // Sample the ring for heading.
+    const heading = velocityHeading();
+    c.fillStyle = '#ffffff';
+    if (heading == null) {
+      c.beginPath(); c.arc(cx, cy, 4, 0, Math.PI * 2); c.fill();
+      return;
+    }
+    // Isosceles triangle 10 px long, pointing along heading.
+    const [ax, ay] = worldToScreen(Math.cos(heading), Math.sin(heading), 1);
+    const ang = Math.atan2(ay, ax); // convert to screen-space angle
+    c.save();
+    c.translate(cx, cy);
+    c.rotate(ang);
+    c.beginPath();
+    c.moveTo(10, 0); c.lineTo(-5, -5); c.lineTo(-5, 5);
+    c.closePath();
+    c.fill();
+    c.restore();
+  }
+
+  function velocityHeading() {
+    const ring = state.ring;
+    if (ring.length < 3) return null;
+    const p0 = ring[ring.length - 3].snap.player;
+    const p2 = ring[ring.length - 1].snap.player;
+    const dx = p2.x - p0.x, dy = p2.y - p0.y;
+    if (Math.sqrt(dx * dx + dy * dy) < 0.15) return null;
+    return Math.atan2(dy, dx);
+  }
+
   function draw(pose) {
     const c = state.ctx;
     const cw = state.canvas.clientWidth;
     const ch = state.canvas.clientHeight;
 
-    // 1. Background veil (skipped on /obs)
     c.clearRect(0, 0, state.canvas.width, state.canvas.height);
     if (!document.body.classList.contains('obs')) {
       c.fillStyle = 'rgba(0,0,0,0.55)';
@@ -264,25 +499,22 @@
     }
 
     if (state.terrain) {
-      // 2. Terrain interior
       blitCentredOnPlayer(state.terrain.interior, pose.player.x, pose.player.y);
-      // 3. Terrain edges
-      blitCentredOnPlayer(state.terrain.edges, pose.player.x, pose.player.y);
-      // 4. Fog mask (T12 refines the reveal painting; here we blit whatever fogCanvas holds)
-      if (state.fogCanvas && !state.gpsMode && !document.body.classList.contains('gps-mode')) {
+      blitCentredOnPlayer(state.terrain.edges,    pose.player.x, pose.player.y);
+      if (state.fogCanvas && !document.body.classList.contains('gps-mode')) {
         blitCentredOnPlayer(state.fogCanvas, pose.player.x, pose.player.y);
       }
     }
 
-    // 10. Player marker (placeholder circle, T12 refines to facing triangle)
-    c.fillStyle = '#ffffff';
-    c.beginPath();
-    c.arc(cw / 2, ch / 2, 4, 0, Math.PI * 2);
-    c.fill();
+    drawLandmarks(pose);
+    drawAtlas(pose);
+    drawEntities(pose);
+    drawMonoliths(pose);
+    drawPlayer();
 
-    // 11. HUD text
     if (!document.body.classList.contains('obs')) {
-      state.hud.textContent = `${state.currentArea || '—'} · ${(pose.snap.entities || []).length} dots · z${state.zoom} · ${currentFps()} fps`;
+      const ec = (pose.snap.entities || []).length;
+      state.hud.textContent = `${state.currentArea || '—'} · ${ec} dots · ${state.isoMode ? 'iso' : 'top'} · z${state.zoom} · ${currentFps()} fps`;
     }
   }
 
@@ -292,12 +524,21 @@
     state.serverOffset = 0;
     state.terrain = null;
     state.fogCanvas = null;
-    state.atlas = null;                          // T11 refetches
-    state.landmarks = null;                      // T11 refetches
-    const t = await fetchTerrain(newArea);
-    if (!t) return;
-    state.terrain = { areaHash: t.areaHash, w: t.w, h: t.h, interior: t.interior, edges: t.edges };
-    state.fogCanvas = t.fog;
+    state.atlas = null;
+    state.landmarks = null;
+
+    const [t, atlas, landmarks] = await Promise.all([
+      fetchTerrain(newArea),
+      fetchJson('/api/atlas').catch(() => null),
+      fetchJson('/landmarks').catch(() => null),
+    ]);
+
+    if (t) {
+      state.terrain = { areaHash: t.areaHash, w: t.w, h: t.h, interior: t.interior, edges: t.edges };
+      state.fogCanvas = t.fog;
+    }
+    state.atlas = atlas;
+    state.landmarks = landmarks;
   }
 
   // --------- Lifecycle ---------
@@ -318,6 +559,7 @@
 
   window.addEventListener('load', () => {
     resizeCanvas();
+    loadAtlasIcons().catch(() => {}); // best-effort; empty bundle in v0.20.0 RC1
     openStream();
     state.rafId = requestAnimationFrame(frame);
   });
