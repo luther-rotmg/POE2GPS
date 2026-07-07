@@ -47,6 +47,7 @@
     <EmbeddedResource Include="Web\presets\boss_hunter.poe2preset" />
     <EmbeddedResource Include="Web/Assets/map.html" />
     <EmbeddedResource Include="Web/Assets/map.css" />
+    <EmbeddedResource Include="Web/Assets/map.js" />
   </ItemGroup>
 
 </Project>
