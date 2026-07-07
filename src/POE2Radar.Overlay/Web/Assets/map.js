@@ -145,28 +145,159 @@
     return avg > 0 ? Math.round(1000 / avg) : 0;
   }
 
-  // Stub — T10 fetches terrain / atlas / landmarks and paints layers.
+  // --- T10: terrain + edges ---
+
+  async function fetchTerrain(area) {
+    const resp = await fetch('/api/map');
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data || data.areaHash !== area) return null;
+    const w = data.width, h = data.height;
+    const walkable = base64ToUint8(data.walkable);
+    if (walkable.length !== w * h) return null;
+
+    // Interior canvas (raw walkable fill).
+    const interior = document.createElement('canvas');
+    interior.width = w; interior.height = h;
+    paintFill(interior, walkable, w, h, [24, 22, 26, Math.round(0.85 * 255)]);
+
+    // Edges canvas (Moore-neighborhood).
+    const edgeMap = buildEdges(walkable, w, h);
+    const edges = document.createElement('canvas');
+    edges.width = w; edges.height = h;
+    paintFill(edges, edgeMap, w, h, [255, 232, 180, Math.round(0.95 * 255)]);
+
+    // Fog canvas — start fully unrevealed (T12 will progressively clear).
+    const fog = document.createElement('canvas');
+    fog.width = w; fog.height = h;
+    const fctx = fog.getContext('2d');
+    fctx.fillStyle = 'rgba(0,0,0,0.9)';
+    fctx.fillRect(0, 0, w, h);
+
+    return { areaHash: area, w, h, interior, edges, fog };
+  }
+
+  function base64ToUint8(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  // 8-neighbor Moore edge detection. Must byte-match TerrainBitmap.ComputeEdgesForTest.
+  // A cell is edge if walkable[i]==1 AND any of its 8 neighbors (OOB counted as 0/wall) is 0.
+  function buildEdges(walkable, w, h) {
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (walkable[y * w + x] === 0) continue;
+        let isEdge = false;
+        for (let dy = -1; dy <= 1 && !isEdge; dy++) {
+          const ny = y + dy;
+          if (ny < 0 || ny >= h) { isEdge = true; break; }
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = x + dx;
+            if (nx < 0 || nx >= w) { isEdge = true; break; }
+            if (walkable[ny * w + nx] === 0) { isEdge = true; break; }
+          }
+        }
+        out[y * w + x] = isEdge ? 1 : 0;
+      }
+    }
+    return out;
+  }
+
+  // Paint one RGBA into every cell that maps to 1 in `mask`.
+  function paintFill(cvs, mask, w, h, rgba) {
+    const ctx = cvs.getContext('2d');
+    const img = ctx.createImageData(w, h);
+    const [r, g, b, a] = rgba;
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i] === 0) continue;
+      const j = i * 4;
+      img.data[j] = r; img.data[j + 1] = g; img.data[j + 2] = b; img.data[j + 3] = a;
+    }
+    ctx.putImageData(img, 0, 0);
+  }
+
+  // Iso transform (matches MapProjection.GridDeltaToMapDelta):
+  //   X = scale * (dx - dy) * COS
+  //   Y = -scale * (dx + dy) * SIN
+  // For setTransform(a, b, c, d, e, f): a=scale*COS, b=-scale*SIN, c=-scale*COS, d=-scale*SIN.
+  function applyIsoTransform(ctx, centerX, centerY, mapScale) {
+    if (!state.isoMode) {
+      // Top-down: uniform scale, no shear.
+      ctx.setTransform(mapScale, 0, 0, mapScale, centerX, centerY);
+      return;
+    }
+    const a = mapScale * COS;
+    const b = -mapScale * SIN;
+    const c = -mapScale * COS;
+    const d = -mapScale * SIN;
+    ctx.setTransform(a, b, c, d, centerX, centerY);
+  }
+
+  // Blit an offscreen canvas centred on the player, with iso transform.
+  function blitCentredOnPlayer(cvs, playerX, playerY) {
+    const c = state.ctx;
+    const cw = state.canvas.clientWidth;
+    const ch = state.canvas.clientHeight;
+    // Player at (playerX, playerY) → viewport centre. Terrain grid indexes into cvs at (px, py)
+    // for that world; iso-transform centres it.
+    c.save();
+    applyIsoTransform(c, cw / 2, ch / 2, state.zoom);
+    c.drawImage(cvs, -playerX, -playerY);
+    c.restore();
+  }
+
   function draw(pose) {
     const c = state.ctx;
+    const cw = state.canvas.clientWidth;
+    const ch = state.canvas.clientHeight;
+
+    // 1. Background veil (skipped on /obs)
     c.clearRect(0, 0, state.canvas.width, state.canvas.height);
-    const bg = document.body.classList.contains('obs') ? null : 'rgba(0,0,0,0.55)';
-    if (bg) { c.fillStyle = bg; c.fillRect(0, 0, state.canvas.width, state.canvas.height); }
-    // Player marker placeholder — T12 draws the real triangle/facing.
+    if (!document.body.classList.contains('obs')) {
+      c.fillStyle = 'rgba(0,0,0,0.55)';
+      c.fillRect(0, 0, cw, ch);
+    }
+
+    if (state.terrain) {
+      // 2. Terrain interior
+      blitCentredOnPlayer(state.terrain.interior, pose.player.x, pose.player.y);
+      // 3. Terrain edges
+      blitCentredOnPlayer(state.terrain.edges, pose.player.x, pose.player.y);
+      // 4. Fog mask (T12 refines the reveal painting; here we blit whatever fogCanvas holds)
+      if (state.fogCanvas && !state.gpsMode && !document.body.classList.contains('gps-mode')) {
+        blitCentredOnPlayer(state.fogCanvas, pose.player.x, pose.player.y);
+      }
+    }
+
+    // 10. Player marker (placeholder circle, T12 refines to facing triangle)
     c.fillStyle = '#ffffff';
     c.beginPath();
-    c.arc(state.canvas.clientWidth / 2, state.canvas.clientHeight / 2, 4, 0, Math.PI * 2);
+    c.arc(cw / 2, ch / 2, 4, 0, Math.PI * 2);
     c.fill();
-    // HUD text
+
+    // 11. HUD text
     if (!document.body.classList.contains('obs')) {
-      const p = pose.player;
       state.hud.textContent = `${state.currentArea || '—'} · ${(pose.snap.entities || []).length} dots · z${state.zoom} · ${currentFps()} fps`;
     }
   }
 
-  // Stub — T10/T14 refill terrain + fog + fetches on zone change.
-  function onZoneChange(newArea) {
+  async function onZoneChange(newArea) {
     state.currentArea = newArea;
-    // T10 fills in: fetch(/api/map, /api/atlas, /landmarks), build interior/edges/fog canvases, flush ring.
+    state.ring.length = 0;                       // stale samples belong to the old zone
+    state.serverOffset = 0;
+    state.terrain = null;
+    state.fogCanvas = null;
+    state.atlas = null;                          // T11 refetches
+    state.landmarks = null;                      // T11 refetches
+    const t = await fetchTerrain(newArea);
+    if (!t) return;
+    state.terrain = { areaHash: t.areaHash, w: t.w, h: t.h, interior: t.interior, edges: t.edges };
+    state.fogCanvas = t.fog;
   }
 
   // --------- Lifecycle ---------
@@ -190,4 +321,6 @@
     openStream();
     state.rafId = requestAnimationFrame(frame);
   });
+
+  window.__poe2gpsBuildEdges = buildEdges;
 })();
