@@ -552,6 +552,32 @@
     return Math.atan2(dy, dx);
   }
 
+  function drawPaths(pose) {
+    if (!pose.snap.paths || !pose.snap.paths.length) return;
+    const c = state.ctx;
+    const s = state.zoom;
+    const px = pose.player.x, py = pose.player.y;
+    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    c.save();
+    c.strokeStyle = PAL.pathBlue;
+    c.lineWidth = 2;
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    for (const p of pose.snap.paths) {
+      if (!p.points || p.points.length < 2) continue;
+      c.beginPath();
+      const [first, ...rest] = p.points;
+      const [sx0, sy0] = worldToScreen(first.x - px, first.y - py, s);
+      c.moveTo(cx + sx0, cy + sy0);
+      for (const pt of rest) {
+        const [sx, sy] = worldToScreen(pt.x - px, pt.y - py, s);
+        c.lineTo(cx + sx, cy + sy);
+      }
+      c.stroke();
+    }
+    c.restore();
+  }
+
   function draw(pose) {
     const c = state.ctx;
     const cw = state.canvas.clientWidth;
@@ -571,6 +597,7 @@
       }
     }
 
+    drawPaths(pose);          // <-- layer 5, spec-mandated (between fog and landmarks)
     drawLandmarks(pose);
     drawAtlas(pose);
     drawEntities(pose);
