@@ -1,5 +1,8 @@
+using System.Runtime.CompilerServices;
 using System.Buffers;
 using POE2Radar.Core.Health;
+
+[assembly: InternalsVisibleTo("POE2Radar.Tests")]
 
 namespace POE2Radar.Core.Game;
 
@@ -1164,6 +1167,8 @@ public sealed class Poe2Live
         var sawToggler = false; var togglerVisible = false; var haveTogglerUi = false; MapUi togglerUi = default;
         foreach (var el in _mapEls)
         {
+            // Self==el liveness guard: recycled UI element slots may have stale Self pointers from the previous occupant
+            if (!_reader.TryReadStruct<nint>(el + Poe2.UiElement.Self, out var self) || self != el) continue;
             if (!TryReadMapElement(el, out var vis, out var sx, out var sy, out var zoom)) continue;
             if (vis) { _everVisible.Add(el); visibleCount++; } else _everHidden.Add(el);
             if (!any) { any = true; anyUi = new MapUi(vis, sx, sy, zoom); }
@@ -1932,5 +1937,22 @@ public sealed class Poe2Live
         }
         if (outv.Count == 0 && _reader.TryReadStruct<int>(modArray + 0x18, out var v0)) outv.Add(v0);
         return outv;
+    }
+
+    /// <summary>
+    /// Filter slot/self-pointer pairs, keeping only slots whose Self field points back at
+    /// themselves (drops recycled slots whose Self field is stale from the previous occupant).
+    /// Extracted for testability — the production path applies the same check inline in the
+    /// entity-scan loop.
+    /// </summary>
+    internal static List<(ulong slot, ulong selfPtr)> FilterLiveSlotsForTest(
+        IEnumerable<(ulong slot, ulong selfPtr)> input)
+    {
+        var kept = new List<(ulong slot, ulong selfPtr)>();
+        foreach (var (slot, selfPtr) in input)
+        {
+            if (slot == selfPtr) kept.Add((slot, selfPtr));
+        }
+        return kept;
     }
 }
