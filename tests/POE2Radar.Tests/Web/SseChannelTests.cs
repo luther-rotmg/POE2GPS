@@ -62,6 +62,29 @@ public class SseChannelTests
             CampaignGps: null,
             RpmPerSec: 0);
 
+    internal static RadarState MakeStateWithEntities((int id, float x, float y)[] entities, uint areaHash = 0xABC123)
+    {
+        var dots = new Poe2Live.EntityDot[entities.Length];
+        for (var i = 0; i < entities.Length; i++)
+        {
+            var (id, x, y) = entities[i];
+            dots[i] = new Poe2Live.EntityDot(
+                Id: (uint)id,
+                Address: 0,
+                Grid: new System.Numerics.Vector2(x, y),
+                World: default,
+                Category: Poe2Live.EntityCategory.Monster,
+                Metadata: "",
+                HpCur: 100,
+                HpMax: 100,
+                Poi: false,
+                Reaction: 0,
+                Rarity: Poe2Live.Rarity.Normal,
+                Opened: false);
+        }
+        return MakeState(areaHash) with { Entities = dots };
+    }
+
     [Fact]
     public void New_channel_is_empty()
     {
