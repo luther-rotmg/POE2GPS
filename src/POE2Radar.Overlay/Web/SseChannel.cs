@@ -318,6 +318,11 @@ public sealed class SseChannel : IDisposable
     {
         lock (_latestLock)
         {
+            // Re-check under the lock — a concurrent AddSubscriberWithSeed may have
+            // added a subscriber while we waited for the lock. Without this check
+            // we'd dispose the timer that subscriber's EnsureHeartbeat just found
+            // non-null, leaving them without a 15s keepalive ping.
+            if (!_subs.IsEmpty) return;
             var t = _heartbeat;
             _heartbeat = null;
             t?.Dispose();

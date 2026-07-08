@@ -305,25 +305,33 @@ public sealed class RadarSettings
             }
 
             var json = File.ReadAllText(FilePath);
-            // v0.20.1 T12: parse once, run SettingsMigrator (folds the 11 legacy one-shot bools into
-            // AppliedMigrations), then use the same doc for the v0.19.1 CheckForUpdates→AutoUpdate check.
-            RadarSettings loaded;
+            // Stage 1: plain deserialize (best-effort). Guarantees loaded is populated
+            // with the natively-deserialized shape, including any legacy fields that
+            // the modern model no longer declares (they'll be silently dropped by
+            // System.Text.Json, which is fine — the T12 migrator reads them off
+            // the raw JsonDocument in stage 2).
+            var loaded = JsonSerializer.Deserialize<RadarSettings>(json, Json) ?? new RadarSettings();
+
+            // Stage 2: attempt migrations. If any step throws, keep the plain-deserialized
+            // loaded so v0.19.1's CheckForUpdates→AutoUpdate.Mode="off" migration still
+            // runs on well-formed but migrator-hostile JSON.
             try
             {
                 using var doc = System.Text.Json.JsonDocument.Parse(json);
-                loaded = SettingsMigrator.Migrate(doc);
+                var migrated = SettingsMigrator.Migrate(doc);
                 // v0.19.1 migration: honor a legacy explicit CheckForUpdates=false as AutoUpdate.Mode="off".
                 // (A fresh install / any config without the key defaults to "silent".)
                 var root = doc.RootElement;
                 var hasAutoUpdate = root.TryGetProperty("autoUpdate", out _);
                 if (!hasAutoUpdate && root.TryGetProperty("checkForUpdates", out var cfu)
                     && cfu.ValueKind == System.Text.Json.JsonValueKind.False)
-                    loaded.AutoUpdate.Mode = "off";
+                    migrated.AutoUpdate.Mode = "off";
+                loaded = migrated;
             }
             catch
             {
-                // Corrupt/truncated JSON — fall back to a plain deserialize so partial fields still land.
-                loaded = JsonSerializer.Deserialize<RadarSettings>(json, Json) ?? new RadarSettings();
+                // Keep the plain-deserialized loaded. Users with v0.19-era files retain
+                // their CheckForUpdates preference even under migrator-parse-failure.
             }
             // Existing configs are loaded verbatim (never re-seeded from defaults), so repair stale
             // patterns shipped by older builds in place, then persist the upgrade.
