@@ -354,6 +354,18 @@ public sealed class RadarApp : IDisposable
     private readonly POE2Radar.Core.Campaign.ZoneOrderProgress _questProgress =
         new(POE2Radar.Core.Game.CampaignRoute.Shared);
     private volatile string? _campaignGps;   // null = Campaign GPS off; when on, the engine's instruction text is always non-null.
+    // v0.21 EC2 Guided Campaign — parallel rail. Constructed unconditionally at startup so a runtime
+    // EnableCampaignGps toggle can never race lazy init (Risk #10). When RouteModel.LoadEmbedded throws
+    // RouteSchemaMismatchException, _campaignGuideAvailable stays false, CampaignGps + ZoneOrderProgress
+    // keep driving _campaignGps unchanged, and the EC2-UI badge (task 6) shows the degradation state.
+    // Publication mirrors _campaignGps above: a single volatile field, no lock. The value is a boxed
+    // CampaignStepInstruction record struct (or null) — the world thread swaps the reference as one
+    // atomic write; the SSE thread reads it lock-free and pattern-unboxes back to Nullable<T>.
+    private readonly POE2Radar.Core.Campaign.Guide.WorldStateAdapter? _worldStateAdapter;
+    private readonly POE2Radar.Core.Campaign.Guide.RouteCursor? _routeCursor;
+    private readonly bool _campaignGuideAvailable;
+    private volatile object? _campaignGuide;   // boxed CampaignStepInstruction — null when off / unavailable / route completed
+    private string _lastGuideAreaCode = "";    // world thread only, drives RouteCursor.OnAreaChange forward-snap
     private nint _navTargetsArea = -1;                                   // AreaInstance the auto-nav was applied for
     // Per-instance nav memory: the nav selection for each AreaInstance hash, so returning to a zone
     // (e.g. after a town trip, which re-resolves a fresh AreaInstance) RESTORES what was selected
@@ -388,6 +400,27 @@ public sealed class RadarApp : IDisposable
         ConsoleTheme.Kv("settings", RadarSettings.FilePath);
         ConsoleTheme.Kv("entity names", $"{EntityNameResolver.Shared.Count} mappings · {ZoneGuide.Shared.Count} zones");
         _live = new Poe2Live(reader, 0);
+        // v0.21 EC2 Guided Campaign — parallel rail. Constructed unconditionally here (right after _live)
+        // so the runtime EnableCampaignGps toggle can never race lazy init at CampaignReconcile time
+        // (Risk #10). If RouteModel.LoadEmbedded throws — corrupt/absent embedded resource, schema-version
+        // mismatch — the guide rail stays silent (_campaignGuideAvailable = false); CampaignGps continues
+        // working unchanged, and EC2-UI (task 6) surfaces the degradation badge. Adapter needs only the
+        // world-thread Poe2Live for its inventory chain; every other signal is snapshot-fed by Refresh().
+        try
+        {
+            var routeModel = POE2Radar.Core.Campaign.Guide.RouteModel.LoadEmbedded();
+            _worldStateAdapter = new POE2Radar.Core.Campaign.Guide.WorldStateAdapter(_live);
+            _routeCursor = new POE2Radar.Core.Campaign.Guide.RouteCursor(routeModel);
+            _campaignGuideAvailable = true;
+            ConsoleTheme.Kv("campaign guide", $"{routeModel.Steps.Count} steps loaded (syrairc/ExileCampaigns2)");
+        }
+        catch (POE2Radar.Core.Campaign.Guide.RouteSchemaMismatchException ex)
+        {
+            _campaignGuideAvailable = false;
+            _worldStateAdapter = null;
+            _routeCursor = null;
+            ConsoleTheme.Kv("campaign guide", $"unavailable: {ex.Message}");
+        }
         // Independent reader stacks for the render + API threads (see the field declarations): each owns
         // its own MemoryReader/Poe2Live so the world walk, the render-frame reads, and the API tile scan
         // never share the non-thread-safe per-instance buffers/caches. All read the one shared handle.
@@ -1496,11 +1529,19 @@ public sealed class RadarApp : IDisposable
                 p.Points.Select(pt => ((float)pt.x, (float)pt.y)).ToArray())).ToArray()
             : Array.Empty<PathPolyline>();
 
+        // v0.21 additive: volatile load of the boxed guide publication written by the world thread in
+        // CampaignReconcile. Pattern-unbox back to Nullable<CampaignStepInstruction>; a null field or a
+        // non-match both surface as null so the JSON serializer drops the key. v0.20.x clients ignore
+        // an absent CampaignGuide silently — wire-format compat is preserved.
+        var campaignGuideSnapshot = _campaignGuide is POE2Radar.Core.Campaign.Guide.CampaignStepInstruction __cg
+            ? __cg
+            : (POE2Radar.Core.Campaign.Guide.CampaignStepInstruction?)null;
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
             snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
             Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps,
-            RpmPerSec: _rpmPerSec)
+            RpmPerSec: _rpmPerSec,
+            CampaignGuide: campaignGuideSnapshot)
         {
             Paths = pathsWire,
         };
@@ -1873,8 +1914,8 @@ public sealed class RadarApp : IDisposable
         // Campaign GPS (cross-zone) takes precedence when it actively owns the selection; otherwise the
         // in-zone Objective Director runs. Both read-only — only edit _selectedIds.
         var gpsOwned = false;
-        if (_settings.EnableCampaignGps) gpsOwned = CampaignReconcile(areaCode, player);
-        else _campaignGps = null;
+        if (_settings.EnableCampaignGps) gpsOwned = CampaignReconcile(areaCode, player, areaInstance, localPlayer);
+        else { _campaignGps = null; _campaignGuide = null; }
         if (!gpsOwned && _settings.EnableDirector)
         {
             var now = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -2489,12 +2530,41 @@ public sealed class RadarApp : IDisposable
     /// <summary>Campaign GPS reconcile (world thread, gated on EnableCampaignGps). Decides the campaign-
     /// forward exit for this zone and, when one is visible, sets it as the active nav target (the existing
     /// A* pipeline draws the route). Publishes the instruction string. Returns true when it owns the
-    /// selection this tick (so the in-zone Director stands down).</summary>
-    private bool CampaignReconcile(string areaCode, NumVec2 player)
+    /// selection this tick (so the in-zone Director stands down).
+    /// <para>v0.21 EC2 Guided Campaign — Parallel Rail (spec §3 Q1): a SECOND, additive pipeline runs
+    /// alongside the existing ZoneOrderProgress + CampaignGps.Decide branch above. It feeds the
+    /// world-thread snapshot into the ExileCampaigns2 adapter/cursor, then publishes an immutable
+    /// <see cref="POE2Radar.Core.Campaign.Guide.CampaignStepInstruction"/> to <c>_campaignGuide</c>
+    /// (boxed under the same volatile-write discipline as <c>_campaignGps</c>). Zero-cost when
+    /// disabled/unavailable: single boolean branch, no allocation, no work.</para></summary>
+    private bool CampaignReconcile(string areaCode, NumVec2 player, nint areaInstance, nint localPlayer)
     {
         var ins = POE2Radar.Core.Campaign.CampaignGps.Decide(
             areaCode, _questProgress, POE2Radar.Core.Game.CampaignRoute.Shared, _landmarks, _entities, player);
         _campaignGps = ins.Text;
+
+        // Parallel Rail — read-only reuse of the world-thread snapshot the branch above already had.
+        // Skip cleanly when the embedded route failed to load at ctor time (Risk #10 graceful degrade):
+        // _campaignGps + ZoneOrderProgress keep working, guide rail stays null.
+        if (_campaignGuideAvailable && _routeCursor is not null && _worldStateAdapter is not null)
+        {
+            _worldStateAdapter.Refresh(areaInstance, localPlayer, areaCode, player, _entities);
+            if (!string.Equals(areaCode, _lastGuideAreaCode, StringComparison.OrdinalIgnoreCase))
+            {
+                _routeCursor.OnAreaChange(areaCode);   // area-change forward-snap (spec §6)
+                _lastGuideAreaCode = areaCode;
+            }
+            _routeCursor.Tick(_worldStateAdapter);     // advance while IsStepSatisfied — internal AdvanceEngine call
+            // Volatile reference-swap publication: box the Nullable<CampaignStepInstruction> so the SSE
+            // thread can pattern-unbox it back. Boxing a `null` Nullable produces a null reference; a
+            // populated one produces a boxed CampaignStepInstruction — matches the read at the SSE builder.
+            _campaignGuide = (object?)_routeCursor.CurrentInstruction;
+        }
+        else
+        {
+            _campaignGuide = null;
+        }
+
         if (ins.ExitObjectiveId != null) { SetActiveTarget(ins.ExitObjectiveId); return true; }
         return false;
     }

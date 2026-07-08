@@ -2434,7 +2434,12 @@ public sealed record RadarState(
     string? HealthMessage = null,
     // Campaign GPS cross-zone instruction for the dashboard banner; null when off / no instruction.
     string? CampaignGps = null,
-    float RpmPerSec = 0)
+    float RpmPerSec = 0,
+    // v0.21 EC2 Guided Campaign — additive-only. Null when EnableCampaignGps is off, the embedded route
+    // failed to load, or the cursor has walked off the end. v0.20.x clients see a null/omitted key and
+    // ignore it — the record's positional 13-arg RadarState.Empty ctor call below stays untouched, so
+    // wire-format compat is guaranteed by construction.
+    POE2Radar.Core.Campaign.Guide.CampaignStepInstruction? CampaignGuide = null)
 {
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,
