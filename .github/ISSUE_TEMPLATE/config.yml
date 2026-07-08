@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "Question / setup help"
+    url: "https://github.com/luther-rotmg/POE2GPS/discussions"
+    about: "Use Discussions for setup questions, config help, or 'does POE2GPS support X?' — issues are for bugs, features, and data contributions."
+  - name: "Chat on Discord"
+    url: "https://discord.gg/poe2gps"
+    about: "Real-time help + release announcements + community pipeline chatter."

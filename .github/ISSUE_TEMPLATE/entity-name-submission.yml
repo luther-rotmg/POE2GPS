@@ -1,7 +1,7 @@
 name: "🗺️ Entity name submission (Atlas pack)"
 description: "Share the entity names you tagged in the Entity Atlas so they ship to everyone next release."
 title: "[atlas] entity-name submission"
-labels: ["atlas-submission"]
+labels: ["community-pack"]
 body:
   - type: markdown
     attributes:

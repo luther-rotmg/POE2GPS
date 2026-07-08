@@ -1,0 +1,42 @@
+name: no-superpowers-paths
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "cloudflare-worker/**"
+      - "docs/community-pipeline.md"
+      - "src/POE2Radar.Overlay/Web/DashboardHtml.cs"
+      - "src/POE2Radar.Overlay/Web/ApiServer.cs"
+  push:
+    branches: [main]
+jobs:
+  grep-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject internal-tooling paths in public surfaces
+        # Exclusion set: this workflow file itself is excluded via the target
+        # list (we grep specific paths, not the whole repo). Internal SDD ledger
+        # `.superpowers/sdd/` is `.gitignore`d so it can't reach the checkout.
+        # If a leak ever lands in a tracked file below, this gate fails the build.
+        run: |
+          set -e
+          HITS=$(grep -rEn 'superpowers/|\.superpowers/|docs/superpowers/' \
+            README.md \
+            CHANGELOG.md \
+            CONTRIBUTING.md \
+            .github/ISSUE_TEMPLATE/ \
+            cloudflare-worker/ \
+            docs/community-pipeline.md \
+            src/POE2Radar.Overlay/Web/DashboardHtml.cs \
+            src/POE2Radar.Overlay/Web/ApiServer.cs \
+            2>/dev/null || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::internal-tooling path leaked into public surface"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "no internal-tooling paths in public surfaces — clean"
