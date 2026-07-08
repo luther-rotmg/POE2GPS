@@ -218,34 +218,53 @@
     return r.json();
   }
 
-  async function fetchTerrain(area) {
-    const resp = await fetch('/api/map');
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    if (!data || data.areaHash !== area) return null;
-    const w = data.width, h = data.height;
-    const walkable = base64ToUint8(data.walkable);
-    if (walkable.length !== w * h) return null;
+  async function fetchTerrain(area, abortIf) {
+    // Defensive (v0.21.1): server returns {"ready":false} when the terrain
+    // provider is wired but the current zone's walkable bitmap has not loaded
+    // yet — race between the first SSE sample carrying the area code and the
+    // world-thread's terrain callback becoming ready. Prior behaviour treated
+    // the sentinel as a permanent mismatch (undefined areaHash !== area),
+    // leaving state.terrain null forever; polylines + entities still rendered
+    // via SSE, but the tester saw the "path visible, no map" symptom.
+    // Poll briefly. abortIf() lets the caller short-circuit when the player
+    // zones out mid-poll so we don't burn network on a stale area.
+    const MAX_RETRIES = 20;    // 20 * 250ms = 5s max wait
+    const RETRY_MS = 250;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      if (abortIf && abortIf()) return null;
+      const resp = await fetch('/api/map');
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      if (data && data.ready === false) {
+        await new Promise(r => setTimeout(r, RETRY_MS));
+        continue;
+      }
+      if (!data || data.areaHash !== area) return null;
+      const w = data.width, h = data.height;
+      const walkable = base64ToUint8(data.walkable);
+      if (walkable.length !== w * h) return null;
 
-    // Interior canvas (raw walkable fill).
-    const interior = document.createElement('canvas');
-    interior.width = w; interior.height = h;
-    paintFill(interior, walkable, w, h, [24, 22, 26, Math.round(0.85 * 255)]);
+      // Interior canvas (raw walkable fill).
+      const interior = document.createElement('canvas');
+      interior.width = w; interior.height = h;
+      paintFill(interior, walkable, w, h, [24, 22, 26, Math.round(0.85 * 255)]);
 
-    // Edges canvas (Moore-neighborhood).
-    const edgeMap = buildEdges(walkable, w, h);
-    const edges = document.createElement('canvas');
-    edges.width = w; edges.height = h;
-    paintFill(edges, edgeMap, w, h, [255, 232, 180, Math.round(0.95 * 255)]);
+      // Edges canvas (Moore-neighborhood).
+      const edgeMap = buildEdges(walkable, w, h);
+      const edges = document.createElement('canvas');
+      edges.width = w; edges.height = h;
+      paintFill(edges, edgeMap, w, h, [255, 232, 180, Math.round(0.95 * 255)]);
 
-    // Fog canvas — start fully unrevealed (T12 will progressively clear).
-    const fog = document.createElement('canvas');
-    fog.width = w; fog.height = h;
-    const fctx = fog.getContext('2d');
-    fctx.fillStyle = 'rgba(0,0,0,0.9)';
-    fctx.fillRect(0, 0, w, h);
+      // Fog canvas — start fully unrevealed (T12 will progressively clear).
+      const fog = document.createElement('canvas');
+      fog.width = w; fog.height = h;
+      const fctx = fog.getContext('2d');
+      fctx.fillStyle = 'rgba(0,0,0,0.9)';
+      fctx.fillRect(0, 0, w, h);
 
-    return { areaHash: area, w, h, interior, edges, fog };
+      return { areaHash: area, w, h, interior, edges, fog };
+    }
+    return null;
   }
 
   function base64ToUint8(b64) {
@@ -623,7 +642,10 @@
     state.entities.clear();                      // flush entities on zone change
 
     const [t, atlas, landmarks] = await Promise.all([
-      fetchTerrain(newArea),
+      // v0.21.1: pass the zone-change token so fetchTerrain can stop retrying
+      // the moment a newer zone starts loading — otherwise a 5s poll burns
+      // network on a stale area.
+      fetchTerrain(newArea, () => myToken !== _zoneChangeToken),
       fetchJson('/api/atlas').catch(() => null),
       fetchJson('/landmarks').catch(() => null),
     ]);
