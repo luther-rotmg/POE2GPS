@@ -58,11 +58,23 @@
   }
 
   function resizeCanvas() {
+    // Defensive (v0.20.1): retry on next rAF if window dims aren't ready yet.
+    // Tab restoration, portrait/landscape flip, multi-monitor drag mid-load, or
+    // tab-suspend rehydration can all fire `load` with 0-size innerWidth/innerHeight.
+    // Without this retry the canvas backing store is left 0x0, entities/terrain
+    // silently clip against the empty backing, and the tab paints as pure body-bg
+    // black with only the HUD overlay visible (see v0.20.0 tester feedback).
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    if (w <= 0 || h <= 0) {
+      requestAnimationFrame(resizeCanvas);
+      return;
+    }
     const dpr = window.devicePixelRatio || 1;
-    state.canvas.width  = Math.floor(window.innerWidth  * dpr);
-    state.canvas.height = Math.floor(window.innerHeight * dpr);
-    state.canvas.style.width  = window.innerWidth  + 'px';
-    state.canvas.style.height = window.innerHeight + 'px';
+    state.canvas.width  = Math.floor(w * dpr);
+    state.canvas.height = Math.floor(h * dpr);
+    state.canvas.style.width  = w + 'px';
+    state.canvas.style.height = h + 'px';
     state.ctx = state.canvas.getContext('2d');
     state.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
@@ -117,6 +129,15 @@
     const u = span > 0 ? (renderTime - a.t) / span : 0;
     const pa = a.snap.player;
     const pb = b.snap.player;
+    // Defensive (v0.20.1): if either endpoint lacks finite x/y (a not-yet-migrated
+    // snap during a wire-format upgrade window, or a repeated-timestamp sample from
+    // network flakiness), fall back to the newer pose unchanged instead of producing
+    // NaN. Frame-level Number.isFinite guard is the safety net; this keeps the pose
+    // usable when only the older sample is degraded.
+    if (!Number.isFinite(pa.x) || !Number.isFinite(pa.y) ||
+        !Number.isFinite(pb.x) || !Number.isFinite(pb.y)) {
+      return { player: pb, snap: b.snap };
+    }
     return {
       player: {
         x: pa.x + (pb.x - pa.x) * u,
@@ -137,11 +158,22 @@
     updateFps(now);
     if (state.ring.length === 0) return;
 
+    // Defensive (v0.20.1): skip drawing when the canvas isn't sized yet. resizeCanvas
+    // retries itself; this loop just waits. Prevents the "fully-black map with only
+    // HUD visible" symptom the v0.20.0 tester saw when innerWidth was 0 at load.
+    if (state.canvas.clientWidth <= 0 || state.canvas.clientHeight <= 0) return;
+
     const renderTime = performance.now() + state.serverOffset - RENDER_DELAY_MS;
     const bracket = findBracket(renderTime);
     let pose;
     if (bracket) pose = lerpPose(bracket[0], bracket[1], renderTime);
     else pose = { player: state.ring[state.ring.length - 1].snap.player, snap: state.ring[state.ring.length - 1].snap };
+
+    // Defensive (v0.20.1): if pose.player.x/y is non-finite, skip the frame instead of
+    // painting entities at NaN coordinates (which silently no-ops the entire canvas
+    // layer, producing the same fully-black tester symptom). lerpPose already tries
+    // to recover; this is the final safety net.
+    if (!Number.isFinite(pose.player.x) || !Number.isFinite(pose.player.y)) return;
 
     computeFogReveal(pose.player.x, pose.player.y);
     draw(pose);
@@ -572,6 +604,10 @@
     else {
       state.ring.length = 0;    // clear stale samples on wake
       state.serverOffset = 0;   // re-seed clock offset from next sample
+      // Defensive (v0.20.1): tab restoration from suspend or from-portrait-to-landscape
+      // rotation can leave the canvas backing store stale — re-fire resizeCanvas so
+      // dims are re-validated against current window.innerWidth/innerHeight.
+      resizeCanvas();
       resume();
     }
   });
