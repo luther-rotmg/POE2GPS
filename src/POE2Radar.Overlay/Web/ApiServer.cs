@@ -1049,6 +1049,21 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/paths":
+            {
+                // v0.20.1 T9: current selected-target route polylines for /map and /obs. Same OR-gate
+                // as the other data endpoints so /obs alone can fetch paths without enabling /map.
+                // Payload matches the `paths` field on /stream (SseChannel.SnapshotForBrowser) so
+                // clients can seed on connect + stay in sync from the SSE deltas.
+                if (!_settings.EnableWebMap && !_settings.EnableWebObs) { NotFound(ctx); break; }
+                var pathsJson = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    paths = s.Paths.Select(p => new { points = p.Points.Select(pt => new { x = pt.x, y = pt.y }) })
+                }, Json);
+                WriteMaybeGzipped(ctx, pathsJson, "application/json; charset=utf-8");
+                break;
+            }
+
             case "/api/map":
             {
                 // v0.20.0 T5: same OR-gate — the shared renderer needs terrain from either entry point.
@@ -2373,6 +2388,12 @@ public sealed class ApiServer : IDisposable
     }
 }
 
+/// <summary>One selected navigation route projected to a wire-format polyline. Grid-space coordinates
+/// (matches how the native Direct2D overlay draws in <c>OverlayRenderer.DrawPaths</c>); consumers on the
+/// browser side project them the same way the terrain map is projected. Additive wire field — v0.20.0
+/// clients ignore it silently, so the record is defined here alongside <see cref="RadarState"/>.</summary>
+public sealed record PathPolyline(IReadOnlyList<(float x, float y)> Points);
+
 /// <summary>Immutable snapshot published by the tick loop for the API to serve.</summary>
 public sealed record RadarState(
     bool InGame,
@@ -2413,4 +2434,10 @@ public sealed record RadarState(
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,
             Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), 100, 100, 100, "", "", 0);
+
+    /// <summary>v0.20.1 T9: selected-target route polylines, projected from
+    /// <c>OverlayRenderer.ctx.SelectedPaths</c> in <c>RadarApp.Tick()</c> without any new memory reads.
+    /// Defaults to an empty array (never null) so wire-format projection is O(1) when no targets are
+    /// selected. Set via object initializer on the <see cref="RadarState"/> construction site.</summary>
+    public IReadOnlyList<PathPolyline> Paths { get; init; } = Array.Empty<PathPolyline>();
 }

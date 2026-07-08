@@ -11,6 +11,7 @@ internal static class TestBoot
     public static int NextPort() => System.Threading.Interlocked.Increment(ref _portCounter);
 
     public static ApiServer Server(bool webMap, bool webObs, out int port,
+                                   Func<RadarState>? stateProvider = null,
                                    Func<(byte[]? Walkable, int Width, int Height, uint AreaHash)>? terrainProvider = null)
     {
         port = NextPort();
@@ -21,7 +22,9 @@ internal static class TestBoot
             ApiPort = port,
             AllowLanAccess = false,
         };
-        var stateProvider = () => SseChannelTests.MakeState();
+        // v0.20.1 T9: callers can inject a custom RadarState for routes that read live state
+        // (e.g. /api/paths). Default keeps the pre-T9 behaviour: an empty MakeState() snapshot.
+        stateProvider ??= () => SseChannelTests.MakeState();
         var sse = (webMap || webObs) ? new SseChannel() : null;
         var host = (webMap || webObs) ? new AssetHost() : null;
 

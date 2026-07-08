@@ -1483,11 +1483,24 @@ public sealed class RadarApp : IDisposable
         var monoliths = worldFresh && mr.AreaHash == _areaHash
             ? mr.Markers : (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>();
 
+        // v0.20.1 T9: project the world-thread's already-computed selectedPaths list into the wire-format
+        // PathPolyline shape (float grid coords) for /api/paths + /stream. No new memory reads — this is
+        // the same list the Direct2D overlay draws in OverlayRenderer.DrawPaths. Skips the projection
+        // entirely when the list is empty (common case: no nav target selected) so the empty-state cost
+        // is a single Array.Empty<>() reference.
+        var pathsWire = selectedPaths.Count > 0
+            ? selectedPaths.Select(p => new PathPolyline(
+                p.Points.Select(pt => ((float)pt.x, (float)pt.y)).ToArray())).ToArray()
+            : Array.Empty<PathPolyline>();
+
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
             snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
             Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps,
-            RpmPerSec: _rpmPerSec);
+            RpmPerSec: _rpmPerSec)
+        {
+            Paths = pathsWire,
+        };
         _sse?.Publish(_state);
 
         var realActive = renderActive;   // SR-2: reuse focus check computed before the read block (avoids a second GetForegroundWindow call)

@@ -174,6 +174,10 @@ public sealed class SseChannel : IDisposable
             entities = entitiesField,
             entitiesDelta = entitiesDeltaField,
             monoliths = SelectMonoliths(s),
+            // v0.20.1 T9: selected-target route polylines. Additive wire field — v0.20.0 clients ignore
+            // it silently. Empty when no nav target is selected (state.Paths defaults to Array.Empty<>()),
+            // so the enumerable projection collapses to an empty JSON array at O(1) cost when off.
+            paths = s.Paths.Select(p => new { points = p.Points.Select(pt => new { x = pt.x, y = pt.y }) }),
         };
     }
 

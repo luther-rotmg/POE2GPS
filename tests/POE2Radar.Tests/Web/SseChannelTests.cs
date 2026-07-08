@@ -62,6 +62,17 @@ public class SseChannelTests
             CampaignGps: null,
             RpmPerSec: 0);
 
+    /// <summary>v0.20.1 T9: builds a RadarState with populated Paths. Each element of
+    /// <paramref name="polylines"/> is one polyline's grid-space points; the helper wraps them in
+    /// <see cref="PathPolyline"/> the same way <c>RadarApp.Tick</c> projects <c>SelectedPaths</c>.</summary>
+    internal static RadarState MakeStateWithPaths((float x, float y)[][] polylines, uint areaHash = 0xABC123)
+    {
+        var wire = new PathPolyline[polylines.Length];
+        for (var i = 0; i < polylines.Length; i++)
+            wire[i] = new PathPolyline(polylines[i]);
+        return MakeState(areaHash) with { Paths = wire };
+    }
+
     internal static RadarState MakeStateWithEntities((int id, float x, float y)[] entities, uint areaHash = 0xABC123)
     {
         var dots = new Poe2Live.EntityDot[entities.Length];
