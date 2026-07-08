@@ -1,0 +1,16 @@
+{
+  "AllowLanAccess": false,
+  "EnableWebMap": false,
+  "EnableWebObs": false,
+  "AtlasRulesInitialized": false,
+  "AtlasTargetsSeeded": false,
+  "AtlasGroupsSeeded": false,
+  "AbyssRuleSeeded": false,
+  "IconDefaultsApplied": false,
+  "IconDefaultsApplied2": false,
+  "RuleCleanupV1": false,
+  "MechanicLabelsV1": false,
+  "GroundDefaultsV2": false,
+  "IconSizesV1": false,
+  "EntityArrowsSeeded": false
+}

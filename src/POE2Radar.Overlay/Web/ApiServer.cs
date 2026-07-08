@@ -1289,7 +1289,7 @@ public sealed class ApiServer : IDisposable
         atlasContentIconSize     = _settings.AtlasContentIconSize,
         // Off-screen entity arrows: whole settings object + seeded flag (so dashboard can read state).
         entityArrows             = _settings.EntityArrows,
-        entityArrowsSeeded       = _settings.EntityArrowsSeeded,
+        entityArrowsSeeded       = _settings.AppliedMigrations.Contains("seed:entity-arrows"),
         // OBS overlay + Discord Presence settings. ClientId is intentionally omitted from the GET
         // response — it is write-only (set via POST) and must not appear in screenshots or streams.
         obsOverlay               = _settings.ObsOverlay,
@@ -1423,7 +1423,12 @@ public sealed class ApiServer : IDisposable
                 case "enableWebObs" when TryBool(p.Value, out var eo): _settings.EnableWebObs = eo; applied.Add(p.Name); break;
                 // Atlas colour groups (#7): the dashboard re-POSTs the full array on edit.
                 case "atlasGroups" when p.Value.ValueKind == JsonValueKind.Array:
-                    if (TryParseAtlasGroups(p.Value, out var atlasGrps)) { _settings.AtlasGroups = atlasGrps; _settings.AtlasGroupsSeeded = true; applied.Add(p.Name); }
+                    if (TryParseAtlasGroups(p.Value, out var atlasGrps)) {
+                        _settings.AtlasGroups = atlasGrps;
+                        if (!_settings.AppliedMigrations.Contains("seed:atlas-groups"))
+                            _settings.AppliedMigrations.Add("seed:atlas-groups");
+                        applied.Add(p.Name);
+                    }
                     break;
                 case "atlasRouteArrowSpacing" when TryFloat(p.Value, out var f): _settings.AtlasRouteArrowSpacing = Math.Clamp(f, 2f, 60f); applied.Add(p.Name); break;
                 case "atlasShowContentIcons" when TryBool(p.Value, out var b): _settings.AtlasShowContentIcons = b; applied.Add(p.Name); break;
