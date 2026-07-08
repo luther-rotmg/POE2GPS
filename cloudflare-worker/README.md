@@ -72,8 +72,11 @@ Submissions with nothing valid after filtering return `400 nothing valid after f
    ```
    python resources/poe2-data/merge_community.py
    ```
-   This pulls issues labelled `approved` and merges them into the catalog. **Closing the issues
-   is a manual maintainer step** (personal thank-you comment; PMS-11 habit block).
+   This pulls issues labelled `approved`, merges them into the catalog, and prints a
+   ready-to-paste `### Community contributors` credit block for the CHANGELOG. Thanking
+   contributors and closing their issues stays a **manual maintainer step** — personal
+   follow-up comment on each merged issue (PMS-11 habit block). No `--comment`, no
+   auto-close.
 
 ## Local unit tests
 

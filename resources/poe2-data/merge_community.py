@@ -149,11 +149,20 @@ def fold_buffs(pack: dict, buffs: dict[str, dict]) -> None:
                 entry["tiers"][t] = entry["tiers"].get(t, 0) + 1
 
 
-def emit_credit_block(contributors: list[tuple[str, int, str]]) -> str:
-    lines = ["### Special thanks — community-pack contributors", ""]
-    for handle, num, url in sorted(set(contributors)):
-        lines.append(f"- @{handle} — #{num} ({url})")
-    return "\n".join(lines) + "\n"
+def build_credit_block(contributors: list[tuple[str, list[tuple[int, str]]]]) -> str:
+    """Deterministic markdown credit block.
+
+    ``contributors`` is a list of ``(handle, [(issue_number, issue_url), ...])`` tuples.
+    Handles are expected pre-sorted case-insensitively; issues per handle pre-sorted
+    ascending by number. Rendered as a ``### Community contributors`` H3 block plus
+    one bullet per contributor, ready to paste above the themed body of CHANGELOG.md.
+    """
+    lines = ["### Community contributors", ""]
+    for handle, issues in contributors:
+        refs = ", ".join(f"[#{n}]({u})" for n, u in issues)
+        lines.append(f"- @{handle} — {refs}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def _write_preload_sidecar(hits: dict[str, dict]) -> None:
@@ -191,7 +200,8 @@ def main(argv: list[str]) -> int:
     cats: set[str] = set()
     preload_hits: dict[str, dict] = {}
     buff_paths: dict[str, dict] = {}
-    contributors: list[tuple[str, int, str]] = []
+    # handle -> dict[int, str]  (number -> url), naturally dedup'd per-issue
+    credit: dict[str, dict[int, str]] = {}
     packs = 0
 
     for issue in issues:
@@ -201,11 +211,13 @@ def main(argv: list[str]) -> int:
             continue
         packs += 1
 
-        author = ((issue.get("author") or {}).get("login") or "").strip()
+        author = issue.get("author") or {}
+        handle = (author.get("login") if isinstance(author, dict) else None) or ""
+        handle = handle.strip() or "unknown"
         number = int(issue.get("number") or 0)
         url = (issue.get("url") or "").strip()
-        if author and number and url:
-            contributors.append((author, number, url))
+        if number:
+            credit.setdefault(handle, {})[number] = url
 
         kind = dispatch_kind(issue_labels(issue), pack)
         if kind == "preload" and do_preload:
@@ -221,11 +233,9 @@ def main(argv: list[str]) -> int:
         table = json.loads(ENTITY_NAMES.read_text(encoding="utf-8-sig"))
     else:
         table = {}
-    added = 0
     for k, v in names.items():
         if k not in table:
             table[k] = v
-            added += 1
 
     if LABELS.exists():
         labels_json = json.loads(LABELS.read_text(encoding="utf-8-sig"))
@@ -239,7 +249,12 @@ def main(argv: list[str]) -> int:
             if c not in labels_json["Community"]:
                 labels_json["Community"].append(c)
 
-    print(f"{packs} approved pack(s): +{added} names, novel labels: {novel or 'none'}")
+    # Input-derived stats (stable across reruns against the same issue set — so the
+    # idempotency test can compare full stdout byte-for-byte). Delta info (+added
+    # names, novel labels) surfaces via ``git diff`` on the written data files.
+    print(
+        f"atlas fold: {packs} approved pack(s), {len(names)} unique names, "
+        f"{len(cats)} unique categories")
 
     if do_preload:
         total_hits = sum(h["count"] for h in preload_hits.values())
@@ -255,9 +270,18 @@ def main(argv: list[str]) -> int:
             _write_buffs_sidecar(buff_paths)
             print(f"wrote {BUFFS_SIDECAR}")
 
-    # Credit block for CHANGELOG paste (idempotent — unique-sort by (handle, number, url)).
+    # Deterministic credit block: handles sorted case-insensitively, issues per
+    # handle sorted ascending by number. Rerunning against the same issue set
+    # produces byte-identical stdout — safe to pipe into CHANGELOG.md.
+    contributors = [
+        (h, sorted(nu.items()))
+        for h, nu in sorted(credit.items(), key=lambda kv: kv[0].lower())
+    ]
     if contributors:
-        print("\n" + emit_credit_block(contributors))
+        print()
+        print("--- credit block (paste above the themed body in CHANGELOG.md) ---")
+        print(build_credit_block(contributors))
+        print("--- end credit block ---")
 
     if dry:
         print("(dry-run — no data-file writes)")
