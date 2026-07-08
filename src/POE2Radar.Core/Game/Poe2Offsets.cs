@@ -119,9 +119,10 @@ public static class Poe2
     /// 2026-06-04, 980/980 HP, 427 mana, 274 ES) slid to 0x1B0/0x208/0x248. 2026-07-02 patch: **EnergyShield
     /// drifted again 0x248→0x264** (confirmed by 2 users + the vital-offset auto-heal); Health/Mana unchanged
     /// (no drift warning). The VitalStruct internal layout (Max@+0x2C, Current@+0x30) is UNCHANGED throughout.
-    /// TODO: re-validate the full table in-game via Research --vitals and bump the README badge once the new
-    /// PoE2 patch version is confirmed. The auto-heal (Poe2Live.EnsureVitalOffsets) still self-heals any
-    /// further per-user drift, so a wrong constant degrades gracefully rather than breaking.</summary>
+    /// Re-validation event 2026-07-07 (v0.20.1): LO confirmed the shipped constants are current for PoE2
+    /// 0.5.4; no further drift observed since the 2026-07-02 ES slide. The auto-heal
+    /// (Poe2Live.EnsureVitalOffsets) still self-heals any further per-user drift, so a wrong constant
+    /// degrades gracefully rather than breaking.</summary>
     public static class Life
     {
         public const int Owner        = 0x008; // ComponentHeader.EntityPtr (back-pointer to entity)
