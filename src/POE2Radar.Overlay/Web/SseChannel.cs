@@ -186,10 +186,11 @@ public sealed class SseChannel : IDisposable
 
     void EnsureHeartbeat()
     {
-        if (_heartbeat != null) return;
-        var t = new Timer(_ => Heartbeat(), null, HeartbeatSeconds * 1000, HeartbeatSeconds * 1000);
-        var prev = Interlocked.CompareExchange(ref _heartbeat, t, null);
-        if (prev != null) t.Dispose();
+        lock (_latestLock)
+        {
+            if (_heartbeat != null) return;
+            _heartbeat = new Timer(_ => Heartbeat(), null, HeartbeatSeconds * 1000, HeartbeatSeconds * 1000);
+        }
     }
 
     void Heartbeat()
@@ -208,8 +209,12 @@ public sealed class SseChannel : IDisposable
 
     void TeardownHeartbeat()
     {
-        var t = Interlocked.Exchange(ref _heartbeat, null);
-        t?.Dispose();
+        lock (_latestLock)
+        {
+            var t = _heartbeat;
+            _heartbeat = null;
+            t?.Dispose();
+        }
     }
 
     void RemoveSubscriberInternal(Subscriber sub)

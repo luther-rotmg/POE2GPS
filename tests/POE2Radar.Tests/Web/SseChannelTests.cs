@@ -186,4 +186,48 @@ public class SseChannelTests
         Assert.True(c.RemoveSubscriber(id));
         Assert.Null(c.PeekHeartbeat());
     }
+
+    [Fact]
+    public async Task Heartbeat_survives_add_teardown_race()
+    {
+        // Reproducer for the T3 plan-mandated race: while one thread teardowns
+        // heartbeat on last-remove, another thread adds a subscriber and calls
+        // EnsureHeartbeat. Fix: both paths gate on _latestLock, so the interleave
+        // is impossible.
+        using var c = new SseChannel();
+        var iterations = 500;
+        var addCount = 0;
+        var removeCount = 0;
+
+        var addTask = Task.Run(() =>
+        {
+            for (var i = 0; i < iterations; i++)
+            {
+                var sink = new RecordingSink();
+                var id = c.AddSubscriber(sink);
+                Interlocked.Increment(ref addCount);
+                Thread.SpinWait(50);
+                c.RemoveSubscriber(id);
+                Interlocked.Increment(ref removeCount);
+            }
+        });
+
+        var pubTask = Task.Run(async () =>
+        {
+            for (var i = 0; i < iterations * 2; i++)
+            {
+                c.Publish(MakeState());
+                await Task.Delay(1);
+            }
+        });
+
+        await Task.WhenAll(addTask, pubTask);
+        await Task.Delay(50);
+
+        // Invariant: when _subs is empty, _heartbeat must be null. When non-empty, non-null.
+        Assert.Equal(iterations, addCount);
+        Assert.Equal(iterations, removeCount);
+        Assert.True(c.IsEmpty);
+        Assert.Null(c.PeekHeartbeat());
+    }
 }
