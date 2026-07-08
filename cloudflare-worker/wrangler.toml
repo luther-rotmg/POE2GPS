@@ -1,3 +1,13 @@
 name = "poe2gps-contribute"
 main = "worker.js"
 compatibility_date = "2026-06-01"
+
+# Rate-limit counter store (5 requests / 60s per CF-Connecting-IP).
+# Deliberately NOT using unsafe.bindings native Ratelimit — experimental, defer to v0.22.
+# Namespace ID is created by the maintainer during PMS-13:
+#   wrangler kv:namespace create RATE_KV
+# then paste the returned id below, replacing the sentinel. Wrangler will refuse to deploy
+# while the sentinel is present (invalid id) — intentional gate on the branch.
+[[kv_namespaces]]
+binding = "RATE_KV"
+id = "TODO(pms-13-kv-id)"

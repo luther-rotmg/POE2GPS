@@ -1,0 +1,536 @@
+{
+  "_comment": "Radar room-based objective targets (area-id -> [{name, rooms, count}]). Derived from Radar targets.json entries with Name '*' + a Rooms filter (the room filter the Radar.ClusterTarget bridge DROPS, so StepTargetResolver matches these against IngameState.Data.AreaGraphs room names directly). 'name' = Radar DisplayName; the resolver joins it to a route step when a significant name word (>=4 ch, not a generic stoplist word) appears in the step text. 'rooms' = room-name substrings (the '*' wildcards stripped). Used for an on-the-ground objective whose entity isn't a standard interactable (e.g. g1_5 'Obelisk of Rust' which loads as an IngameIcon). Optional 'progressFlags' (harvested, ordered): per-sub-objective QuestFlags that flip one at a time as you complete each (e.g. the 3 Rust obelisks). When one flips true the pathing drops the path to whichever objective room is nearest the player at that instant, leaving lines only to the not-yet-done ones.",
+  "g1_2": [
+    {
+      "name": "Skill Gem Level 1",
+      "rooms": [
+        "campsite"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Beira of the Rotten (10% Cold Res)",
+      "rooms": [
+        "boss_hagwitch"
+      ],
+      "count": 1
+    }
+  ],
+  "g1_3": [
+    {
+      "name": "Devourer (T1 Support Gem)",
+      "rooms": [
+        "boss"
+      ],
+      "count": 1
+    }
+  ],
+  "g1_4": [
+    {
+      "name": "Areagne's Hut (T1 Support Gem and Flasks)",
+      "rooms": [
+        "witchhut"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Runic Seal",
+      "entityPath": "NailStake",
+      "count": 3,
+      "_comment": "Tree of Souls 'Runic Seals' load as TreeOfSoulsNailStake1/2/3 (no rune/seal in the path); entity-based objective matches by metadata path. each goes Targetable.isTargetable=false when activated -> per-seal completion, drives the moving indicator + path drop + step advance, no quest flag."
+    }
+  ],
+  "g1_5": [
+    {
+      "name": "Rust",
+      "rooms": [
+        "Encounter"
+      ],
+      "count": 3,
+      "progressFlags": [
+        "TreeOfSoulsRedValeObeliskSeen",
+        "TreeOfSoulsRedValeObeliskSeenTwo",
+        "TreeOfSoulsRedValeObeliskSeenThree"
+      ]
+    }
+  ],
+  "g1_7": [
+    {
+      "name": "Random ring",
+      "rooms": [
+        "landmark"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Mausoleum of the Praetor",
+      "rooms": [
+        "entrance_mausoleum"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Tomb of the Consort",
+      "rooms": [
+        "entrance_tomb"
+      ],
+      "count": 1
+    }
+  ],
+  "g1_11": [
+    {
+      "name": "Ogham Farmlands",
+      "rooms": [
+        "entrance_villageroad"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Dryadic Ritual (T1 Support Gem)",
+      "rooms": [
+        "landmark"
+      ],
+      "count": 1
+    }
+  ],
+  "g2_1": [
+    {
+      "name": "Rare Chest",
+      "rooms": [
+        "landmark"
+      ],
+      "count": 1
+    }
+  ],
+  "g2_4_1": [
+    {
+      "name": "Vault (Rare chest + magic amulet)",
+      "rooms": [
+        "buriedketh"
+      ],
+      "count": 2
+    }
+  ],
+  "g2_4_2": [
+    {
+      "name": "Rare Jewel Beetle",
+      "rooms": [
+        "superunique"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Golden Tomb (Spirit Gem Level 7)",
+      "rooms": [
+        "landmark"
+      ],
+      "count": 1
+    }
+  ],
+  "g2_4_3": [
+    {
+      "name": "T2 Support Gem",
+      "rooms": [
+        "terracotawarriors"
+      ],
+      "count": 1
+    }
+  ],
+  "abyss_intro": [
+    {
+      "name": "Well of Souls",
+      "rooms": [
+        "to_well"
+      ],
+      "count": 1
+    }
+  ],
+  "g2_7": [
+    {
+      "name": "Boss",
+      "rooms": [
+        "boss"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Random Rune",
+      "rooms": [
+        "unique_0"
+      ],
+      "count": 1
+    }
+  ],
+  "g2_8": [
+    {
+      "name": "Fallen Dekhara (+2 Passive)",
+      "rooms": [
+        "overlay_superman"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Artificers Orb",
+      "rooms": [
+        "unique_0"
+      ],
+      "count": 1
+    }
+  ],
+  "g2_10_1": [
+    {
+      "name": "Artificers Orb",
+      "rooms": [
+        "landmark_0"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_1": [
+    {
+      "name": "Magic Ring",
+      "rooms": [
+        "sand/landmark"
+      ],
+      "count": 1
+    },
+    {
+      "name": "(Lesser Jeweller's Orb)",
+      "rooms": [
+        "rooms/landmark"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_3": [
+    {
+      "name": "Troubled Camp(ARMOUR VENDOR) + Rare Gloves",
+      "rooms": [
+        "landmark_01"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Shrine (BELT REWARD)",
+      "rooms": [
+        "landmark_02"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_4": [
+    {
+      "name": "Rare Sarcophagus + T3 Support Gem",
+      "rooms": [
+        "story_room"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Venom Vial (Pick Bonus)",
+      "rooms": [
+        "boss"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_5": [
+    {
+      "name": "Rare Chest + Rare Helm",
+      "rooms": [
+        "landmark_01"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_7": [
+    {
+      "name": "Fire Rarity buff (good xp to reset)",
+      "rooms": [
+        "burningman"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_8": [
+    {
+      "name": "Rare Chest + 2 Rares",
+      "rooms": [
+        "three_door"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Rare Chest + Magic Monsters",
+      "rooms": [
+        "two_door"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Rare Chest",
+      "rooms": [
+        "one_door"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_14": [
+    {
+      "name": "Rare Chest + Magic Chest",
+      "rooms": [
+        "three_door"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Rare Chest + Magic Chest + Idol",
+      "rooms": [
+        "two_door"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Rare Chest + Magic Chest + Idol",
+      "rooms": [
+        "one_door"
+      ],
+      "count": 1
+    }
+  ],
+  "g3_16": [
+    {
+      "name": "Idol",
+      "rooms": [
+        "filth_pools"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Idol",
+      "rooms": [
+        "idol_end_02"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Idol",
+      "rooms": [
+        "idol_end_03"
+      ],
+      "count": 1
+    }
+  ],
+  "g4_3_1": [
+    {
+      "name": "Map Piece (for expedition island)",
+      "rooms": [
+        "map_piece"
+      ],
+      "count": 1
+    }
+  ],
+  "g4_7": [
+    {
+      "name": "Rare Mace",
+      "rooms": [
+        "karui_corpse"
+      ],
+      "count": 1
+    }
+  ],
+  "g4_5_1": [
+    {
+      "name": "Monster Gauntlet",
+      "rooms": [
+        "boss_01"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Strongbox",
+      "rooms": [
+        "strongbox"
+      ],
+      "count": 1
+    }
+  ],
+  "g4_5_2": [
+    {
+      "name": "Strongbox",
+      "rooms": [
+        "strongbox"
+      ],
+      "count": 1
+    }
+  ],
+  "p1_1": [
+    {
+      "name": "Skill Gem Level 13",
+      "rooms": [
+        "feature_una"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Shrine",
+      "rooms": [
+        "shrine"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Blackwood",
+      "rooms": [
+        "block_transition"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Boss",
+      "rooms": [
+        "feature_hamlet"
+      ],
+      "count": 1
+    }
+  ],
+  "p1_2": [
+    {
+      "name": "Monolith",
+      "rooms": [
+        "Stone_0"
+      ],
+      "count": 5
+    },
+    {
+      "name": "Monolith",
+      "rooms": [
+        "Entrance_01"
+      ],
+      "count": 1
+    }
+  ],
+  "p1_6": [
+    {
+      "name": "3 Magic chests",
+      "rooms": [
+        "landmark_treasure_downstairs"
+      ],
+      "count": 1
+    },
+    {
+      "name": "2 Rare chests",
+      "rooms": [
+        "landmark_treasure_upstairs"
+      ],
+      "count": 1
+    }
+  ],
+  "p2_1": [
+    {
+      "name": "Monster Gauntlet + Rare Chest",
+      "rooms": [
+        "landmark_01"
+      ],
+      "count": 1
+    },
+    {
+      "name": "5% Maximum Life",
+      "rooms": [
+        "exit_04"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Rare monsters + (CASTER & JEWELLERY VENDOR)",
+      "rooms": [
+        "landmark_04"
+      ],
+      "count": 1
+    }
+  ],
+  "p2_2": [
+    {
+      "name": "Essence",
+      "rooms": [
+        "essence"
+      ],
+      "count": 1
+    }
+  ],
+  "p2_3": [
+    {
+      "name": "Seal",
+      "rooms": [
+        "djinn"
+      ],
+      "count": 2
+    },
+    {
+      "name": "Rare Chest + 3 Magic Chests",
+      "rooms": [
+        "treasure_02"
+      ],
+      "count": 1
+    },
+    {
+      "name": "GOLD",
+      "rooms": [
+        "treasure_01"
+      ],
+      "count": 1
+    }
+  ],
+  "p2_5": [
+    {
+      "name": "Shrine",
+      "rooms": [
+        "landmark_01"
+      ],
+      "count": 3
+    }
+  ],
+  "p2_6": [
+    {
+      "name": "Strongbox",
+      "rooms": [
+        "strongbox"
+      ],
+      "count": 2
+    }
+  ],
+  "p2_7": [
+    {
+      "name": "Random currency",
+      "rooms": [
+        "landmark_vase"
+      ],
+      "count": 1
+    },
+    {
+      "name": "Random currency",
+      "rooms": [
+        "landmark_well"
+      ],
+      "count": 2
+    }
+  ],
+  "p3_1": [
+    {
+      "name": "Skill Gem Level 14 ",
+      "rooms": [
+        "landmark_artefact"
+      ],
+      "count": 1
+    }
+  ],
+  "p3_3": [
+    {
+      "name": "Ice Essence",
+      "rooms": [
+        "forced_rare"
+      ],
+      "count": 1
+    }
+  ]
+}

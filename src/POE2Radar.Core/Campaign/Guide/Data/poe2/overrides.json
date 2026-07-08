@@ -1,0 +1,2387 @@
+{
+  "_doc": "Only the globalRules array is live: read by LoadGlobalRules (ExileCampaigns.Overrides.cs) for waypoint-pulse detection. The old per-step override-diff layer (OverrideApplier) is gone; route.json is the source of truth.",
+  "globalRules": [
+    {
+      "flag": "AchievementCheckWaypoints",
+      "area": "*",
+      "match": "take waypoint",
+      "kind": "waypoint",
+      "note": "Pulses true each time you take ANY waypoint (verified live g1_4: false before the take despite g1_2's waypoint already done, true after; the game clears it between waypoints). kind 'waypoint' => FlagAdvance clears only the take-waypoint step under the cursor via IsTakeWaypointStep, covering both 'Take waypoint' and the 'Enter X -> take WP -> return' side trips; never a later step, never the [WAYPOINT] header. 'match' kept for docs only. EXCEPTION to _patterns.exclude_transient Achievement* rule."
+    }
+  ],
+  "unattachedFlags": [
+    {
+      "flag": "PickedUpTutorialSkillGem",
+      "area": "g1_1",
+      "match": "pick up first skill gem",
+      "kind": "event",
+      "note": "First uncut skill gem. The route has NO discrete step for it (it falls under 'Loot Large Chests'), so it cannot drive advance -- kind=event. Co-flips: SamuelDyingWords (event)."
+    },
+    {
+      "flag": "DevourerSkillGemPickedUp",
+      "area": "g1_2",
+      "ordinal": 3,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "OldForestBossSupportGemAcquired",
+      "area": "g1_4",
+      "ordinal": 5,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "WitchRareMonsterUncutSupportGemAcquired",
+      "area": "g1_4",
+      "ordinal": 6,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "RustKingUncutSkillGemAcquired",
+      "area": "g1_5",
+      "ordinal": 2,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "GrimTangleBossSupportGemAcquired",
+      "area": "g1_6",
+      "ordinal": 2,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "GrimTangleRootsUnblocked",
+      "area": "g1_6",
+      "match": "Una -> open Grim Tangle roots",
+      "kind": "event",
+      "note": "Tree of Souls path-clear, done during the g1_4 return ('Activate 3 Runic Seals'), not in the g1_6 block -- no matching step, kind=event. Co-flips: UnaGrimTangleOpenRoots, GrimTangleRootsSeen."
+    },
+    {
+      "flag": "BitterGuyUncutSupportGemAcquired",
+      "area": "g1_7",
+      "ordinal": 7,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "TombGemAcquired",
+      "area": "g1_7",
+      "ordinal": 5,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "CrowbellSkillBookUsed",
+      "area": "g1_11",
+      "ordinal": 3,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "OghamVillageExecutionerSupportGemPickedUp",
+      "area": "g1_13_2",
+      "ordinal": 3,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "flag": "ManorGargoyleUsed",
+      "area": "g1_15",
+      "ordinal": 1,
+      "kind": "reward",
+      "reason": "displaced by higher-priority flag on same step"
+    },
+    {
+      "area": "g1_3",
+      "objectiveName": "Devourer (T1 Support Gem)",
+      "keyword": "Devourer",
+      "reason": "no step match"
+    },
+    {
+      "area": "g1_4",
+      "objectiveName": "Areagne's Hut (T1 Support Gem and Flasks)",
+      "keyword": "Areagne's",
+      "reason": "no step match"
+    },
+    {
+      "area": "g1_11",
+      "objectiveName": "Dryadic Ritual (T1 Support Gem)",
+      "keyword": "Dryadic",
+      "reason": "no step match"
+    },
+    {
+      "area": "g2_1",
+      "objectiveName": "Rare Chest",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g2_4_1",
+      "objectiveName": "Vault (Rare chest + magic amulet)",
+      "keyword": "Vault",
+      "reason": "no step match"
+    },
+    {
+      "area": "g2_4_2",
+      "objectiveName": "Rare Jewel Beetle",
+      "keyword": "Beetle",
+      "reason": "no step match"
+    },
+    {
+      "area": "abyss_intro",
+      "objectiveName": "Well of Souls",
+      "keyword": "Souls",
+      "reason": "no step match"
+    },
+    {
+      "area": "g2_7",
+      "objectiveName": "Boss",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g2_7",
+      "objectiveName": "Random Rune",
+      "keyword": "Rune",
+      "reason": "no step match"
+    },
+    {
+      "area": "g2_8",
+      "objectiveName": "Artificers Orb",
+      "keyword": "Artificers",
+      "reason": "no step match"
+    },
+    {
+      "area": "g2_10_1",
+      "objectiveName": "Artificers Orb",
+      "keyword": "Artificers",
+      "reason": "no step match"
+    },
+    {
+      "area": "g3_1",
+      "objectiveName": "(Lesser Jeweller's Orb)",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g3_3",
+      "objectiveName": "Shrine (BELT REWARD)",
+      "keyword": "Shrine",
+      "reason": "no step match"
+    },
+    {
+      "area": "g3_5",
+      "objectiveName": "Rare Chest + Rare Helm",
+      "keyword": "Helm",
+      "reason": "no step match"
+    },
+    {
+      "area": "g3_8",
+      "objectiveName": "Rare Chest + 2 Rares",
+      "keyword": "Rares",
+      "reason": "no step match"
+    },
+    {
+      "area": "g3_8",
+      "objectiveName": "Rare Chest",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g3_14",
+      "objectiveName": "Rare Chest + Magic Chest",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g3_14",
+      "objectiveName": "Rare Chest + Magic Chest + Idol",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g3_14",
+      "objectiveName": "Rare Chest + Magic Chest + Idol",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g3_16",
+      "objectiveName": "Idol",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g3_16",
+      "objectiveName": "Idol",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g3_16",
+      "objectiveName": "Idol",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "g4_3_1",
+      "objectiveName": "Map Piece (for expedition island)",
+      "keyword": "Piece",
+      "reason": "no step match"
+    },
+    {
+      "area": "g4_7",
+      "objectiveName": "Rare Mace",
+      "keyword": "Mace",
+      "reason": "no step match"
+    },
+    {
+      "area": "g4_5_1",
+      "objectiveName": "Monster Gauntlet",
+      "keyword": "Gauntlet",
+      "reason": "no step match"
+    },
+    {
+      "area": "g4_5_1",
+      "objectiveName": "Strongbox",
+      "keyword": "Strongbox",
+      "reason": "no step match"
+    },
+    {
+      "area": "g4_5_2",
+      "objectiveName": "Strongbox",
+      "keyword": "Strongbox",
+      "reason": "no step match"
+    },
+    {
+      "area": "p1_1",
+      "objectiveName": "Skill Gem Level 13",
+      "keyword": "Skill",
+      "reason": "no step match"
+    },
+    {
+      "area": "p1_1",
+      "objectiveName": "Shrine",
+      "keyword": "Shrine",
+      "reason": "no step match"
+    },
+    {
+      "area": "p1_1",
+      "objectiveName": "Blackwood",
+      "keyword": "Blackwood",
+      "reason": "no step match"
+    },
+    {
+      "area": "p1_1",
+      "objectiveName": "Boss",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "p1_2",
+      "objectiveName": "Monolith",
+      "keyword": "Monolith",
+      "reason": "no step match"
+    },
+    {
+      "area": "p1_2",
+      "objectiveName": "Monolith",
+      "keyword": "Monolith",
+      "reason": "no step match"
+    },
+    {
+      "area": "p1_6",
+      "objectiveName": "3 Magic chests",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "p1_6",
+      "objectiveName": "2 Rare chests",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "p2_1",
+      "objectiveName": "Monster Gauntlet + Rare Chest",
+      "keyword": "Gauntlet",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_1",
+      "objectiveName": "5% Maximum Life",
+      "keyword": "Maximum",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_1",
+      "objectiveName": "Rare monsters + (CASTER & JEWELLERY VENDOR)",
+      "keyword": "monsters",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_2",
+      "objectiveName": "Essence",
+      "keyword": "Essence",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_3",
+      "objectiveName": "Seal",
+      "keyword": "Seal",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_3",
+      "objectiveName": "Rare Chest + 3 Magic Chests",
+      "reason": "no usable keyword"
+    },
+    {
+      "area": "p2_3",
+      "objectiveName": "GOLD",
+      "keyword": "GOLD",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_5",
+      "objectiveName": "Shrine",
+      "keyword": "Shrine",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_6",
+      "objectiveName": "Strongbox",
+      "keyword": "Strongbox",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_7",
+      "objectiveName": "Random currency",
+      "keyword": "currency",
+      "reason": "no step match"
+    },
+    {
+      "area": "p2_7",
+      "objectiveName": "Random currency",
+      "keyword": "currency",
+      "reason": "no step match"
+    },
+    {
+      "area": "p3_1",
+      "objectiveName": "Skill Gem Level 14 ",
+      "keyword": "Skill",
+      "reason": "no step match"
+    },
+    {
+      "area": "p3_3",
+      "objectiveName": "Ice Essence",
+      "keyword": "Essence",
+      "reason": "no step match"
+    },
+    {
+      "sourceArea": "g1_2",
+      "match": "Mud Burrow (normally skip this)",
+      "tile": "FallenTreeSlashTransition",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_4",
+      "match": "Clearfell",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/OldForest_Clearfell_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_4",
+      "match": "The Corpse Tree (waypoint)",
+      "tile": "Metadata/Terrain/Woods/GrimTangle/areatransitions/GrimtangleTransitionDown_02.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_5",
+      "match": "The Grelwood",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/redvale_transition_02_redvale.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_6",
+      "match": "The Grelwood",
+      "tile": "Metadata/Terrain/Woods/GrimTangle/areatransitions/IntroArea.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_7",
+      "match": "The Grim Tangle",
+      "tile": "Metadata/Terrain/Woods/Graveyard/Feature/GraveyardToGrimTangle_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_8",
+      "match": "Forgotten Riches",
+      "tile": "Metadata/Terrain/Woods/GraveyardDungeons/Transitions/Mausoleum_SecretEntrance_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_8",
+      "match": "Cemetery of the Eternals",
+      "tile": "Metadata/Terrain/Woods/GraveyardDungeons/Transitions/Transition_Mausoleum_to_Graveyard_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_8",
+      "match": "Unknown 2",
+      "tile": "Metadata/Terrain/Woods/GraveyardDungeons/Transitions/Transition_Tomb_to_Graveyard_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_11",
+      "match": "Cemetery of the Eternals",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/CliffRoad_Cnr_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_12",
+      "match": "Hunting Grounds",
+      "tile": "Metadata/Terrain/Woods/Canopy/Features/CanopySpireTransition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_13_1",
+      "match": "Hunting Grounds",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/cliff_gate_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_13_2",
+      "match": "Ogham Farmlands",
+      "tile": "Metadata/Terrain/Woods/Village/RoadFields/Feature/RoadVillage_Areatransition_village_side.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_14",
+      "match": "Oghams Manor",
+      "tile": "Metadata/Terrain/Woods/Manor/CourtyardFeatures/Manor_GrandEntrance_Transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g1_15",
+      "match": "Stairs Up",
+      "tile": "Metadata/Terrain/Woods/Manor/Interior/Features/ThickWall_AreaTransition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g2_3",
+      "match": "Traitor's Passage",
+      "tile": "Metadata/Terrain/Desert/AreaTransitions/Ruin_PassageStair_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g2_4_1",
+      "match": "Looted Vault",
+      "tile": "Metadata/Terrain/Desert/BuriedCity/Features/Keth_SinkholeTransition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g2_4_3",
+      "match": "Buried Shrines",
+      "tile": "Metadata/Terrain/Desert/Maraketh/Floor/ThickWall_TransitionWide_St_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g2_5_2",
+      "match": "Mastodon Badlands",
+      "tile": "Metadata/Terrain/Desert/Badlands/Features/AreaTransition_BadlandsToPits_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g2_8",
+      "match": "The Ardura Caravan",
+      "tile": "Metadata/Terrain/Desert/Pillars/Base/PillarBase_CartTransition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_2_1",
+      "match": "Jungle Ruins",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleToWaterways_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_2_1",
+      "match": "The Azak Bog",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/Bog/AreaTransition/EntranceBog_02.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_3",
+      "match": "Ziggurat Encampment",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleDepths_to_Town.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_3",
+      "match": "Infested Barrens",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleToWaterways_01_reverse.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_4",
+      "match": "Jungle Ruins",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SnakePit_to_JungleDepths.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_5",
+      "match": "Infested Barrens",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/ChimeralWetlands_to_JungleDepths.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_5",
+      "match": "Deadly Nest",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/Observatory_Entrance_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_7",
+      "match": "Infested Barrens",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/Bog/AreaTransition/EntranceBog_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_8",
+      "match": "Ziggurat Encampment",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCityPresent/SunkenCityToTown_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_8",
+      "match": "Apex of Filth",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCityPresent/jungle_pyramid_entrance_atziri_03.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_8",
+      "match": "The Molten Vault",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCityPresent/jungle_pyramid_entrance_vault_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_14",
+      "match": "Town",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCity/jungle_town_lower_entrance_past_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g3_17",
+      "match": "Aggorat",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/DoryanisSanctumEntranceInt_01_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "g4_2_2",
+      "match": "Kedge Bay",
+      "tile": "Metadata/Terrain/Islands/Tiles/Island/Features/UnwalkableCliff_Transition_Up_02.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p1_1",
+      "match": "Forest 1 of 2",
+      "tile": "Metadata/Terrain/interlude/part1/p1_1/feature/forest_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p1_1",
+      "match": "Stones of serle",
+      "tile": "Metadata/Terrain/interlude/part1/p1_1/feature/monolith_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p1_2",
+      "match": "Farmlands",
+      "tile": "Metadata/Terrain/interlude/part1/p1_2/feature/farmlands_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p1_3",
+      "match": "Holten",
+      "tile": "Metadata/Terrain/interlude/part1/p1_3/holten_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p1_4",
+      "match": "Blackwood",
+      "tile": "Metadata/Terrain/interlude/part1/p1_4/blackwood_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p1_4",
+      "match": "Soul Ferryman - Sells runes",
+      "tile": "Metadata/Terrain/interlude/part1/p1_4/holtondocktransition.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p1_4",
+      "match": "Holton Estate",
+      "tile": "Metadata/Terrain/interlude/part1/p1_4/holton_estate_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p2_1",
+      "match": "Pools of Khatal",
+      "tile": "Metadata/Terrain/Interlude/Part2/P2_1/Dregs_Transition.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p2_1",
+      "match": "5% Maximum Life",
+      "tile": "Metadata/Terrain/Interlude/Part2/P2_1/Forge_Transition.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p2_1",
+      "match": "Galai Gates",
+      "tile": "Metadata/Terrain/interlude/part2/p2_1/gates_exit_transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p2_4",
+      "match": "Saitwaste Entrance",
+      "tile": "Metadata/Terrain/interlude/part2/p2_4/saitwaste_entrance_transition.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p2_5",
+      "match": "Gates end",
+      "tile": "Metadata/Terrain/Interlude/Part2/Gates/AreaTransitions/GatesEnd_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p2_6",
+      "match": "Entrance",
+      "tile": "Metadata/Terrain/Maps/SevenWaters/Tiles/Feature/Arena_Transition_01.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p3_1",
+      "match": "Glade",
+      "tile": "Metadata/Terrain/interlude/part3/p3_1/town_to_jungle_transition.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p3_1",
+      "match": "Kriar Village",
+      "tile": "Metadata/Terrain/Interlude/Part3/P3_1/Jungle_to_KriarVillage_Transition.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p3_2",
+      "match": "Ashen Forest",
+      "tile": "Metadata/Terrain/interlude/part3/p3_2/jungle_transition.tdt",
+      "reason": "no Enter step match"
+    },
+    {
+      "sourceArea": "p3_5",
+      "match": "Ravine",
+      "tile": "Metadata/Terrain/Interlude/Part3/P3_5/Ravine_Exit_Transition.tdt",
+      "reason": "no Enter step match"
+    }
+  ],
+  "overrides": [
+    {
+      "area": "g1_1",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:a1820123",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "SamuelZombieAttackSeen",
+        "completionKind": "quest",
+        "note": "Wounded-man (Samuel) cutscene. Co-flips: G1_1AudioStandUp (event), CompletedFirstNPCTutorial (noise)."
+      }
+    },
+    {
+      "area": "g1_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:bcdcad0c",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Woods/Lumbermill/EncampmentFront_01.tdt"
+      }
+    },
+    {
+      "area": "g1_1",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:4c21c7fe",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "MillerDefeated",
+        "completionKind": "boss",
+        "note": "First boss. Co-flips: MillerSeen (event), DefeatedBoss (transient), UsedTutorialActiveSkill (noise). No G1_1...BossKilled variant -- uses the bare {Boss}Defeated form."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:b8cacb40",
+      "op": "ReplaceText",
+      "text": "Talk to Farrow",
+      "meta": {
+        "note": "Split 'Farrow -> Runestone 2 of 3' Hunting Grounds step: talk to Farrow first. Order is Talk Farrow (ord1) -> Talk Delwyn (ord2) -> Summon Farrow (inserted after ord2). Advances on its own NpcDialog open (dialog-advance)."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:6a806cd5",
+      "op": "InsertAfter",
+      "text": "Talk to Farrow",
+      "meta": {
+        "note": "After activating the runes + summoning Farrow, talk to Farrow again (Runeseeker dialogue). Advances on its own NpcDialog open (dialog-advance). Order: Delwyn -> Find Rune -> Activate 3 Runes -> Summon Farrow -> Talk to Farrow. Listed FIRST among the ord2 InsertAfter entries so reverse-insert order lands it LAST."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:6a806cd5",
+      "op": "InsertAfter",
+      "text": "Summon Farrow",
+      "meta": {
+        "completionFlag": "ExpeditionQuestHuntingGroundsFarrowSummoned",
+        "completionKind": "quest",
+        "note": "Summon Farrow at the runestone after the 3 runes are activated. Targets the SummonAlly portal (IsSummonStep). Advances on ExpeditionQuestHuntingGroundsFarrowSummoned. Listed before Activate so reverse-insert lands it between Activate and the final Talk to Farrow."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:6a806cd5",
+      "op": "InsertAfter",
+      "text": "Activate 3 Runes",
+      "meta": {
+        "completionFlag": "ExpeditionQuestHuntingGroundsSummonFarrowSeen",
+        "completionKind": "quest",
+        "note": "Activate the 3 Runes of Aldur (Expedition2HuntingGroundsRune01/02/03, entityPath 'HuntingGroundsRune0' -- excludes the RunesGround centre doodad which has no Targetable). Each is EntityType.Terrain that flips Targetable.isTargetable=false when clicked -- the per-sub-objective signal, same as the g1_4 Runic Seals (NailStake). PRIMARY advance is the entity-objective 'all 3 non-interactable' check. The '3' in the text trips IsMultiObjectiveStep so it won't proximity-advance on the first rune. completionFlag is the backup: ExpeditionQuestHuntingGroundsSummonFarrowSeen flips true when all 3 are activated (verified live: true after the 3rd click, while ExpeditionAct1RunesFound2 stays FALSE -- that one only completes after Farrow is summoned, so it was the wrong flag). Listed BEFORE the Find Rune InsertAfter so reverse-insert order lands Find Rune ahead of this.",
+        "objective": {
+          "label": "Runes of Aldur",
+          "entityPath": "HuntingGroundsRune0",
+          "count": 3
+        }
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:6a806cd5",
+      "op": "InsertAfter",
+      "text": "Find Rune",
+      "meta": {
+        "note": "Walk to the Runes of Aldur. Path targets the 3 rune objects (entityPath 'HuntingGroundsRune0' -> Expedition2HuntingGroundsRune01/02/03, EntityType.Terrain w/ Targetable). Single-objective text ('Find Rune', no count) so it proximity-advances when you get near the runes -- the destination -- then the next step handles activating them. No completionFlag: FarrowFoundRunestoneInArea does NOT fire here (verified false on-site). InsertAfter ord2 listed AFTER the Activate entry so reverse-insert order lands this between Delwyn and Activate.",
+        "objective": {
+          "label": "Rune",
+          "entityPath": "HuntingGroundsRune0",
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:ebe39c43",
+      "op": "InsertAfter",
+      "text": "{kill|The Crowbell}",
+      "meta": {
+        "completionFlag": "G1_11CrowbellBossKilled",
+        "completionKind": "boss",
+        "note": "Second half of the split Crowbell step: kill the live Crowbell entity (kill fragment targets the hostile by name). Internal token Einhar. Co-flips: EinharCrowbellSlain (alias). pathTarget kept as the arena fallback before the boss loads. InsertAfter MUST precede the ord3 ReplaceText so the base anchor still exists when this resolves.",
+        "pathTarget": "Metadata/Terrain/Woods/Features_Cairns/DolmenDeAzutan_03.tdt"
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:ebe39c43",
+      "op": "ReplaceText",
+      "text": "Find {arena|The Crowbell}",
+      "meta": {
+        "completionFlag": "HuntingGroundsCrowbellSeen",
+        "completionKind": "quest",
+        "note": "First half of the split Crowbell step: head to the Crowbell arena. Renders 'Find The Crowbell'. The {arena|} fragment (not {kill|}) keeps WantsAreaLandmark true so the existing pathTarget arena tile still resolves (and the live boss once loaded), but it does NOT death-advance. Advances to the Kill step on HuntingGroundsCrowbellSeen (encounter; verified live false pre-fight) -- the kill-kind interaction-advance is deferred by StepWaitingOnCompletionFlag until then.",
+        "pathTarget": "Metadata/Terrain/Woods/Features_Cairns/DolmenDeAzutan_03.tdt"
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:e6fbb16a",
+      "op": "Delete",
+      "meta": {
+        "note": "Removed the 'Enter Freythorn -> take waypoint -> return' side-trip. Freythorn is now reached via the renamed final step 'Enter Freythorn' (ord7, was 'TP to Freythorn'), which reuses this CanopyRoadTransition_01.tdt tile."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:330e9265",
+      "op": "InsertAfter",
+      "text": "Return to Hunting Grounds",
+      "meta": {
+        "completeOnEnterArea": "g1_11",
+        "note": "Third of the split 'Enter Ogham Farmlands -> take waypoint -> return'. Advances on re-entering Hunting Grounds (g1_11). Listed FIRST of the ord5 InsertAfter entries so reverse-insert order lands it LAST."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:330e9265",
+      "op": "InsertAfter",
+      "text": "Enter Lost Catacombs",
+      "meta": {
+        "note": "User-added side step in the Grelwood excursion, between 'Talk to Farrow' and 'Return to Hunting Grounds'. Text only -- advance + path not wired yet (needs a live harvest: Lost Catacombs WorldArea.Id for area-change advance + an entityPath/pathTarget for the path). Falls back to proximity / area-change meanwhile. Listed BELOW 'Return to Hunting Grounds' but ABOVE 'Talk to Farrow' so reverse-insert order lands it between them (effective: ... Talk to Farrow -> Enter Lost Catacombs -> Return)."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:330e9265",
+      "op": "InsertAfter",
+      "text": "Talk to Farrow",
+      "meta": {
+        "note": "Manually inserted after Summon Farrow. Advances on its own NpcDialog open (dialog-advance), same as the ord1/ord2 Talk to Farrow steps -- no flag/meta needed. Listed BELOW 'Return to Hunting Grounds' but ABOVE 'Summon Farrow' so reverse-insert order lands it between Summon Farrow and Return (effective: Get Waypoint -> Travel to Grelwood -> Summon Farrow -> Talk to Farrow -> Return)."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:330e9265",
+      "op": "InsertAfter",
+      "text": "Summon Farrow",
+      "meta": {
+        "note": "Manually inserted after Get Waypoint. The summon is the SummonAlly portal (IngameIcon), not a Monster/Npc/Chest, so it never shows in the editor's nearby-entities list and an entityPath 'SummonFarrow' resolves nothing here. The step text 'Summon Farrow' trips IsSummonStep, so the resolver targets the SummonAlly portal directly (same as the ord2 Hunting Grounds Summon Farrow). Proximity advance. Do NOT reuse that step's ExpeditionQuestHuntingGroundsFarrowSummoned flag -- it's already true by now and would insta-advance; harvest THIS summon's own completion flag live if it needs gating. Listed ABOVE 'Travel to Grelwood' so reverse-insert order lands it AFTER it (effective: Get Waypoint -> Travel to Grelwood -> Summon Farrow -> Return)."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:330e9265",
+      "op": "InsertAfter",
+      "text": "Travel to Grelwood",
+      "meta": {
+        "completeOnEnterArea": "g1_4",
+        "note": "Manually inserted after Get Waypoint. Backtrack to The Grelwood (g1_4); advances on (re)entering g1_4 -- OnAreaChanged is forward-only so a backtrack needs completeOnEnterArea. Listed BELOW 'Summon Farrow' so reverse-insert order lands it BEFORE it."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:330e9265",
+      "op": "InsertAfter",
+      "text": "Get Waypoint",
+      "meta": {
+        "note": "Second of the split: take the Ogham Farmlands waypoint. Advances via the global AchievementCheckWaypoints rule -- IsTakeWaypointStep was broadened to also match 'get waypoint'."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:330e9265",
+      "op": "ReplaceText",
+      "text": "Enter Ogham Farmlands",
+      "meta": {
+        "completeOnEnterArea": "g1_13_1",
+        "note": "First of the split 'Enter Ogham Farmlands -> take waypoint -> return'. Paths to the Ogham Farmlands entrance (objective room entrance_villageroad) / live AreaTransition. Advances on entering Ogham Farmlands (g1_13_1). ReplaceText runs after the two InsertAfter so the base anchor survives.",
+        "objective": {
+          "label": "Ogham Farmlands",
+          "rooms": [
+            "entrance_villageroad"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:8e183f9f",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_11HuntingGroundsSkillGemPickedUp",
+        "completionKind": "reward",
+        "note": "OPTIONAL small ritual event reward ('optional: Small ritual event ... {reward_quest|Support Gem Lv1}'). Co-flips: HuntingGroundsSkillGemPickedUp."
+      }
+    },
+    {
+      "area": "g1_11",
+      "ordinal": 7,
+      "fingerprint": "fnv1a:a0748fe9",
+      "op": "ReplaceText",
+      "text": "Enter Freythorn",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Woods/AreaTransitions/CanopyRoadTransition_01.tdt",
+        "note": "Was 'TP to Freythorn'; changed to 'Enter Freythorn'. Paths via the live AreaTransition to Freythorn, or this CanopyRoadTransition_01.tdt tile before it loads (reused from the removed ord4 side-trip). Advances on entering Freythorn (g1_12 header, OnAreaChanged)."
+      }
+    },
+    {
+      "area": "g1_12",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:b1e1fa22",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "CanopyThirdRitualComplete",
+        "completionKind": "quest",
+        "note": "Activate the 3 small Ritual Altars (Metadata/Terrain/Gallows/Act1/1_12/Objects/CanopyRitualAltar). 3 sub-objectives via the room target 'ritual' (AreaGraphs); each drops its path when its progress flag flips. progressFlags Canopy{First,Second,Third}RitualComplete harvested live (all false before ritual 1). Step advances on CanopyThirdRitualComplete (all 3 done). VERIFY ORDER live: confirm the flags flip in activation order (1st ritual -> First, etc.) like the g1_5 obelisks; if they are altar-position-fixed instead, the completion flag may need to be an all-complete flag.",
+        "objective": {
+          "label": "Ritual",
+          "rooms": [
+            "ritual"
+          ],
+          "count": 3,
+          "progressFlags": [
+            "CanopyFirstRitualComplete",
+            "CanopySecondRitualComplete",
+            "CanopyThirdRitualComplete"
+          ]
+        }
+      }
+    },
+    {
+      "area": "g1_12",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:5a66d43c",
+      "op": "InsertAfter",
+      "text": "{kill|The King in the Mists}",
+      "meta": {
+        "completionFlag": "CanopyQuestBossDefeated",
+        "completionKind": "boss",
+        "note": "Second half of the split Big Ritual Altar step: kill the King in the Mists (Finn, per SummonFinnBoss / FinnCanopyKingInTheMistsDefeatedSeen). NO G1_12...BossKilled flag -- quest-tokened Canopy form. pathTarget = CanopyArena (Radar's King target). InsertAfter MUST precede the ord2 ReplaceText so the base anchor still exists.",
+        "pathTarget": "Metadata/Terrain/Woods/Canopy/Features/CanopyArena.tdt"
+      }
+    },
+    {
+      "area": "g1_12",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:5a66d43c",
+      "op": "ReplaceText",
+      "text": "Complete Big Ritual Altar {arena|}",
+      "meta": {
+        "completionFlag": "CanopyQuestBossAltarSeen",
+        "completionKind": "quest",
+        "note": "First half of the split: complete the Big Ritual Altar (entity Metadata/.../CanopyBossRitualAltar, a Life/StateMachine fight objective -- isTargetable already false, so no entity-objective). Renders 'Complete Big Ritual Altar'; the empty {arena|} fragment trips WantsAreaLandmark so the pathTarget arena tile resolves on this non-kill step (and is filtered out of live-entity targeting since its name is blank). Advances on CanopyQuestBossAltarSeen -- VERIFY live (snapshot flags_before_bigaltar.txt saved before the fight): it was False with the big altar revealed (CanopyBossRitualSeen already true); if it only flips on the kill (boss co-flip) it's too late and should be swapped for whatever flips when the altar is activated / the King spawns.",
+        "pathTarget": "Metadata/Terrain/Woods/Canopy/Features/CanopyArena.tdt"
+      }
+    },
+    {
+      "area": "g1_13_1",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:e16eb676",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "UnaLuteQuestHaveLute",
+        "completionKind": "reward",
+        "note": "Ogham Farmlands. Picked up here ('Una's Lute Box ... -> Una's Lute {reward_quest|+2 Skill Points}'); delivered/used back in town (UnaLuteQuestDeliveredLute / UnaSkillBookUsed). No zone boss."
+      }
+    },
+    {
+      "area": "g1_13_1",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:07de3b89",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Woods/Village/RoadFields/Feature/RoadVillage_Areatransition.tdt"
+      }
+    },
+    {
+      "area": "g1_13_2",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:25d40ff3",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_13_2ExecutionerBossKilled",
+        "completionKind": "boss",
+        "note": "Ogham Village boss. Co-flips: ExecutionerSlain (alias), ExecutionerSeen (encounter). Frees Leitis (ExecutionerFemaleNPCFreed).",
+        "pathTarget": "Metadata/Terrain/Woods/Village/Huts/VillageArena_02.tdt"
+      }
+    },
+    {
+      "area": "g1_14",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:fe1834e9",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "GallowsHangingBodyDropped",
+        "completionKind": "reward",
+        "note": "OPTIONAL Manor Ramparts gallows secret (cut the rope on the hanging man near the checkpoint). Co-flips: ReadManorGlyph2 (lore glyph)."
+      }
+    },
+    {
+      "area": "g1_15",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:1a6a77c1",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_15ManorGargoyleBossKilled",
+        "completionKind": "boss",
+        "note": "Ogham Manor 1st-floor boss = Candlemass (internal token ManorGargoyle). Co-flips: ManorGargoyleHeld then ManorGargoyleUsed (gargoyle glyph -> +20 Max Life reward), ReadIronManorGargoyleGlyph.",
+        "pathTarget": "Metadata/Terrain/Woods/Manor/Features/ArenaTop_01.tdt"
+      }
+    },
+    {
+      "area": "g1_15",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:9e65f8cc",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_15BaronBossKilled",
+        "completionKind": "boss",
+        "note": "ACT 1 BOSS. Internal token Baron = Geonor (BaronBossCorruptedWolfForm = 'Geonor, the Putrid Wolf'), downstairs. Co-flips: IronCountKilled (phase-1 human 'Iron Count'/alias), IronCountSeen (encounter), DefeatedBoss (transient)."
+      }
+    },
+    {
+      "area": "g1_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:75e38ecc",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_2UrchinHagBossKilled",
+        "completionKind": "boss",
+        "note": "Internal token UrchinHag = Beira of the Rotten Pack. Co-flips: CroneDropHeld (drop), DefeatedBoss (transient).",
+        "objective": {
+          "label": "Beira of the Rotten (10% Cold Res)",
+          "rooms": [
+            "boss_hagwitch"
+          ],
+          "count": 1
+        },
+        "pathTarget": "*HagWitchArena*"
+      }
+    },
+    {
+      "area": "g1_2",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:434862c6",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_3MudBurrowerHeadBossKilled",
+        "completionKind": "boss",
+        "note": "OPTIONAL Mud Burrow boss. Memory area g1_3 (Mud Burrow sub-zone), but the route folds it into the g1_2 block as PLAIN TEXT 'Mud Burrow -> The Devourer' -- so area=g1_2 for the join and match is the bare name. Named alias: MudBurrowerQuestDefeatedMudBurrower. Co-flips: MudBurrowerQuestReceived, MudBurrowerQuestSeenMudBurrower.",
+        "objective": {
+          "label": "Skill Gem Level 1",
+          "rooms": [
+            "campsite"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g1_2",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:d5e5ca97",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "ClearfellCampsiteGemAcquired",
+        "completionKind": "event",
+        "note": "TENTATIVE: likely the Abandoned Stash / Mysterious Campsite Skill Gem Lv1 in Clearfell (act-1 route line ~19). kind=event (excluded from advance) until a run confirms which gem; flip to 'reward' once verified."
+      }
+    },
+    {
+      "area": "g1_2",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:6d7f3bb3",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Woods/AreaTransitions/Clearfell_OldForest_Transition_01.tdt"
+      }
+    },
+    {
+      "area": "g1_4",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:b2fa2bed",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Woods/AreaTransitions/OldForestToGrimTangle_02_metatile.tdt"
+      }
+    },
+    {
+      "area": "g1_4",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:4237780f",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Woods/AreaTransitions/redvale_transition_02_oldforest.tdt"
+      }
+    },
+    {
+      "area": "g1_4",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:491d898b",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_4PlantBossKilled",
+        "completionKind": "boss",
+        "note": "OPTIONAL Grelwood boss. Internal token Plant / alias BrambleBossKilled = Gerung, the Brambleghast (per route). Co-flips: BrambleBossSeen (encounter). (Earlier curation mislabelled this 'Freythorn boss' -- Freythorn is g1_12.)",
+        "pathTarget": "Metadata/Terrain/Woods/OldForestWoods/Feature/PlantBoss_01.tdt"
+      }
+    },
+    {
+      "area": "g1_4",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:7544a21d",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "WitchBossKilled",
+        "completionKind": "boss",
+        "note": "OPTIONAL Grelwood side encounter. Route models Areagne as plain text ('Hut with Cauldron -> Areagne'), no {kill|} fragment -- match the bare name. Co-flips: WitchHutFound, WitchRareMonsterUncutSupportGemAcquired (reward below)."
+      }
+    },
+    {
+      "area": "g1_4",
+      "ordinal": 8,
+      "fingerprint": "fnv1a:74d16972",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Runic Seal",
+          "count": 3,
+          "entityPath": "NailStake"
+        }
+      }
+    },
+    {
+      "area": "g1_5",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:fd1d56a2",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "TreeOfSoulsRedValeObeliskSeenThree",
+        "completionKind": "quest",
+        "note": "3rd Rust obelisk clicked -> completes 'Find 3 Obelisks of Rust, loot Runed Girdle each' and spawns the Rust King. By this point obelisks 1 and 2 dropped girdles 1 and 2 (RunesPickedUp1/2); the 3RD girdle drops from the Rust King in the NEXT step, so this step must NOT wait for AllRunesPickedUp. Obelisk-click flags are ObeliskSeen/SeenTwo/SeenThree.",
+        "objective": {
+          "label": "Rust",
+          "rooms": [
+            "Encounter"
+          ],
+          "count": 3,
+          "progressFlags": [
+            "TreeOfSoulsRedValeObeliskSeen",
+            "TreeOfSoulsRedValeObeliskSeenTwo",
+            "TreeOfSoulsRedValeObeliskSeenThree"
+          ]
+        }
+      }
+    },
+    {
+      "area": "g1_5",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:c82dc289",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "TreeOfSoulsRedValeAllRunesPickedUp",
+        "completionKind": "boss",
+        "note": "Red Vale boss, spawns on the last Obelisk of Rust. kind=boss promotes 'The Rust King' to a {kill|} fragment so the king is the path/indicator target (without it the reward renders 'take Skill Gem' and the nearest-chest fallback grabs Refined Arms). Advance flag is AllRunesPickedUp (kill + 3rd Runed Girdle looted), NOT the kill alone -- the death-advance is deferred by StepWaitingOnCompletionFlag until this flag is true. King-kill flag G1_5TheRustKingBossKilled is a co-flip."
+      }
+    },
+    {
+      "area": "g1_6",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:83c81830",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_6FungusBehemothKilled",
+        "completionKind": "boss",
+        "note": "OPTIONAL Grim Tangle boss. Internal token FungusBehemoth = Ervig, the Rotted Druid (per route). Alias: GrimTangleBossKilled. Co-flips: GrimTangleBossSeen (encounter).",
+        "pathTarget": "Metadata/Terrain/Woods/GrimTangle/feature/BossArena_01.tdt"
+      }
+    },
+    {
+      "area": "g1_6",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:83c81830",
+      "op": "InsertAfter",
+      "text": "Summon Farrow",
+      "meta": {
+        "completionFlag": "ExpeditionQuestRedValeFarrowSummoned",
+        "completionKind": "quest",
+        "note": "Summon Farrow in Grim Tangle. Game tokens this objective 'RedVale' internally (cross-named, like FungusBehemoth=Ervig). Harvested live in g1_6: flips with co-flips ExpeditionQuestRedValeComplete, ExpeditionAct1RunesFound1, FarrowFoundRunestoneInArea."
+      }
+    },
+    {
+      "area": "g1_6",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:ed05bbab",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Woods/GrimTangle/areatransitions/GrimtangleTransitionUp_02.tdt"
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:cc446b92",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "MetLachlann",
+        "completionKind": "quest",
+        "note": "Talk to Lachlann the Lost. He loads as EntityType.Monster (Metadata/Monsters/NPC/BitterGuy, internal token BitterGuy = Lachlann), NOT Npc, so the Dialog-kind talk resolver can't latch him -> no path/indicator. entityPath 'BitterGuy' targets the live entity for path+indicator; completionFlag MetLachlann gates the proximity-advance (deferToFlag) and drives the real advance. Verify the talk flag live -- alternates LachlannIntroduced / BitterGuyQuestReceived.",
+        "objective": {
+          "label": "Lachlann the Lost",
+          "count": 1,
+          "entityPath": "BitterGuy"
+        }
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:d1f52819",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Random ring",
+          "rooms": [
+            "landmark"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:98a87624",
+      "op": "InsertAfter",
+      "text": "{kill|Draven}",
+      "meta": {
+        "completionFlag": "G1_8HusbandMonsterKilled",
+        "completionKind": "boss",
+        "pathTarget": "Metadata/Terrain/Woods/GraveyardDungeons/Feature/MausoleumBoss_ArenaFloor.tdt",
+        "note": "Second half of the split 'Mausoleum -> Draven' step. Sub-boss = Draven (Husband token), drops a Graveyard Key piece (memory area g1_8). Co-flips: BitterGuyHusbandDefeated (alias), GraveyardKey2Held. pathTarget = Radar's G1_8 'Draven' arena tile (effective area is g1_7, so the area-map would give the wrong-zone Cemetery arena; meta pathTarget overrides and resolves once you're in g1_8). Live Draven entity takes over once loaded. InsertAfter MUST precede the ord3 ReplaceText so the base anchor still exists when this resolves."
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:98a87624",
+      "op": "ReplaceText",
+      "text": "Mausoleum of the Praetor",
+      "meta": {
+        "note": "First half of the split 'Mausoleum -> Draven' step: head into the Mausoleum. Advances on VisitedG1_8 (flips when you enter the Mausoleum sub-zone g1_8 -- verified live: true while inside, while BitterGuyHusbandSeen stays false until you reach Draven). Path via the entrance_mausoleum room.",
+        "completionFlag": "VisitedG1_8",
+        "completionKind": "quest",
+        "objective": {
+          "label": "Mausoleum of the Praetor",
+          "rooms": [
+            "entrance_mausoleum"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:6776fc5a",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "MausoleumSupportGemPickedUp",
+        "completionKind": "reward",
+        "completeOnEnterArea": "g1_7",
+        "note": "OPTIONAL Forgotten Riches hidden cache (memory area g1_8; route join in g1_7 block, '{reward_quest|Support Gem 1}'). Co-flips: MausoleumSecretRoomEntered. Also clears on re-entering the Cemetery (g1_7) -- the cache is in the Mausoleum, so returning means you're done with it whether or not you grabbed the gem (completeOnEnterArea)."
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:ad6fe272",
+      "op": "InsertAfter",
+      "text": "{kill|Asinia}",
+      "meta": {
+        "completionFlag": "G1_9WifeMonsterKilled",
+        "completionKind": "boss",
+        "pathTarget": "Metadata/Terrain/Woods/GraveyardDungeons/Feature/TombBoss_ArenaFloor.tdt",
+        "note": "Second half of the split 'Tomb -> Asinia' step. Sub-boss = Asinia (Wife token), drops a Graveyard Key piece (memory area g1_9). Co-flips: BitterGuyWifeDefeated (alias), GraveyardKey1Held. pathTarget = Radar's G1_9 'Asinia' arena tile (mirrors Draven; resolves once you're in g1_9). Base line also had a 'Haunted Treasure secret {reward_quest|Support Gem Lv1}' tail (TombGemAcquired) -- dropped by the split; re-add as a 3rd optional step if wanted. InsertAfter MUST precede the ord5 ReplaceText."
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:ad6fe272",
+      "op": "ReplaceText",
+      "text": "Tomb of the Consort",
+      "meta": {
+        "note": "First half of the split 'Tomb -> Asinia' step, no longer optional (base was 'optional:'). Advances on VisitedG1_9 (flips when you enter the Tomb sub-zone g1_9 -- mirrors VisitedG1_8 for the Mausoleum). Path via the entrance_tomb room.",
+        "completionFlag": "VisitedG1_9",
+        "completionKind": "quest",
+        "objective": {
+          "label": "Tomb of the Consort",
+          "rooms": [
+            "entrance_tomb"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:7ee5aee5",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "GraveyardKeysUsed",
+        "completionKind": "quest",
+        "note": "Both key pieces (from Draven + Asinia) used. Co-flips: LachlannBothKeysHeldSeen."
+      }
+    },
+    {
+      "area": "g1_7",
+      "ordinal": 7,
+      "fingerprint": "fnv1a:f8bcdfba",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G1_7_2BitterGuyBossKilled",
+        "completionKind": "boss",
+        "note": "Cemetery act boss. Internal token BitterGuy = Lachlann the Lost. Gated behind the Memorial Gate (both Graveyard Keys). Co-flips: BitterGuyDestroyed (alias), BitterGuyTransformationConversationHad (pre-fight).",
+        "pathTarget": "Metadata/Terrain/Woods/Graveyard/Feature/GraveyardArena.tdt"
+      }
+    },
+    {
+      "area": "g1_town",
+      "ordinal": 7,
+      "fingerprint": "fnv1a:958fae3f",
+      "op": "InsertAfter",
+      "text": "Go to Hunting Grounds",
+      "meta": {
+        "note": "Split from 'Talk to Finn, Una, The Hooded One' into individual steps. Final leg: travel to Hunting Grounds (g1_11). Advances on entering g1_11 (OnAreaChanged jumps to its first step). Reverse-ordered InsertAfter: this is inserted FIRST so it ends up LAST (each InsertAfter on the same anchor inserts right after the base, so earlier entries get pushed further down)."
+      }
+    },
+    {
+      "area": "g1_town",
+      "ordinal": 7,
+      "fingerprint": "fnv1a:958fae3f",
+      "op": "InsertAfter",
+      "text": "Talk to The Hooded One"
+    },
+    {
+      "area": "g1_town",
+      "ordinal": 7,
+      "fingerprint": "fnv1a:958fae3f",
+      "op": "InsertAfter",
+      "text": "Talk to Una"
+    },
+    {
+      "area": "g1_town",
+      "ordinal": 7,
+      "fingerprint": "fnv1a:958fae3f",
+      "op": "ReplaceText",
+      "text": "Talk to Finn",
+      "meta": {
+        "note": "Split of 'Talk to Finn, Una, The Hooded One' into individual steps -> Finn, Una, The Hooded One, Go to Hunting Grounds. Each talk step advances on its own NpcDialog open (dialog-advance), so they gate sequentially. ReplaceText is ordered LAST in the array so the base ord7 anchor still exists when the three InsertAfter entries resolve; those are listed in reverse (GoTo, Hooded, Una) because each InsertAfter inserts right after the base and pushes the prior ones down."
+      }
+    },
+    {
+      "area": "g2_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:4cadf002",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/UnwalkableDune/DunePlatform/Dune_Platform_Feature_01.tdt"
+      }
+    },
+    {
+      "area": "g2_10_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:8efdbbc1",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Foundry/Features/Foundry_Bossroom_01.tdt"
+      }
+    },
+    {
+      "area": "g2_12_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:a5c4391e",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "*locustmaster_cart*"
+      }
+    },
+    {
+      "area": "g2_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:d20a1ba5",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Maraketh/TraitorsPassage/TraitorsPassage_Arena_01.tdt"
+      }
+    },
+    {
+      "area": "g2_3",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:fcad2b74",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Gates/Features/boss_arena.tdt"
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:e054d403",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/BuriedCity/Features/QueenKabalaRoom_01_meta01.tdt"
+      }
+    },
+    {
+      "area": "g2_4_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:05deeaca",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Golden Tomb (Spirit Gem Level 7)",
+          "rooms": [
+            "landmark"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g2_4_3",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:351148fe",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "T2 Support Gem",
+          "rooms": [
+            "terracotawarriors"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g2_4_3",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:aaca7469",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Desert/Maraketh/Features/Thickwall_BossTransition_01.tdt"
+      }
+    },
+    {
+      "area": "g2_5_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:fd1f2a0a",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Desert/Badlands/Features/AreaTransition_BadlandsToPits_01.tdt"
+      }
+    },
+    {
+      "area": "g2_5_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:e36ac878",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Badlands/Features/MastodonArena_01.tdt"
+      }
+    },
+    {
+      "area": "g2_7",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:e179e694",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/CaveTitans/Features/Titan_Arena_01.tdt"
+      }
+    },
+    {
+      "area": "g2_8",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:7e41ed34",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Fallen Dekhara (+2 Passive)",
+          "rooms": [
+            "overlay_superman"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g2_9_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:d4c4d6d5",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Pillars/Tops/PillarTopWide_Shrine_01.tdt",
+        "note": "Sisters of Garukhan shrine (+10% Lightning Res). pathTarget = the exact tile Radar uses ('Sisters of Garukhan (10% Lightning Res)' in Radar's G2_9_2 targets) so the path draws from zone entry at unlimited range. Advance is proximity/interact."
+      }
+    },
+    {
+      "area": "g2_9_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:e3ea4038",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Pillars/Tops/PillarArena.tdt"
+      }
+    },
+    {
+      "area": "g3_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:6b262f6c",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Jungle/SandsweptMarsh/bossman.tdt"
+      }
+    },
+    {
+      "area": "g3_1",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:5dedd293",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Magic Ring",
+          "rooms": [
+            "sand/landmark"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g3_11",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:09e1fbce",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Jungle/Aggorat/Features/AggoratArena_01.tdt"
+      }
+    },
+    {
+      "area": "g3_14",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:0e94e6d8",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCity/jungle_pyramid_entrance_atziri_01_metatile.tdt"
+      }
+    },
+    {
+      "area": "g3_17",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:080a1e4c",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Dungeon/DoryanisSanctum/Features/Doryani_Arena_01.tdt"
+      }
+    },
+    {
+      "area": "g3_2_1",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:505e17aa",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleDepths_to_ChimeralWetlands.tdt"
+      }
+    },
+    {
+      "area": "g3_2_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:a4b81d6d",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Jungle/JungleExterior/CvWW_01.tdt"
+      }
+    },
+    {
+      "area": "g3_3",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:1cea369a",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Troubled Camp(ARMOUR VENDOR) + Rare Gloves",
+          "rooms": [
+            "landmark_01"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g3_3",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:d779b336",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleDepths_to_SnakePit.tdt"
+      }
+    },
+    {
+      "area": "g3_4",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:bb78caec",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Rare Sarcophagus + T3 Support Gem",
+          "rooms": [
+            "story_room"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g3_4",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:7dde1064",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Venom Vial (Pick Bonus)",
+          "rooms": [
+            "boss"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g3_5",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:bef4d89b",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/Observatory_Entrance_01.tdt"
+      }
+    },
+    {
+      "area": "g3_5",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:d5046841",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/ChimeralJungle_to_ChaosTemple.tdt"
+      }
+    },
+    {
+      "area": "g3_6_1",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:acfeb6db",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Dungeon/NextFeatures/dungeon_door_thin_boss.tdt"
+      }
+    },
+    {
+      "area": "g3_6_2",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:c70a34d1",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Dungeon/Machinarium/BossWall01.tdt"
+      }
+    },
+    {
+      "area": "g3_7",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:112dd403",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Fire Rarity buff (good xp to reset)",
+          "rooms": [
+            "burningman"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g3_7",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:973307b9",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Jungle/JungleExterior/Bog/Features/BurningWitchArena.tdt"
+      }
+    },
+    {
+      "area": "g3_8",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:ec03f7c2",
+      "op": "Annotate",
+      "meta": {
+        "objective": {
+          "label": "Rare Chest + Magic Monsters",
+          "rooms": [
+            "two_door"
+          ],
+          "count": 1
+        }
+      }
+    },
+    {
+      "area": "g3_9",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:6e887742",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Dungeon/TreasureVault/BossChannel_02.tdt"
+      }
+    },
+    {
+      "area": "g4_1_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:35810379",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/CoralDungeon/Features/GoblinCaveArena/GoblinCaveArena_01.tdt"
+      }
+    },
+    {
+      "area": "g4_10",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:03a4e2db",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/TwilightIsland/PrecursorRuins/Arena/BossArena_Forge_PCR_01.tdt"
+      }
+    },
+    {
+      "area": "g4_2_1",
+      "ordinal": 5,
+      "fingerprint": "fnv1a:8c3557b5",
+      "op": "Annotate",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Islands/Tiles/Island/Features/UnwalkableCliff_Transition_Up_01.tdt"
+      }
+    },
+    {
+      "area": "g4_2_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:4089a089",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/Island/JourneysEnd/BossArena_02.tdt"
+      }
+    },
+    {
+      "area": "g4_3_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:7582ac73",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/CoralDungeon/Features/SirenDonut_01.tdt"
+      }
+    },
+    {
+      "area": "g4_5_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:2f340cd9",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/Prison/Features/dungeon_prison_chapel_01.tdt"
+      }
+    },
+    {
+      "area": "g4_5_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:f636545b",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/Prison/Features/LowerPrison/Maximumprison.tdt"
+      }
+    },
+    {
+      "area": "g4_7",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:68008bfd",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/Island/ShrikeIsland/ShrikeIslandArena.tdt"
+      }
+    },
+    {
+      "area": "g4_8a",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:641f3fea",
+      "op": "Annotate",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Islands/Tiles/TwilightIsland/Feature/TwilightArena.tdt"
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:8c43dc67",
+      "op": "InsertAfter",
+      "text": "Talk to Sekhema Asala (again)",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Hooded One + Sekhema Asala (x2)\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:8c43dc67",
+      "op": "InsertAfter",
+      "text": "Talk to Sekhema Asala",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Hooded One + Sekhema Asala (x2)\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:8c43dc67",
+      "op": "ReplaceText",
+      "text": "Talk to The Hooded One",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Hooded One + Sekhema Asala (x2)\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:330e59a7",
+      "op": "ReplaceText",
+      "text": "Use Desert Map -> travel to Halani Gates",
+      "meta": {
+        "completeOnEnterArea": "g2_3",
+        "note": "Halani auto-advance fix: advances on entering the Halani area. Live id is g2_3 (route formerly mislabelled g2_3a); first Desert-Map visit may be a separate instance but same zone name."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:33f47db5",
+      "op": "ReplaceText",
+      "text": "Talk to Sekhema Asala (in Halani Gates)",
+      "meta": {
+        "note": "Split compound step (was: \"Enter Halani Gates -> talk to Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:30b39ece",
+      "op": "ReplaceText",
+      "text": "Talk to Sekhema Asala (back at Caravan)",
+      "meta": {
+        "note": "Split compound step (was: \"Back to Caravan -> talk to Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:fd7fa209",
+      "op": "InsertAfter",
+      "text": "Talk to Sekhema Asala",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Risu + Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:fd7fa209",
+      "op": "ReplaceText",
+      "text": "Talk to Risu",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Risu + Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 8,
+      "fingerprint": "fnv1a:e649d507",
+      "op": "InsertAfter",
+      "text": "Talk to Sekhema Asala",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Shambrin, Zarka, Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 8,
+      "fingerprint": "fnv1a:e649d507",
+      "op": "InsertAfter",
+      "text": "Talk to Zarka",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Shambrin, Zarka, Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 8,
+      "fingerprint": "fnv1a:e649d507",
+      "op": "ReplaceText",
+      "text": "Talk to Shambrin",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Shambrin, Zarka, Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 15,
+      "fingerprint": "fnv1a:744691c5",
+      "op": "InsertAfter",
+      "text": "Talk to Sekhema Asala",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Zarka + Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 15,
+      "fingerprint": "fnv1a:744691c5",
+      "op": "ReplaceText",
+      "text": "Talk to Zarka",
+      "meta": {
+        "note": "Split compound step (was: \"Talk to Zarka + Sekhema Asala\")."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 20,
+      "fingerprint": "fnv1a:05b461b7",
+      "op": "ReplaceText",
+      "text": "Talk to The Hooded One (exit top-left of caravan)",
+      "meta": {
+        "note": "Split compound step (was: \"Exit caravan (top left) -> talk Hooded One -> wait animation\")."
+      }
+    },
+    {
+      "area": "g2_9_2",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:d6f34b1b",
+      "op": "InsertAfter",
+      "text": "Travel to Trial of the Sekhemas",
+      "meta": {
+        "optional": true,
+        "note": "Take waypoint to the Trial of the Sekhemas (g2_13). OPTIONAL -- the Trial (1st Ascendancy) is skippable leveling content, run later. Plain navigation step -- advances on entering g2_13 (the next base header, OnAreaChanged), same as the other 'Travel to X' steps. Listed FIRST among the g2_9_2 ord3 InsertAfter entries so reverse-insert order lands it LAST, after the two Sekhema talks and before the g2_13 block."
+      }
+    },
+    {
+      "area": "g2_13",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:125ae6a4",
+      "op": "Annotate",
+      "text": "On entry, manually pick the Lvl 28 Djinn Barya (Deshar vultures) - not the default Lvl 22 Balbala one",
+      "meta": {
+        "optional": true,
+        "completionFlag": "SanctumAscendancyTrialBegun",
+        "completionKind": "quest",
+        "note": "OPTIONAL: the whole Trial of the Sekhemas (1st Ascendancy) is skippable leveling content, run later. Auto-advances on SanctumAscendancyTrialBegun (harvested live in g2_13, flips when the trial run actually begins -- the LAST flag in the entry sequence; A2AscendancyQuestBegun/SanctumRelicAltarUsed fire earlier on pickup/relic-device, not on trial start)."
+      }
+    },
+    {
+      "area": "g2_13",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:c4ca0070",
+      "op": "Delete",
+      "text": "Set relic affinity to keep your inventory clean",
+      "meta": {
+        "note": "Removed: inventory-management tip, not a route step."
+      }
+    },
+    {
+      "area": "g2_13",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:2d4a4424",
+      "op": "Delete",
+      "text": "Room priority: Ritual > Chalice > Hourglass > Gauntlet",
+      "meta": {
+        "note": "Removed: strategy tip, not a route step."
+      }
+    },
+    {
+      "area": "g2_13",
+      "ordinal": 4,
+      "fingerprint": "fnv1a:6b4e2275",
+      "op": "Annotate",
+      "text": "Complete the trial -> take 1st Ascendancy",
+      "meta": {
+        "optional": true,
+        "note": "OPTIONAL: the Trial of the Sekhemas (1st Ascendancy) is skippable during leveling; run later. Next mandatory step is Travel to The Dreadnought (g2_12_1)."
+      }
+    },
+    {
+      "area": "g2_9_2",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:d6f34b1b",
+      "op": "InsertAfter",
+      "text": "Talk to Sekhema Asala (again)",
+      "meta": {
+        "note": "Split compound step (was: \"TP back to town -> speak with Sekhema Asala (x2)\")."
+      }
+    },
+    {
+      "area": "g2_9_2",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:d6f34b1b",
+      "op": "InsertAfter",
+      "text": "Talk to Sekhema Asala",
+      "meta": {
+        "note": "Split compound step (was: \"TP back to town -> speak with Sekhema Asala (x2)\")."
+      }
+    },
+    {
+      "area": "g2_9_2",
+      "ordinal": 3,
+      "fingerprint": "fnv1a:d6f34b1b",
+      "op": "ReplaceText",
+      "text": "TP back to town",
+      "meta": {
+        "note": "Split compound step (was: \"TP back to town -> speak with Sekhema Asala (x2)\")."
+      }
+    },
+    {
+      "area": "g2_10_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:79a13af6",
+      "op": "ReplaceText",
+      "text": "Enter Mawdun Mine (follow checkpoints)",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Desert/Quarry/Features/MiningShaftCrane.tdt",
+        "note": "Far 'follow checkpoints' exit: the live AreaTransition sits out of range + unnamed (IsValid=false), so the name-match resolver can't find it. Path via Radar tile instead (from Radar targets.json G2_10_1 -> Mawdun Mine = MiningShaftCrane.tdt)."
+      }
+    },
+    {
+      "area": "g2_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:d20a1ba5",
+      "op": "ReplaceText",
+      "text": "optional: {kill|Balbala, the Traitor} {reward_quest|Djinn Barya} {reward_quest|Uncut Skill Gem Lv6}",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Maraketh/TraitorsPassage/TraitorsPassage_Arena_01.tdt",
+        "note": "Path to the Prison of the Disgraced arena (Balbala / Djinn Barya). Optional far boss behind the Ancient Seal door -- the live entity isn't loaded, so use the authored arena tile (from Radar targets.json). Honored despite optional via explicit pathTarget."
+      }
+    },
+    {
+      "area": "g2_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:6e977071",
+      "op": "ReplaceText",
+      "text": "Interact with Ancient Seal door + Runic Seals",
+      "meta": {
+        "objective": {
+          "label": "Ancient Seal + Runic Seals",
+          "entityPath": "Act2/2_2/Objects/Boss",
+          "count": 4
+        },
+        "note": "4 interactables: BossDoor (Ancient Seal door) + BossChainAnchor_1/2/3 (Runic Seals), all InteractionAction+Targetable, shared path fragment Act2/2_2/Objects/Boss. Entity-objective: indicator+path hop to nearest still-interactable (Targetable.isTargetable), advance when all 4 are used. Flag-free (same as g1_4 Runic Seals)."
+      }
+    },
+    {
+      "area": "g2_5_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:836c6cf2",
+      "op": "InsertAfter",
+      "text": "Kill hyenas until Sun Clan Relic drops",
+      "meta": {
+        "completionFlag": "MedallionHyenaClanHeld",
+        "completionKind": "quest",
+        "note": "Advances when the Sun Clan Relic (game: Hyena Clan Medallion) enters inventory -> flag MedallionHyenaClanHeld (harvested live, area g2_5_2). Co-flips: OneMedallionHeld."
+      }
+    },
+    {
+      "area": "g2_5_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:836c6cf2",
+      "op": "InsertAfter",
+      "text": "Summon Farrow",
+      "meta": {
+        "objective": {
+          "label": "Summon Farrow",
+          "entityPath": "SummonFarrow",
+          "count": 1
+        },
+        "note": "SummonFarrow object (2_5_2/Objects/SummonFarrow, Targetable). NOT the SummonAlly portal, so IsSummonStep won't resolve it -- use entityPath. Advances on proximity (harvest the Expedition summon flag later if it should wait for the actual summon)."
+      }
+    },
+    {
+      "area": "g2_5_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:836c6cf2",
+      "op": "ReplaceText",
+      "text": "Find Rune",
+      "meta": {
+        "objective": {
+          "label": "Titan Rune",
+          "entityPath": "Expedition2Encounter",
+          "count": 1
+        },
+        "pathTarget": "Rune",
+        "note": "Expedition rune. PATH via Radar tile pattern 'Rune' -- the rune marker tile's design name (TgtDetailStruct.name) is 'Rune' for EVERY rune in the game, so ClusterTarget('Rune',1) resolves it at unlimited range (draws from zone entry). entityPath 'Expedition2Encounter' (LIVE Metadata/MiscellaneousObjects/Expedition2/Expedition2Encounter, MinimapIcon + Targetable, area-independent) is the precise upgrade + advance once loaded -- Resolve() does entity > tile. Advances on proximity. Co-located with SummonFarrow. (If 'Rune' draws nothing live, fall back to '*Rune*'.)"
+      }
+    },
+    {
+      "area": "g2_5_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:e36ac878",
+      "op": "ReplaceText",
+      "text": "{kill|Iktab & Ekbab} -> loot Mastodon Tusks",
+      "meta": {
+        "completionFlag": "G2_5_2MastodonBossKilled",
+        "completionKind": "boss",
+        "note": "Mastodon act boss (Iktab & Ekbab is a DUO -- the {kill|} name-match fails, so it must advance off the flag). G2_5_2MastodonBossKilled (canonical, harvested 20:12:16 area g2_5_2). Co-flips: MastodonTusksBossKilled (alias), MastodonBossesKilled, MastodonTusksHeld (loot, ~2s later). NOT MastodonTusksRewardTaken -- that fires in g2_town when handing tusks to Zarka."
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:45b647d1",
+      "op": "InsertAfter",
+      "text": "Kill snakes until Kabala Clan Relic drops",
+      "meta": {
+        "note": "Split compound step (was: \"Kill snakes until Kabala Clan Relic drops\")."
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:45b647d1",
+      "op": "InsertAfter",
+      "text": "Summon Farrow",
+      "meta": {
+        "objective": {
+          "label": "Summon Farrow",
+          "entityPath": "SummonFarrow",
+          "count": 1
+        },
+        "note": "SummonFarrow object spawns near the rune after interaction (not loaded at zone entry). entityPath catches it; proximity advance."
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:45b647d1",
+      "op": "ReplaceText",
+      "text": "Find Rune",
+      "meta": {
+        "objective": {
+          "label": "Titan Rune",
+          "entityPath": "Expedition2Encounter",
+          "count": 1
+        },
+        "pathTarget": "Rune",
+        "note": "Keth Expedition rune. PATH via Radar tile pattern 'Rune' (the rune marker tile's design name is 'Rune' for every rune -- ClusterTarget('Rune',1) resolves at unlimited range, draws from zone entry). entityPath 'Expedition2Encounter' (LIVE, MinimapIcon + Targetable, area-independent) is the precise upgrade + advance once loaded; Resolve() does entity > tile. Advances on proximity. (Fall back to '*Rune*' if 'Rune' draws nothing live.)"
+      }
+    },
+    {
+      "area": "g2_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:4cadf002",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G2_1RathbreakerBossKilled",
+        "completionKind": "boss",
+        "note": "Auto-mined (med): G2_1RathbreakerBossKilled (area g2_1) -> kill Rathbreaker. Review before trusting."
+      }
+    },
+    {
+      "area": "g2_10_2",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:8efdbbc1",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G2_10_2RudjaBossKilled",
+        "completionKind": "boss",
+        "note": "Auto-mined (high): G2_10_2RudjaBossKilled (area g2_10_2) -> kill Rudja take Uncut Skill Gem Lv6. Review before trusting."
+      }
+    },
+    {
+      "area": "g2_2",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:d20a1ba5",
+      "op": "Annotate",
+      "meta": {
+        "completionFlag": "G2_2BalbalaKilled",
+        "completionKind": "boss",
+        "note": "Auto-mined (med): G2_2BalbalaKilled (area g2_2) -> kill Balbala, the Traitor take Djinn Barya take Uncut Skillâ€¦. Review before trusting."
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:6b2f3967",
+      "op": "InsertAfter",
+      "text": "Pick up Essence of Water {reward_quest|Essence of Water}",
+      "meta": {
+        "completionFlag": "EssenceOfTheWaterGodHeld",
+        "completionKind": "quest",
+        "note": "Essence of Water pickup. completionFlag EssenceOfTheWaterGodHeld (harvested live g2_4_3, fires when the item is in inventory) defers the proximity advance so it doesn't skip past the pickup. Co-flips: WaterGoddessEssenceDropped (the drop, ~just before). Split from the Water Goddess compound step."
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:6b2f3967",
+      "op": "InsertAfter",
+      "text": "Ignite the Water Goddess",
+      "meta": {
+        "objective": {
+          "label": "Ignite Goddess",
+          "entityPath": "WaterGoddess_BurnInteract",
+          "count": 1
+        },
+        "completionFlag": "WaterGoddessBurned",
+        "completionKind": "quest",
+        "note": "Ignite interaction at the goddess (Metadata/QuestObjects/Four_Act2/WaterGoddess_BurnInteract, Targetable, dist ~19 at the goddess; harvested live). completionFlag WaterGoddessBurned (harvested live g2_4_3, fires on the ignite) DEFERS the proximity advance -- without it the burn-interact is co-located with the Cinders pickup so proximity cascaded straight through this step to the Essence/TP steps. Co-flips: WaterGoddessBurnedWithoutSeeingGlyph (alias). entityPath drives path+indicator."
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:6b2f3967",
+      "op": "InsertAfter",
+      "text": "Pick up Everburning Cinders",
+      "meta": {
+        "note": "Everburning Cinders pickup (spawns after talking; not loaded at zone entry, no harvested entity yet). Proximity/loot advance. Harvest its entity live with harvest-radar-targets.ps1 -Quests if a path is wanted."
+      }
+    },
+    {
+      "area": "g2_4_1",
+      "ordinal": 6,
+      "fingerprint": "fnv1a:6b2f3967",
+      "op": "ReplaceText",
+      "text": "Talk to the Water Goddess",
+      "meta": {
+        "objective": {
+          "label": "Water Goddess",
+          "entityPath": "WaterGoddessUnnamed",
+          "count": 1
+        },
+        "note": "Halani / the Water Goddess (Metadata/NPC/Four_Act2/WaterGoddessUnnamed, MinimapIcon+Targetable, harvested via harvest-radar-targets.ps1). Talk -> NpcDialog advance; entityPath drives path+indicator. NOTE live area Id = G2_4_3 (Buried Shrines) while route files this block under {enter|g2_4_1} -- verify the area binding."
+      }
+    },
+    {
+      "area": "g2_6",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:671a99c6",
+      "op": "Annotate",
+      "text": "Find 3 Ancient Seals (perimeter)",
+      "meta": {
+        "objective": {
+          "label": "Ancient Seal",
+          "entityPath": "AncientSeal",
+          "count": 3
+        },
+        "pathTarget": "*TitanQuest*",
+        "note": "3 perimeter seals. PATH via Radar tile cluster (pathTarget '*TitanQuest*' -> the 3 TitanQuest0N.tdt tiles in Radar's G2_6 targets, ClusterTarget count 3) -- tiles load at unlimited range so all 3 paths draw at once; the seal entities (AncientSeal1/2/3Portal) only load one-at-a-time near the player, which is why the entity-grid path drew only one. entityPath 'AncientSeal' kept for the nearest-seal indicator + advance. count 3 + the '3' in the text trip IsMultiObjectiveStep so no proximity-advance on the first. Flag-free (harvest a completion flag later if needed)."
+      }
+    },
+    {
+      "area": "g2_town",
+      "ordinal": 17,
+      "fingerprint": "fnv1a:d4b83ce8",
+      "op": "Annotate",
+      "text": "Sound Horn at top of caravan",
+      "meta": {
+        "objective": {
+          "label": "Sound Horn",
+          "entityPath": "ClearSandstorm",
+          "count": 1
+        },
+        "note": "The horn at the top of the caravan = Metadata/Terrain/Gallows/Act2/2_town/Objects/ClearSandstorm (MinimapIcon + Targetable, harvested live dist ~26 via harvest-radar-targets.ps1). Single Targetable terrain interactable, always loaded in town, so entityPath drives path + on-ground indicator + advance (isTargetable flips when the sandstorm clears). Flag-free; harvest a completion flag if it stalls or proximity over-advances to the next 'Talk to Sekhema Asala'."
+      }
+    },
+    {
+      "area": "g2_8",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:7e41ed34",
+      "op": "InsertBefore",
+      "text": "Find Rune (Expedition marker)",
+      "meta": {
+        "objective": {
+          "label": "Find Rune",
+          "entityPath": "Expedition2TitanRunes",
+          "count": 1
+        },
+        "pathTarget": "Rune",
+        "note": "Deshar campaign Expedition. PATH via Radar tile pattern 'Rune' -- the rune marker tile's design name (TgtDetailStruct.name) is 'Rune' for every rune in the game, so ClusterTarget('Rune',1) draws from zone entry at unlimited range (the marker sits ~740 grid from the Deshar entry checkpoint, so the tile is what shows the path before you approach). entityPath 'Expedition2TitanRunes' (LIVE Metadata/Terrain/Gallows/Act2/2_8/Objects/Expedition2TitanRunes, MinimapIcon, NO Targetable, harvested ~(1280,1276)) is the precise upgrade once loaded; Resolve() does entity > tile. Advance is proximity (no Targetable to flip). The rune and the SummonFarrow altar are ~42 grid apart, so proximity may cascade into the next step -- if it skips, play with LogQuestFlags on and harvest a completion flag to gate it. (Fall back to '*Rune*' if 'Rune' draws nothing live.)"
+      }
+    },
+    {
+      "area": "g2_8",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:7e41ed34",
+      "op": "InsertBefore",
+      "text": "Summon Farrow",
+      "meta": {
+        "objective": {
+          "label": "Summon Farrow",
+          "entityPath": "SummonFarrow",
+          "count": 1
+        },
+        "note": "Summon altar = Metadata/Terrain/Gallows/Act2/2_8/Objects/SummonFarrow (MinimapIcon + Targetable, harvested live ~(1255,1309) dist 66). Targetable so entityPath drives path + indicator + advance (isTargetable flips when Farrow is summoned). Sits ~42 grid from the Find Rune marker -- co-located, so watch for proximity cascade off the prior step. Act1 precedent: g1_6 Summon Farrow advanced on ExpeditionQuestRedValeFarrowSummoned; if the Targetable flip is unreliable here, harvest the g2_8 equivalent summon flag (do NOT guess the name)."
+      }
+    },
+    {
+      "area": "g2_8",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:8a79e92b",
+      "op": "Annotate",
+      "text": "Kill 2 Vultures on side area take Backup Djinn Barya (Lvl 28)",
+      "meta": {
+        "objective": {
+          "label": "Vultures (Mugin & Hunin)",
+          "entityPath": "GrimdropGrappleclaw",
+          "count": 2
+        },
+        "pathTarget": "Metadata/Terrain/Desert/Pillars/Base/Arena/bossroom_02.tdt",
+        "note": "The 2 vultures = Mugin/Hunin = Metadata/Monsters/VultureZombie/GrimdropGrappleclawCold@28 (Mugin, Frost Bringer) + GrimdropGrappleclawLightning@28 (Hunin, Storm Caller), harvested live via MCP at ~(2470,855). Shared metadata stem 'GrimdropGrappleclaw' matches BOTH (render-name match would fail -- game spells it Mugin, not Munin). count 2 + entityPath runs the multi-objective HYBRID: pathTarget = the exact tile Radar uses ('Forgotten Corpses' bossroom_02.tdt in Radar's G2_8 targets) as the unlimited-range baseline (2 KMeans centroids), each snapping to its vulture entity when loaded = entity primary, tile backup. The '2' in the text trips IsMultiObjectiveStep so no proximity-skip on the first kill; advance when both are dead (entity-objective). NO completion flag: harvest at step 194 showed only FindDeadBodyLetterSeen/SuicideNoteHeld (the corpse's suicide-note pickup, a different beat) -- the vulture kill itself isn't flag-tracked."
+      }
+    },
+    {
+      "area": "g2_9_1",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:bbde8684",
+      "op": "Annotate",
+      "text": "Shifting Vases / Hushed Urn encounter take 4 rares + Support Gem Lv2",
+      "meta": {
+        "pathTarget": "Metadata/Terrain/Desert/Pillars/Lower/Pillar_TinyBalcony_feature_01.tdt",
+        "note": "Optional Shifting Vases / Hushed Urn encounter. pathTarget = the exact tile Radar uses ('4 Rare chests and T2 Support Gem' in Radar's G2_9_1 targets) so the path draws from zone entry at unlimited range. Explicit pathTarget passes WantsAreaLandmark even though the step is optional (StepTargetResolver.cs:149 before the IsOptional gate). Advance is proximity/loot (optional, no flag)."
+      }
+    },
+    {
+      "area": "g2_9_1",
+      "ordinal": 2,
+      "fingerprint": "fnv1a:d69bfefe",
+      "op": "Annotate",
+      "text": "Enter The Spires of Deshar",
+      "meta": {
+        "transitionTile": "Metadata/Terrain/Desert/Pillars/Upper/PillarUpper_StairsUp_01.tdt",
+        "note": "Forward exit Path of Mourning -> Spires of Deshar. transitionTile = the exact tile Radar uses for this exit ('The Spires of Deshar' in Radar's G2_9_1 targets) so the path shows from zone entry at unlimited range. The live-AreaTransition pick was landing on the BACK exit ('Deshar', StairsDown) because LooseEqual let 'Deshar' substring-match dest 'Spires of Deshar' -- fixed in StepTargetResolver.MatchScore (forward/exact name beats reverse-containment regardless of distance)."
+      }
+    },
+    {
+      "area": "g3_town",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:4a9b69c5",
+      "op": "InsertAfter",
+      "text": "Talk to The Hooded One",
+      "meta": {
+        "note": "Split compound step (was: \"Talk Alva, Oswald, The Hooded One\")."
+      }
+    },
+    {
+      "area": "g3_town",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:4a9b69c5",
+      "op": "InsertAfter",
+      "text": "Talk to Oswald",
+      "meta": {
+        "note": "Split compound step (was: \"Talk Alva, Oswald, The Hooded One\")."
+      }
+    },
+    {
+      "area": "g3_town",
+      "ordinal": 1,
+      "fingerprint": "fnv1a:4a9b69c5",
+      "op": "ReplaceText",
+      "text": "Talk to Alva",
+      "meta": {
+        "note": "Split of 'Talk Alva, Oswald, The Hooded One' into individual steps -> Alva, Oswald, The Hooded One. Each talk step advances on its own NpcDialog open (dialog-advance), so they gate sequentially. Mirrors the act-1 Finn/Una/Hooded split."
+      }
+    }
+  ]
+}

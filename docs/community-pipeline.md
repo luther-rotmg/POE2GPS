@@ -76,16 +76,30 @@ The script:
    (existing entries are never overwritten).
 4. Collects `objectives[].category` values and appends any **novel** categories (not already in
    any group) to `src/POE2Radar.Overlay/Web/labels.json` under a `"Community"` group.
-5. Prints a summary: `N approved pack(s): +M names, novel labels: [...]`.
+5. Prints a stable input-derived summary:
+   `atlas fold: N approved pack(s), K unique names, C unique categories`. The delta
+   against the shipped tables surfaces via `git diff` on the written data files.
+6. Prints a `### Community contributors` markdown block listing every unique `@handle`
+   (case-insensitive sort) with links to the merged issues (`[#42](...)`, `[#101](...)`).
+   Copy the block verbatim above the themed body of `CHANGELOG.md` for this release.
+   Deleted / bot accounts render as `@unknown`.
 
 Requires `gh` CLI authenticated with repo access. The dry-run needs no write permissions.
 
-After a successful live run, commit the updated JSON files:
+After a successful live run:
+
+1. Paste the printed `### Community contributors` block above the themed body of
+   `CHANGELOG.md` for the release you're cutting.
+2. Commit the updated data files together with the CHANGELOG entry:
 
 ```bash
-git add src/POE2Radar.Core/Game/entity_names.json src/POE2Radar.Overlay/Web/labels.json
+git add src/POE2Radar.Core/Game/entity_names.json src/POE2Radar.Overlay/Web/labels.json CHANGELOG.md
 git commit -m "data: fold community packs (vX.Y.Z)"
 ```
+
+Thank each contributor by hand on their merged issue as a personal follow-up (habit
+tracked in PMS-11). The merge script deliberately does **not** post `--comment` or
+auto-close issues — the personal touch is the point for the first two release cycles.
 
 ---
 

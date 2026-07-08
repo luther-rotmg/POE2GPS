@@ -10,6 +10,20 @@ namespace POE2Radar.Overlay.Web;
 /// </summary>
 internal static class DashboardHtml
 {
+    // ── EC2 (ExileCampaigns2) attribution surface — DRAFT phase ────────────────────
+    // Route data + advance-engine logic ported from https://github.com/syrairc/ExileCampaigns2
+    // with syrairc's verbal go-ahead. The four `TODO(syrairc-*)` sentinels below are LOAD-BEARING
+    // for the CI attribution gate (`scripts/attribution-sentinel-gate.ps1`) and get grep-and-swapped
+    // for the real license terms + pinned commit hash in EC2-ATTR-FORMALIZE once PMS-12 lands.
+    // Cross-task interface map: `CampaignGuideAttribution` is consumed by EC2-UI for the SSE
+    // `CampaignGuide` payload row, and by ApiServer.cs for the `/api/about` endpoint.
+    public const string CampaignGuideAttribution =
+        "Campaign step guide by syrairc (ExileCampaigns2 — click to view)";
+    public const string CampaignGuideUpstreamUrl =
+        "https://github.com/syrairc/ExileCampaigns2";
+    public const string CampaignGuideLicense = "TODO(syrairc-license)";
+    public const string CampaignGuideCommit  = "TODO(syrairc-hash)";
+
     public const string Page = """
 <!DOCTYPE html>
 <html lang="en">
@@ -800,6 +814,10 @@ internal static class DashboardHtml
               <div class="row"><div class="rl hint-row">Path frequency table — paths sorted by zone frequency (paths · hits · freq)</div></div>
               <div id="preloadFreqTable" style="max-height:280px;overflow-y:auto;font-size:11px"></div>
             </div>
+            <div class="row">
+              <button class="numin" id="prContribute" title="Contribute your observed preload path frequency table to the community master list (one click). With no Contribute URL set, shows a Restore-default toast — never opens an external tab silently.">Contribute preload &rarr;</button>
+              <span class="saved" id="savedMsgPr">&#10003; contributed &mdash; thank you!</span>
+            </div>
           </div>
           <div class="card" data-card="hpbars">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
@@ -864,6 +882,10 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Max lines</div><input type="number" class="numin" data-bn="maxLines" min="1" max="10"></div>
             <div class="row"><div class="rl hint-row">Observed buffs this session (from nearby elites) — turn on "Display ALL" to populate:</div></div>
             <div id="bnObserved" style="max-height:200px;overflow:auto"></div>
+            <div class="row">
+              <button class="numin" id="bnContribute" title="Contribute your observed buff ids + tiers to the community master list (one click). With no Contribute URL set, shows a Restore-default toast — never opens an external tab silently.">Contribute buffs &rarr;</button>
+              <span class="saved" id="savedMsgBn">&#10003; contributed &mdash; thank you!</span>
+            </div>
           </div>
           <div class="card collapsed" data-card="entity-arrows">
             <h3>Entity Arrows <small class="tag">opt-in</small></h3>
@@ -1041,8 +1063,13 @@ internal static class DashboardHtml
         <section class="view" data-view="director" hidden>
           <div class="card" id="dirQueueCard">
             <h3>Zone Plan <small>live ranked queue for this area</small></h3>
+            <div id="guideDegradeBadge" hidden style="padding:6px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--ink-dim);background:var(--bg-alt);font-size:11px;line-height:1.4">Some steps require v0.22&rsquo;s quest-flag reader &mdash; they&rsquo;ll advance at zone boundary until then.</div>
             <div id="gpsBanner" hidden style="padding:8px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--gold-bright);font-size:13px"></div>
+            <div id="guideStep" hidden style="padding:10px;margin:0 0 8px;border:1px solid var(--line);border-radius:3px;color:var(--ink);background:var(--panel2);font-size:13px;line-height:1.5"></div>
             <div id="dirQueue"></div>
+            <div id="guideAttribution" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line-soft);font-size:10px;color:var(--ink-faint);text-align:right">
+              <a href="https://github.com/syrairc/ExileCampaigns2" target="_blank" rel="noopener noreferrer" style="color:var(--ink-dim);text-decoration:none">Campaign step guide by syrairc (ExileCampaigns2 &mdash; click to view)</a>
+            </div>
           </div>
           <div class="card">
             <h3>Needs cataloguing <small>notable POIs/landmarks you've seen that no objective covers yet</small></h3>
@@ -1062,7 +1089,7 @@ internal static class DashboardHtml
               <input id="eaSearch" class="numin" type="text" placeholder="filter…" style="width:200px">
               <button class="numin" id="eaExport">Export pack</button>
               <label class="numin" style="cursor:pointer">Import pack<input id="eaImport" type="file" accept="application/json" style="display:none"></label>
-              <button class="numin" id="eaContribute" title="Contribute your discovered names + labels to the community master list (one click). With no Contribute URL set, opens the submission form instead.">Contribute names →</button>
+              <button class="numin" id="eaContribute" title="Contribute your discovered names + labels to the community master list (one click). With no Contribute URL set, shows a Restore-default toast — never opens an external tab silently.">Contribute names →</button>
               <span class="saved" id="savedMsgEa">&#10003; contributed — thank you!</span>
             </div>
           </div>
@@ -1167,6 +1194,7 @@ async function loadSettings(){
     bn = await getJSON('/api/buff-nameplates').catch(()=>null); renderBuffNameplates();
     renderBnObserved();
     if(window._syncDiagPanel) window._syncDiagPanel();
+    if(typeof syncContribVisibility === 'function') syncContribVisibility();
   }catch(e){}
 }
 
@@ -1678,7 +1706,7 @@ $('#lmImport')?.addEventListener('click',()=>{
   inp.click();
 });
 
-/* ── director tab: Zone Plan (live ranked queue from /state) ── */
+/* ── director tab: Zone Plan (live ranked queue from /state) + EC2 CampaignGuide ── */
 function renderDirectorQueue(){
   const dq = document.getElementById('dirQueue');
   if (!dq) return;
@@ -1687,6 +1715,23 @@ function renderDirectorQueue(){
     const g = state && state.campaignGps;
     if (g) { gb.hidden = false; gb.textContent = '🧭 ' + g; }   // 🧭
     else { gb.hidden = true; gb.textContent = ''; }
+  }
+  // v0.21 EC2 CampaignGuide (additive; null on v0.20 backends or when EnableCampaignGps=false).
+  // Hide the step-text row + degradation badge when the payload is absent so the DOM subtree
+  // costs nothing to lay out in the off / stale-signal case (zero-cost-when-off gate).
+  const guide  = state && state.campaignGuide;
+  const stepEl = document.getElementById('guideStep');
+  const badgeEl= document.getElementById('guideDegradeBadge');
+  if (stepEl && badgeEl){
+    if (guide && guide.available && guide.text){
+      stepEl.hidden = false;
+      stepEl.textContent = '▶ ' + guide.text;
+      badgeEl.hidden = !guide.stalled;
+    } else {
+      stepEl.hidden = true;
+      stepEl.textContent = '';
+      badgeEl.hidden = true;
+    }
   }
   const dir = (state && state.director) || [];
   if (dir.length === 0){
@@ -1829,14 +1874,105 @@ $('#eaExport')?.addEventListener('click',async()=>{
   }catch(e){}
 });
 function flashEa(){ const m=$('#savedMsgEa'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
-let _eaContribUrl=null;
-async function eaContribUrl(){ if(_eaContribUrl===null){ try{ const s=await getJSON('/api/settings'); _eaContribUrl=(s.contributeUrl||'').trim(); }catch(e){ _eaContribUrl=''; } } return _eaContribUrl; }
+/* ── minimal toast helper (CF-FALLBACK-UX) — bottom-right stack, optional action button, 6s dismiss.
+   Zero-cost-when-off: #toastHost is lazily appended on first showToast() call. ── */
+function showToast(msg, actionLabel, actionFn){
+  let host=document.getElementById('toastHost');
+  if(!host){ host=document.createElement('div'); host.id='toastHost';
+    host.style.cssText='position:fixed;right:16px;bottom:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:360px;pointer-events:none;';
+    document.body.appendChild(host); }
+  const t=document.createElement('div');
+  t.style.cssText='background:var(--panel2,#1b1610);border:1px solid var(--line,#3a2f1d);color:var(--ink,#e8dcc2);padding:10px 12px;border-radius:6px;box-shadow:var(--shadow,0 8px 20px rgba(0,0,0,.6));font:12px "IBM Plex Mono",Consolas,monospace;pointer-events:auto;display:flex;align-items:center;gap:10px;';
+  const span=document.createElement('span'); span.textContent=msg; span.style.flex='1'; t.appendChild(span);
+  if(actionLabel && typeof actionFn==='function'){
+    const b=document.createElement('button'); b.className='numin'; b.textContent=actionLabel;
+    b.style.cssText='padding:4px 8px;cursor:pointer;';
+    b.onclick=async()=>{ b.disabled=true; try{ await actionFn(); }finally{ t.remove(); } };
+    t.appendChild(b);
+  }
+  const x=document.createElement('button'); x.textContent='×'; x.setAttribute('aria-label','dismiss');
+  x.style.cssText='background:none;border:0;color:var(--ink-dim,#9c8e72);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;';
+  x.onclick=()=>t.remove(); t.appendChild(x);
+  host.appendChild(t);
+  setTimeout(()=>{ if(t.parentNode) t.remove(); }, 6000);
+}
+/* Sentinel-split (CF-FALLBACK-UX): distinct reasons for {settingsFetchFailed, contributeUrlEmpty, ok}.
+   Old code collapsed the two failure modes into `_eaContribUrl=''` and silently opened a GitHub
+   template — a lie of contribution. Now the two states each get their own user-visible toast. */
+let _eaContribCache=null; // {ok,url,reason,defaultUrl}
+async function eaContribUrl(){
+  if(_eaContribCache!==null) return _eaContribCache;
+  try{
+    const s=await getJSON('/api/settings');
+    const url=(s.contributeUrl||'').trim();
+    const defaultUrl=(s.defaultContributeUrl||'').trim();
+    if(!url){ _eaContribCache={ok:false, url:'', reason:'contributeUrlEmpty', defaultUrl}; }
+    else    { _eaContribCache={ok:true,  url,   reason:'ok',                defaultUrl}; }
+  }catch(e){
+    _eaContribCache={ok:false, url:'', reason:'settingsFetchFailed', defaultUrl:''};
+  }
+  return _eaContribCache;
+}
+async function restoreDefaultContribUrl(defaultUrl){
+  if(!defaultUrl){ showToast('No default URL available — set one in Settings.'); return; }
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contributeUrl:defaultUrl})});
+    if(r.ok){ _eaContribCache=null; showToast('Contribute URL restored to default. Click Contribute again to send.'); }
+    else   { showToast('Could not restore default URL (HTTP '+r.status+').'); }
+  }catch(e){ showToast('Could not restore default URL (network error).'); }
+}
+/* Shared gate: returns true if the Contribute POST should proceed; otherwise surfaces the
+   correct toast (settingsFetchFailed vs contributeUrlEmpty) and returns false.
+   Extended to the Task-11 buff + preload buttons so all three Contribute paths kill the
+   silent window.open fallback consistently. */
+async function contribGateOrToast(){
+  const c=await eaContribUrl();
+  if(c.reason==='settingsFetchFailed'){
+    showToast('Could not read settings from the overlay — is it still running?');
+    return false;
+  }
+  if(c.reason==='contributeUrlEmpty'){
+    showToast('No Contribute URL is set — nothing will be sent.', 'Restore default URL', ()=>restoreDefaultContribUrl(c.defaultUrl));
+    return false;
+  }
+  return true;
+}
 $('#eaContribute')?.addEventListener('click',async()=>{
-  const url=await eaContribUrl();
-  if(!url){ window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener'); return; }
+  if(!await contribGateOrToast()) return;
   if(!window._eaOkOnce){ if(!confirm('Share your discovered entity names + objectives publicly? This contains no character data.')) return; window._eaOkOnce=true; }
   try{ const r=await fetch('/api/contribute',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashEa(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
+    if(r.ok){ flashEa(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+});
+
+/* v0.21 CF-DASH-BUTTONS: buff + preload Contribute buttons + zero-cost-when-off DOM sync */
+function flashBn(){ const m=$('#savedMsgBn'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
+function flashPr(){ const m=$('#savedMsgPr'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
+
+/* Hide the buff/preload Contribute buttons when their card's enable toggle is off.
+   Verify gate: with data-bn="enabled" unchecked, #bnContribute style.display === "none".
+   Same for data-set="preloadEnabled" / #prContribute. */
+function syncContribVisibility(){
+  const bnEn = document.querySelector('[data-bn="enabled"]')?.checked;
+  const prEn = document.querySelector('[data-set="preloadEnabled"]')?.checked;
+  const bnBtn = $('#bnContribute'); if (bnBtn) bnBtn.style.display = bnEn ? '' : 'none';
+  const prBtn = $('#prContribute'); if (prBtn) prBtn.style.display = prEn ? '' : 'none';
+}
+document.addEventListener('change', e=>{
+  if (e.target && (e.target.matches?.('[data-bn="enabled"]') || e.target.matches?.('[data-set="preloadEnabled"]'))) syncContribVisibility();
+});
+
+$('#bnContribute')?.addEventListener('click', async()=>{
+  if(!await contribGateOrToast()) return;
+  if(!window._bnOkOnce){ if(!confirm('Share your observed buff ids + tiers publicly? This contains no character data.')) return; window._bnOkOnce=true; }
+  try{ const r = await fetch('/api/contribute-buffs',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok){ flashBn(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+});
+
+$('#prContribute')?.addEventListener('click', async()=>{
+  if(!await contribGateOrToast()) return;
+  if(!window._prOkOnce){ if(!confirm('Share your observed preload path frequencies publicly? This contains no character data.')) return; window._prOkOnce=true; }
+  try{ const r = await fetch('/api/contribute-preload',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok){ flashPr(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 /* ── gear tab: god-roll detector (experimental, default off) ── */

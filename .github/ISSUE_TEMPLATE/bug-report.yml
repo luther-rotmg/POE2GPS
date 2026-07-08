@@ -1,0 +1,57 @@
+name: "Bug report"
+description: "Something in POE2GPS behaves wrong."
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Fill in what you can — a clean repro is worth
+        ten adjectives. For support questions (setup, config, "does it work with X?"),
+        please use Discussions or Discord instead — see the links on the New Issue page.
+  - type: input
+    id: version
+    attributes:
+      label: "POE2GPS version"
+      description: "Bottom of the overlay window, or Settings > About."
+      placeholder: "v0.21.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: "OS + game patch"
+      placeholder: "Windows 11 26H2, PoE2 0.3.0"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: "What happened"
+      description: "One or two sentences. Screenshot welcome."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "What you expected"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: "Steps to reproduce"
+      placeholder: |
+        1. Start POE2GPS
+        2. Enter The Riverbank
+        3. ...
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: "Logs (optional)"
+      description: "%APPDATA%\\POE2GPS\\logs\\ — attach or paste relevant lines."
+      render: text
+    validations:
+      required: false

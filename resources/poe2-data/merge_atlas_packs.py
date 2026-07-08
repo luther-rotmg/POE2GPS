@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Fold community-submitted Entity Atlas packs into the embedded name table.
+"""DEPRECATED (v0.21) -- use ``merge_community.py --catalog names`` instead.
+
+This script is kept in-tree so historical maintainer muscle memory does not silently break, but the
+single merge rail for atlas / buffs / preload community packs as of v0.21 is::
+
+    python resources/poe2-data/merge_community.py --catalog names --state open
+
+``merge_community.py`` handles the full community pipeline: it fetches issues by label
+(``community-pack`` for post-v0.21 submissions; ``atlas-submission`` for pre-v0.21 submissions
+already relabeled by ``resources/poe2-data/relabel-atlas-issues.sh``), folds them into the correct
+catalog seed, and emits a deterministic credit block for ``CHANGELOG.md``. See ``CONTRIBUTING.md``
+(root) for the current contributor flow.
+
+--- Original (v0.20 and earlier) docstring below, retained for reference ---
+
+Fold community-submitted Entity Atlas packs into the embedded name table.
 
 The Entity Atlas (in the overlay) lets players name the entities they encounter and **Export pack** an
 ``atlas-pack.json`` ( ``{"names": {metadata: name, ...}, "objectives": [...]}`` ). Players submit those
@@ -23,6 +38,29 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+
+
+def _print_deprecation_banner() -> None:
+    """Emit a visible deprecation banner on every invocation.
+
+    Prints to stderr (not stdout) so stdout stays clean for scripting, and is non-fatal -- the
+    script still runs to completion so a maintainer mid-release does not get surprised by an exit
+    code change. See ``merge_community.py`` for the current single-rail merge.
+    """
+    print(
+        "\n"
+        "============================================================\n"
+        "  DEPRECATED: merge_atlas_packs.py\n"
+        "  Use instead:\n"
+        "    python resources/poe2-data/merge_community.py \\\n"
+        "        --catalog names --state open\n"
+        "  See CONTRIBUTING.md (root) for the current pipeline.\n"
+        "============================================================\n",
+        file=sys.stderr,
+    )
+
+
+_print_deprecation_banner()
 
 
 def normalize_key(raw: str) -> str:

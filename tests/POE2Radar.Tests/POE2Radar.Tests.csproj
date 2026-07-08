@@ -31,6 +31,11 @@
     <None Include="fixtures/*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- v0.21 EC2-UI: golden fixture for the CampaignGuide additive-compat snapshot test. Preserves
+         the subfolder so the test can Path.Combine(BaseDirectory, "Overlay", "Fixtures", ...). -->
+    <None Include="Overlay/Fixtures/*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

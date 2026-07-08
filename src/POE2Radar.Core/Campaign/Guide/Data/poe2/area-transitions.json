@@ -1,0 +1,511 @@
+{
+  "_comment": "Source area-id (lowercased) -> list of {match, tile} for 'Enter/Exit <zone>' navigation steps. match is the destination zone display name (loose substring vs the route's destination); tile is a Radar.ClusterTarget-usable literal tile name / Metadata...tdt path (NEVER a bare generic word -- the bridge drops room filters). Used as a pre-load path fallback when the live AreaTransition entity isn't in render range yet. Derived from Radar targets.json transition entries.",
+  "g1_2": [
+    {
+      "match": "The Grelwood",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/Clearfell_OldForest_Transition_01.tdt"
+    },
+    {
+      "match": "Mud Burrow (normally skip this)",
+      "tile": "FallenTreeSlashTransition"
+    }
+  ],
+  "g1_4": [
+    {
+      "match": "The Grim Tangle",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/OldForestToGrimTangle_02_metatile.tdt"
+    },
+    {
+      "match": "Clearfell",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/OldForest_Clearfell_transition_01.tdt"
+    },
+    {
+      "match": "The Red Vale",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/redvale_transition_02_oldforest.tdt"
+    },
+    {
+      "match": "The Corpse Tree (waypoint)",
+      "tile": "Metadata/Terrain/Woods/GrimTangle/areatransitions/GrimtangleTransitionDown_02.tdt"
+    }
+  ],
+  "g1_5": [
+    {
+      "match": "The Grelwood",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/redvale_transition_02_redvale.tdt"
+    }
+  ],
+  "g1_6": [
+    {
+      "match": "Cemetery of the Eternals",
+      "tile": "Metadata/Terrain/Woods/GrimTangle/areatransitions/GrimtangleTransitionUp_02.tdt"
+    },
+    {
+      "match": "The Grelwood",
+      "tile": "Metadata/Terrain/Woods/GrimTangle/areatransitions/IntroArea.tdt"
+    }
+  ],
+  "g1_7": [
+    {
+      "match": "The Grim Tangle",
+      "tile": "Metadata/Terrain/Woods/Graveyard/Feature/GraveyardToGrimTangle_transition_01.tdt"
+    }
+  ],
+  "g1_8": [
+    {
+      "match": "Forgotten Riches",
+      "tile": "Metadata/Terrain/Woods/GraveyardDungeons/Transitions/Mausoleum_SecretEntrance_01.tdt"
+    },
+    {
+      "match": "Cemetery of the Eternals",
+      "tile": "Metadata/Terrain/Woods/GraveyardDungeons/Transitions/Transition_Mausoleum_to_Graveyard_01.tdt"
+    },
+    {
+      "match": "Unknown 2",
+      "tile": "Metadata/Terrain/Woods/GraveyardDungeons/Transitions/Transition_Tomb_to_Graveyard_01.tdt"
+    }
+  ],
+  "g1_11": [
+    {
+      "match": "Freythorn",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/CanopyRoadTransition_01.tdt"
+    },
+    {
+      "match": "Cemetery of the Eternals",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/CliffRoad_Cnr_transition_01.tdt"
+    }
+  ],
+  "g1_12": [
+    {
+      "match": "Hunting Grounds",
+      "tile": "Metadata/Terrain/Woods/Canopy/Features/CanopySpireTransition_01.tdt"
+    }
+  ],
+  "g1_13_1": [
+    {
+      "match": "Hunting Grounds",
+      "tile": "Metadata/Terrain/Woods/AreaTransitions/cliff_gate_transition_01.tdt"
+    },
+    {
+      "match": "Ogham Village",
+      "tile": "Metadata/Terrain/Woods/Village/RoadFields/Feature/RoadVillage_Areatransition.tdt"
+    }
+  ],
+  "g1_13_2": [
+    {
+      "match": "Ogham Farmlands",
+      "tile": "Metadata/Terrain/Woods/Village/RoadFields/Feature/RoadVillage_Areatransition_village_side.tdt"
+    }
+  ],
+  "g1_14": [
+    {
+      "match": "Oghams Manor",
+      "tile": "Metadata/Terrain/Woods/Manor/CourtyardFeatures/Manor_GrandEntrance_Transition_01.tdt"
+    }
+  ],
+  "g1_15": [
+    {
+      "match": "Stairs Up",
+      "tile": "Metadata/Terrain/Woods/Manor/Interior/Features/ThickWall_AreaTransition_01.tdt"
+    },
+    {
+      "match": "The Manor Ramparts",
+      "tile": "Metadata/Terrain/Woods/Manor/Interior/Features/Manor_Entrance_01.tdt"
+    }
+  ],
+  "g2_3": [
+    {
+      "match": "Traitor's Passage",
+      "tile": "Metadata/Terrain/Desert/AreaTransitions/Ruin_PassageStair_01.tdt"
+    }
+  ],
+  "g2_4_1": [
+    {
+      "match": "Looted Vault",
+      "tile": "Metadata/Terrain/Desert/BuriedCity/Features/Keth_SinkholeTransition_01.tdt"
+    },
+    {
+      "match": "The Ardura Caravan",
+      "tile": "Metadata/Terrain/Desert/BuriedCity/Features/Cityroof_Entrance.tdt"
+    },
+    {
+      "match": "The Lost City",
+      "tile": "Metadata/Terrain/Desert/BuriedCity/Features/Keth_Stairs_RuinEntrance.tdt"
+    }
+  ],
+  "g2_4_3": [
+    {
+      "match": "The Heart of Keth",
+      "tile": "Metadata/Terrain/Desert/Maraketh/Features/Thickwall_BossTransition_01.tdt"
+    },
+    {
+      "match": "Buried Shrines",
+      "tile": "Metadata/Terrain/Desert/Maraketh/Floor/ThickWall_TransitionWide_St_01.tdt"
+    },
+    {
+      "match": "The Lost City",
+      "tile": "Metadata/Terrain/Desert/Maraketh/Features/Thickwall_StairsUp_01.tdt"
+    }
+  ],
+  "g2_5_1": [
+    {
+      "match": "The Bone Pits",
+      "tile": "Metadata/Terrain/Desert/Badlands/Features/AreaTransition_BadlandsToPits_01.tdt"
+    },
+    {
+      "match": "The Ardura Caravan",
+      "tile": "Metadata/Terrain/Desert/Badlands/Features/Badlands_Entrance_01.tdt"
+    }
+  ],
+  "g2_5_2": [
+    {
+      "match": "Mastodon Badlands",
+      "tile": "Metadata/Terrain/Desert/Badlands/Features/AreaTransition_BadlandsToPits_01.tdt"
+    }
+  ],
+  "g2_8": [
+    {
+      "match": "The Ardura Caravan",
+      "tile": "Metadata/Terrain/Desert/Pillars/Base/PillarBase_CartTransition_01.tdt"
+    },
+    {
+      "match": "Path of Mourning",
+      "tile": "Metadata/Terrain/Desert/Pillars/Base/PillarBaseWide_StairsUp_01.tdt"
+    }
+  ],
+  "g3_2_1": [
+    {
+      "match": "Chimeral Wetlands",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleDepths_to_ChimeralWetlands.tdt"
+    },
+    {
+      "match": "Jungle Ruins",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleToWaterways_01.tdt"
+    },
+    {
+      "match": "The Azak Bog",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/Bog/AreaTransition/EntranceBog_02.tdt"
+    },
+    {
+      "match": "The Matlan Waterways",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/Waterway/Jungle_Waterway_Ramp_01.tdt"
+    }
+  ],
+  "g3_3": [
+    {
+      "match": "The Venom Crypts",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleDepths_to_SnakePit.tdt"
+    },
+    {
+      "match": "Ziggurat Encampment",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleDepths_to_Town.tdt"
+    },
+    {
+      "match": "Infested Barrens",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/JungleToWaterways_01_reverse.tdt"
+    }
+  ],
+  "g3_4": [
+    {
+      "match": "Jungle Ruins",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SnakePit_to_JungleDepths.tdt"
+    }
+  ],
+  "g3_5": [
+    {
+      "match": "The Temple of Chaos",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/ChimeralJungle_to_ChaosTemple.tdt"
+    },
+    {
+      "match": "Infested Barrens",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/ChimeralWetlands_to_JungleDepths.tdt"
+    },
+    {
+      "match": "Deadly Nest",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/AreaTransitions/Observatory_Entrance_01.tdt"
+    }
+  ],
+  "g3_7": [
+    {
+      "match": "Infested Barrens",
+      "tile": "Metadata/Terrain/Jungle/JungleExterior/Bog/AreaTransition/EntranceBog_01.tdt"
+    }
+  ],
+  "g3_8": [
+    {
+      "match": "Ziggurat Encampment",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCityPresent/SunkenCityToTown_01.tdt"
+    },
+    {
+      "match": "Apex of Filth",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCityPresent/jungle_pyramid_entrance_atziri_03.tdt"
+    },
+    {
+      "match": "The Molten Vault",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCityPresent/jungle_pyramid_entrance_vault_01.tdt"
+    }
+  ],
+  "g3_14": [
+    {
+      "match": "Aggorat",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCity/jungle_pyramid_entrance_atziri_01_metatile.tdt"
+    },
+    {
+      "match": "Town",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/SunkenCity/jungle_town_lower_entrance_past_01.tdt"
+    }
+  ],
+  "g3_17": [
+    {
+      "match": "Aggorat",
+      "tile": "Metadata/Terrain/Jungle/AreaTransitions/DoryanisSanctumEntranceInt_01_01.tdt"
+    }
+  ],
+  "g4_2_1": [
+    {
+      "match": "Journey's end",
+      "tile": "Metadata/Terrain/Islands/Tiles/Island/Features/UnwalkableCliff_Transition_Up_01.tdt"
+    }
+  ],
+  "g4_2_2": [
+    {
+      "match": "Kedge Bay",
+      "tile": "Metadata/Terrain/Islands/Tiles/Island/Features/UnwalkableCliff_Transition_Up_02.tdt"
+    }
+  ],
+  "p1_1": [
+    {
+      "match": "Forest 1 of 2",
+      "tile": "Metadata/Terrain/interlude/part1/p1_1/feature/forest_transition_01.tdt"
+    },
+    {
+      "match": "Stones of serle",
+      "tile": "Metadata/Terrain/interlude/part1/p1_1/feature/monolith_transition_01.tdt"
+    }
+  ],
+  "p1_2": [
+    {
+      "match": "Farmlands",
+      "tile": "Metadata/Terrain/interlude/part1/p1_2/feature/farmlands_transition_01.tdt"
+    }
+  ],
+  "p1_3": [
+    {
+      "match": "Holten",
+      "tile": "Metadata/Terrain/interlude/part1/p1_3/holten_transition_01.tdt"
+    }
+  ],
+  "p1_4": [
+    {
+      "match": "Blackwood",
+      "tile": "Metadata/Terrain/interlude/part1/p1_4/blackwood_transition_01.tdt"
+    },
+    {
+      "match": "Soul Ferryman - Sells runes",
+      "tile": "Metadata/Terrain/interlude/part1/p1_4/holtondocktransition.tdt"
+    },
+    {
+      "match": "Holton Estate",
+      "tile": "Metadata/Terrain/interlude/part1/p1_4/holton_estate_transition_01.tdt"
+    }
+  ],
+  "p2_1": [
+    {
+      "match": "Pools of Khatal",
+      "tile": "Metadata/Terrain/Interlude/Part2/P2_1/Dregs_Transition.tdt"
+    },
+    {
+      "match": "5% Maximum Life",
+      "tile": "Metadata/Terrain/Interlude/Part2/P2_1/Forge_Transition.tdt"
+    },
+    {
+      "match": "Galai Gates",
+      "tile": "Metadata/Terrain/interlude/part2/p2_1/gates_exit_transition_01.tdt"
+    }
+  ],
+  "p2_4": [
+    {
+      "match": "Saitwaste Entrance",
+      "tile": "Metadata/Terrain/interlude/part2/p2_4/saitwaste_entrance_transition.tdt"
+    }
+  ],
+  "p2_5": [
+    {
+      "match": "Gates end",
+      "tile": "Metadata/Terrain/Interlude/Part2/Gates/AreaTransitions/GatesEnd_01.tdt"
+    }
+  ],
+  "p2_6": [
+    {
+      "match": "Entrance",
+      "tile": "Metadata/Terrain/Maps/SevenWaters/Tiles/Feature/Arena_Transition_01.tdt"
+    }
+  ],
+  "p3_1": [
+    {
+      "match": "Glade",
+      "tile": "Metadata/Terrain/interlude/part3/p3_1/town_to_jungle_transition.tdt"
+    },
+    {
+      "match": "Kriar Village",
+      "tile": "Metadata/Terrain/Interlude/Part3/P3_1/Jungle_to_KriarVillage_Transition.tdt"
+    }
+  ],
+  "p3_2": [
+    {
+      "match": "Ashen Forest",
+      "tile": "Metadata/Terrain/interlude/part3/p3_2/jungle_transition.tdt"
+    }
+  ],
+  "p3_5": [
+    {
+      "match": "Ravine",
+      "tile": "Metadata/Terrain/Interlude/Part3/P3_5/Ravine_Exit_Transition.tdt"
+    }
+  ],
+  "g1_1": [
+    {
+      "match": "Clearfell Encampment",
+      "tile": "Metadata/Terrain/Woods/Lumbermill/EncampmentFront_01.tdt"
+    }
+  ],
+  "g2_2": [
+    {
+      "match": "The Halani Gates",
+      "tile": "Metadata/Terrain/Desert/CavePath/Features/Thickwall_Cave_Entrance.tdt"
+    },
+    {
+      "match": "The Ardura Caravan",
+      "tile": "Metadata/Terrain/Desert/CavePath/Features/cave_entrance_01.tdt"
+    }
+  ],
+  "g2_4_2": [
+    {
+      "match": "Keth",
+      "tile": "Metadata/Terrain/Desert/Maraketh/Features/KethEntrance_01.tdt"
+    },
+    {
+      "match": "Buried Shrines",
+      "tile": "Metadata/Terrain/Desert/Maraketh/Features/Thickwall_StairsDown_01.tdt"
+    }
+  ],
+  "g2_6": [
+    {
+      "match": "The Ardura Caravan",
+      "tile": "Metadata/Terrain/Desert/UnwalkableDune/Titans/Feature/CartEntrance_01.tdt"
+    },
+    {
+      "match": "The Titan Grotto",
+      "tile": "Metadata/Terrain/Desert/UnwalkableDune/Titans/Feature/GrottoExit01.tdt"
+    }
+  ],
+  "g2_7": [
+    {
+      "match": "Valley of the Titans",
+      "tile": "Metadata/Terrain/Desert/CaveTitans/Features/Staircase_Entrance_01.tdt"
+    }
+  ],
+  "g2_9_1": [
+    {
+      "match": "Deshar",
+      "tile": "Metadata/Terrain/Desert/Pillars/Lower/Wide/PillarLowerWide_StairsDown_01.tdt"
+    }
+  ],
+  "g2_9_2": [
+    {
+      "match": "Path of Mourning",
+      "tile": "Metadata/Terrain/Desert/Pillars/Tall/PillarTall_StairsDown_01.tdt"
+    }
+  ],
+  "g2_10_1": [
+    {
+      "match": "The Ardura Caravan",
+      "tile": "Metadata/Terrain/Desert/Quarry/Features/Maraketh_Entrance_01.tdt"
+    },
+    {
+      "match": "Mawdun Mine",
+      "tile": "Metadata/Terrain/Desert/Quarry/Features/MiningShaftCrane.tdt"
+    }
+  ],
+  "g2_10_2": [
+    {
+      "match": "Mawdun Quarry",
+      "tile": "Metadata/Terrain/Desert/Quarry/Features/MiningShaftFloor.tdt"
+    }
+  ],
+  "g2_12_2": [
+    {
+      "match": "The Dreadnought",
+      "tile": "Metadata/Terrain/Desert/FarudinCarts/cart_walkway_02.tdt"
+    }
+  ],
+  "g3_1": [
+    {
+      "match": "Ziggurat Encampment",
+      "tile": "Metadata/Terrain/Jungle/SandsweptMarsh/marsh_exit.tdt"
+    }
+  ],
+  "g3_6_1": [
+    {
+      "match": "Jiquani's Sanctum",
+      "tile": "Metadata/Terrain/Dungeon/NextFeatures/Machinarium_Entrance_02.tdt"
+    }
+  ],
+  "g3_9": [
+    {
+      "match": "The Drowned City",
+      "tile": "Metadata/Terrain/Jungle/TreasureVault/BrutalistThickwall/Brutal_Entrance_01.tdt"
+    }
+  ],
+  "g3_11": [
+    {
+      "match": "The Drowned City",
+      "tile": "Metadata/Terrain/Jungle/Aggorat/Features/Present/AggoratToSunkenCity_Present_02.tdt"
+    }
+  ],
+  "g3_12": [
+    {
+      "match": "Ziggurat Encampment",
+      "tile": "Metadata/Terrain/Dungeon/Ziggurat/ziggurat_to_sunkencity_01.tdt"
+    }
+  ],
+  "g3_16": [
+    {
+      "match": "Utzaal",
+      "tile": "Metadata/Terrain/Jungle/Aggorat/Features/AggoratToSunkenCity_01.tdt"
+    },
+    {
+      "match": "The Black Chambers",
+      "tile": "Metadata/Terrain/Jungle/Aggorat/Features/DoryanisSanctumEntrance_01.tdt"
+    }
+  ],
+  "g4_1_1": [
+    {
+      "match": "Volcanic Warrens",
+      "tile": "Metadata/Terrain/Islands/Tiles/Island/Volcano/Goblins/Features/GoblinMinesEntrance_01.tdt"
+    }
+  ],
+  "g4_1_2": [
+    {
+      "match": "Isle of Kin",
+      "tile": "Metadata/Terrain/Islands/Tiles/CoralDungeon/Features/GoblinCaveEntrance_01.tdt"
+    }
+  ],
+  "g4_3_1": [
+    {
+      "match": "Singing Caverns",
+      "tile": "Metadata/Terrain/Islands/Tiles/TropicalIsland/TropicalCliff/TropicalCliff_Cv_Cove_01.tdt"
+    }
+  ],
+  "g4_3_2": [
+    {
+      "match": "Whakapanu Island",
+      "tile": "Metadata/Terrain/Islands/Tiles/CoralDungeon/Features/SirenCoveEntrance_01.tdt"
+    }
+  ],
+  "g4_11_1b": [
+    {
+      "match": "Heart of the Tribe",
+      "tile": "Metadata/Terrain/Islands/Tiles/BloodFever/Features/Ngakanu/NgakanuToBloodFever_01.tdt"
+    }
+  ]
+}
