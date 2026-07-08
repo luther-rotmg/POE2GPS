@@ -814,6 +814,10 @@ internal static class DashboardHtml
               <div class="row"><div class="rl hint-row">Path frequency table — paths sorted by zone frequency (paths · hits · freq)</div></div>
               <div id="preloadFreqTable" style="max-height:280px;overflow-y:auto;font-size:11px"></div>
             </div>
+            <div class="row">
+              <button class="numin" id="prContribute" title="Contribute your observed preload path frequency table to the community master list (one click). With no Contribute URL set, opens the submission form instead.">Contribute preload &rarr;</button>
+              <span class="saved" id="savedMsgPr">&#10003; contributed &mdash; thank you!</span>
+            </div>
           </div>
           <div class="card" data-card="hpbars">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
@@ -878,6 +882,10 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Max lines</div><input type="number" class="numin" data-bn="maxLines" min="1" max="10"></div>
             <div class="row"><div class="rl hint-row">Observed buffs this session (from nearby elites) — turn on "Display ALL" to populate:</div></div>
             <div id="bnObserved" style="max-height:200px;overflow:auto"></div>
+            <div class="row">
+              <button class="numin" id="bnContribute" title="Contribute your observed buff ids + tiers to the community master list (one click). With no Contribute URL set, opens the submission form instead.">Contribute buffs &rarr;</button>
+              <span class="saved" id="savedMsgBn">&#10003; contributed &mdash; thank you!</span>
+            </div>
           </div>
           <div class="card collapsed" data-card="entity-arrows">
             <h3>Entity Arrows <small class="tag">opt-in</small></h3>
@@ -1186,6 +1194,7 @@ async function loadSettings(){
     bn = await getJSON('/api/buff-nameplates').catch(()=>null); renderBuffNameplates();
     renderBnObserved();
     if(window._syncDiagPanel) window._syncDiagPanel();
+    if(typeof syncContribVisibility === 'function') syncContribVisibility();
   }catch(e){}
 }
 
@@ -1873,6 +1882,39 @@ $('#eaContribute')?.addEventListener('click',async()=>{
   if(!window._eaOkOnce){ if(!confirm('Share your discovered entity names + objectives publicly? This contains no character data.')) return; window._eaOkOnce=true; }
   try{ const r=await fetch('/api/contribute',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     if(r.ok){ flashEa(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
+});
+
+/* v0.21 CF-DASH-BUTTONS: buff + preload Contribute buttons + zero-cost-when-off DOM sync */
+function flashBn(){ const m=$('#savedMsgBn'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
+function flashPr(){ const m=$('#savedMsgPr'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
+
+/* Hide the buff/preload Contribute buttons when their card's enable toggle is off.
+   Verify gate: with data-bn="enabled" unchecked, #bnContribute style.display === "none".
+   Same for data-set="preloadEnabled" / #prContribute. */
+function syncContribVisibility(){
+  const bnEn = document.querySelector('[data-bn="enabled"]')?.checked;
+  const prEn = document.querySelector('[data-set="preloadEnabled"]')?.checked;
+  const bnBtn = $('#bnContribute'); if (bnBtn) bnBtn.style.display = bnEn ? '' : 'none';
+  const prBtn = $('#prContribute'); if (prBtn) prBtn.style.display = prEn ? '' : 'none';
+}
+document.addEventListener('change', e=>{
+  if (e.target && (e.target.matches?.('[data-bn="enabled"]') || e.target.matches?.('[data-set="preloadEnabled"]'))) syncContribVisibility();
+});
+
+$('#bnContribute')?.addEventListener('click', async()=>{
+  const url = await eaContribUrl();
+  if(!url){ window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener'); return; }
+  if(!window._bnOkOnce){ if(!confirm('Share your observed buff ids + tiers publicly? This contains no character data.')) return; window._bnOkOnce=true; }
+  try{ const r = await fetch('/api/contribute-buffs',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok){ flashBn(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
+});
+
+$('#prContribute')?.addEventListener('click', async()=>{
+  const url = await eaContribUrl();
+  if(!url){ window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener'); return; }
+  if(!window._prOkOnce){ if(!confirm('Share your observed preload path frequencies publicly? This contains no character data.')) return; window._prOkOnce=true; }
+  try{ const r = await fetch('/api/contribute-preload',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok){ flashPr(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
 });
 
 /* ── gear tab: god-roll detector (experimental, default off) ── */

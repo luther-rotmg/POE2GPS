@@ -684,7 +684,37 @@ public sealed class ApiServer : IDisposable
                 if (url.Length == 0) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "no contribute url configured" }, Json)); break; }
                 // The same non-identifying pack as /api/entity-atlas/export — names + objectives only.
                 var pack = JsonSerializer.Serialize(new { names = _entityNames.All, objectives = _objectives.All }, Json);
-                var (ok, status) = ContributeForward(url, pack).GetAwaiter().GetResult();
+                var (ok, status) = ContributeForward(SiblingContributeUrl(url, "atlas"), pack).GetAwaiter().GetResult();
+                Write(ctx, ok ? 200 : 502, JsonSerializer.Serialize(new { ok, status }, Json));
+                break;
+            }
+
+            case "/api/contribute-buffs":
+            {
+                // v0.21 CF-DASH-BUTTONS: one-click submission of the observed buff-id list to the
+                // Worker's /submit-buffs sibling route. Loopback-Host-gated (mirror of /api/contribute).
+                // Non-identifying — the same {id,tier} projection that /api/buffs already exposes.
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                var url = _settings.ContributeUrl?.Trim() ?? "";
+                if (url.Length == 0) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "no contribute url configured" }, Json)); break; }
+                var pack = JsonSerializer.Serialize(new { buffs = BuildBuffsPack() }, Json);
+                var (ok, status) = ContributeForward(SiblingContributeUrl(url, "buffs"), pack).GetAwaiter().GetResult();
+                Write(ctx, ok ? 200 : 502, JsonSerializer.Serialize(new { ok, status }, Json));
+                break;
+            }
+
+            case "/api/contribute-preload":
+            {
+                // v0.21 CF-DASH-BUTTONS: one-click submission of the Diagnostic-mode preload path
+                // frequency table to the Worker's /submit-preload sibling route. Loopback-Host-gated.
+                // Non-identifying — metadata paths + zone frequency only (bare .dds/.ao are Worker-rejected).
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                var url = _settings.ContributeUrl?.Trim() ?? "";
+                if (url.Length == 0) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "no contribute url configured" }, Json)); break; }
+                var pack = JsonSerializer.Serialize(new { preloads = BuildPreloadsPack() }, Json);
+                var (ok, status) = ContributeForward(SiblingContributeUrl(url, "preload"), pack).GetAwaiter().GetResult();
                 Write(ctx, ok ? 200 : 502, JsonSerializer.Serialize(new { ok, status }, Json));
                 break;
             }
@@ -2175,6 +2205,81 @@ public sealed class ApiServer : IDisposable
             return ((int)resp.StatusCode is >= 200 and < 300, (int)resp.StatusCode);
         }
         catch { return (false, 0); }
+    }
+
+    /// <summary>Rewrites a Contribute worker URL onto a sibling route. Accepts a base URL or any
+    /// existing <c>/submit-*</c> suffix, strips a trailing slash, then either replaces the terminal
+    /// <c>/submit-*</c> segment or appends <c>/submit-&lt;sibling&gt;</c> when none is present.
+    /// <para>A single user-configured <see cref="RadarSettings.ContributeUrl"/> therefore reaches all
+    /// three of the Worker's sibling routes (<c>/submit-atlas</c>, <c>/submit-buffs</c>,
+    /// <c>/submit-preload</c>) without asking the user to configure each one separately.</para>
+    /// Internal for testability.</summary>
+    internal static string SiblingContributeUrl(string url, string sibling)
+    {
+        var trimmed = (url ?? "").TrimEnd('/');
+        var re = new System.Text.RegularExpressions.Regex(
+            @"/submit-[a-z]+$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        return re.IsMatch(trimmed) ? re.Replace(trimmed, "/submit-" + sibling) : trimmed + "/submit-" + sibling;
+    }
+
+    /// <summary>Projects <c>_buffsDiag()</c> into the Worker's <c>/submit-buffs</c> pack shape:
+    /// <c>[{path, tier}, ...]</c>. Empty-list-safe (returns [] when the provider is null, throws, or
+    /// returns a value without a <c>buffs</c> array).</summary>
+    private List<object> BuildBuffsPack()
+    {
+        var list = new List<object>();
+        if (_buffsDiag == null) return list;
+        try
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(_buffsDiag(), Json));
+            if (doc.RootElement.TryGetProperty("buffs", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var b in arr.EnumerateArray())
+                {
+                    if (b.ValueKind != JsonValueKind.Object) continue;
+                    var id = b.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+                        ? idEl.GetString() ?? "" : "";
+                    if (id.Length == 0) continue;
+                    string? tier = null;
+                    if (b.TryGetProperty("tier", out var tEl))
+                        tier = tEl.ValueKind == JsonValueKind.String ? tEl.GetString() : tEl.ToString();
+                    list.Add(new { path = id, tier });
+                }
+            }
+        }
+        catch { /* diagnostic-only source; degrade to empty pack, Worker rejects and button alerts */ }
+        return list;
+    }
+
+    /// <summary>Projects the <c>diagnostic</c> array of <c>_preload()</c> into the Worker's
+    /// <c>/submit-preload</c> pack shape: <c>[{path, freq}, ...]</c>. Empty-list-safe. When
+    /// Preload Alert's Diagnostic switch is off, the source's <c>diagnostic</c> is null and this
+    /// returns [] — the Worker will 400 on empty and the button alerts the user.</summary>
+    private List<object> BuildPreloadsPack()
+    {
+        var list = new List<object>();
+        if (_preload == null) return list;
+        try
+        {
+            using var doc = JsonDocument.Parse(JsonSerializer.Serialize(_preload(), Json));
+            if (doc.RootElement.TryGetProperty("diagnostic", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var p in arr.EnumerateArray())
+                {
+                    if (p.ValueKind != JsonValueKind.Object) continue;
+                    var path = p.TryGetProperty("path", out var pEl) && pEl.ValueKind == JsonValueKind.String
+                        ? pEl.GetString() ?? "" : "";
+                    if (path.Length == 0) continue;
+                    double? freq = null;
+                    if (p.TryGetProperty("freq", out var fEl) && fEl.ValueKind == JsonValueKind.Number)
+                        freq = fEl.GetDouble();
+                    list.Add(new { path, freq });
+                }
+            }
+        }
+        catch { /* diagnostic-only source; degrade to empty pack, Worker rejects and button alerts */ }
+        return list;
     }
 
     /// <summary>Clamp/validate a posted objective: non-blank Id/Label/Category, priority 0..1000,
