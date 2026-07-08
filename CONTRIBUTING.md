@@ -8,9 +8,9 @@ The overlay collects the three data streams the built-in catalogs cover:
 
 | What you tag in-app | Where to Contribute | What it feeds |
 |---|---|---|
-| Entity names in **Entity Atlas** | **Contribute** button on the Atlas tab | `metadata/monsters/**` name table |
-| Observed buffs in **Buffs** | **Contribute** button on the Buffs tab | `Core/Game/BuffCatalog.cs` seed |
-| Preload freq table in **Preload** | **Contribute** button on the Preload tab | `Core/Game/PreloadCatalog.cs` seed |
+| Entity names in **Entity Atlas** | **Contribute** button on the Entity Atlas tab | `metadata/monsters/**` name table |
+| Observed buffs in **Buffs** | **Contribute** button on the **Buff icons** card in ⚙️ Settings (enable the card first to reveal the button) | `Core/Game/BuffCatalog.cs` seed |
+| Preload freq table in **Preload** | **Contribute** button on the **Preload Alert** card in ⚙️ Settings (enable the card first to reveal the button) | `Core/Game/PreloadCatalog.cs` seed |
 
 Each button POSTs anonymized metadata to the community pipeline Worker
 (`cloudflare-worker/`). A maintainer folds accumulated submissions into

@@ -19,13 +19,20 @@ public class DashboardHtmlCampaignGuideTests
     }
 
     [Fact]
-    public void ZonePlanCard_ContainsDegradationBadgeWithVerbatimSpecCopy()
+    public void ZonePlanCard_ContainsDegradationBadgeWithUserFriendlyCopy()
     {
         Assert.Contains("id=\"guideDegradeBadge\"", Html);
-        // Verbatim copy from spec section 6 — mdash, not hyphen; curly right-single-quote entities.
+        // v0.21.1: pre-tag release-readiness audit flagged the original spec §6 copy
+        // ("Some steps require v0.22's quest-flag reader ...") as engineer-jargon that
+        // would drive "where is v0.22? am I broken?" pings on release day. Shipping
+        // copy drops the v0.22 name-drop entirely and explains the graceful degradation
+        // as expected behaviour. Mdash + curly right-single-quote entities preserved
+        // for typographic consistency with the rest of the panel.
         Assert.Contains(
-            "Some steps require v0.22&rsquo;s quest-flag reader &mdash; they&rsquo;ll advance at zone boundary until then.",
+            "A few quest steps can&rsquo;t auto-advance yet &mdash; they&rsquo;ll skip forward automatically when you enter the next zone. Expected on v0.21 and doesn&rsquo;t need any action.",
             Html);
+        // Regression guard: the old jargon copy must NOT ship.
+        Assert.DoesNotContain("quest-flag reader", Html);
     }
 
     [Fact]

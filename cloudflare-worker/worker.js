@@ -2,6 +2,8 @@
 //   POST /submit-atlas   — {names, objectives}  (v0.20 backward-compat payload shape)
 //   POST /submit-buffs   — {buffs}              (buff metadata paths + tier)
 //   POST /submit-preload — {preloads}           (metadata paths; bare .dds/.ao rejected)
+//   POST /submit         — legacy alias -> /submit-atlas (v0.20.x clients + rollback safety;
+//                          same {names, objectives} payload shape as /submit-atlas)
 // Shared middleware: NFKD+leet profanity fold, KV rate limit 5/60s per CF-Connecting-IP, and
 // a GitHub Issue dispatch labelled `community-pack` + `needs-review` (+ optional sub-label).
 // GITHUB_TOKEN is a Worker SECRET; never in the client. RATE_KV is a KV namespace bound in wrangler.toml.
@@ -79,13 +81,19 @@ export async function rateLimit(env, ip) {
 }
 
 // ── routing ──
-// One switch, three sibling routes. Any other pathname returns null so the top-level
-// fetch() handler answers 404 (unambiguous for stale desktop clients).
+// One switch, three sibling routes + one legacy alias. Any other pathname returns null so the
+// top-level fetch() handler answers 404 (unambiguous for stale desktop clients).
+//
+// The `/submit` alias exists so a user who downgrades v0.21 -> v0.20.1 (for any reason) still
+// has a working Contribute button — v0.20.1 POSTs to `/submit` with the exact `{names, objectives}`
+// shape that /submit-atlas expects. Alias will be sunset only after v0.20.x auto-updater usage
+// drops to zero.
 export function routeFor(url) {
   switch (url.pathname) {
     case '/submit-atlas':   return { kind: 'atlas' };
     case '/submit-buffs':   return { kind: 'buffs' };
     case '/submit-preload': return { kind: 'preload' };
+    case '/submit':         return { kind: 'atlas' };   // legacy v0.20.x alias
     default:                return null;
   }
 }

@@ -35,12 +35,14 @@ test('isProfane no longer applies 8/12-char gibberish gates (they were dropped)'
   assert.equal(isProfane('xkq4bzvpmlrjynt'), false);
 });
 
-test('routeFor maps /submit-atlas | /submit-buffs | /submit-preload; other paths -> null', () => {
+test('routeFor maps sibling routes + /submit legacy alias; other paths -> null', () => {
   assert.equal(routeFor(new URL('https://w.dev/submit-atlas')).kind,   'atlas');
   assert.equal(routeFor(new URL('https://w.dev/submit-buffs')).kind,   'buffs');
   assert.equal(routeFor(new URL('https://w.dev/submit-preload')).kind, 'preload');
+  // Legacy v0.20.x alias: /submit routes to atlas so rollback clients stay working.
+  assert.equal(routeFor(new URL('https://w.dev/submit')).kind,         'atlas');
   assert.equal(routeFor(new URL('https://w.dev/')),        null);
-  assert.equal(routeFor(new URL('https://w.dev/submit')),  null);
+  assert.equal(routeFor(new URL('https://w.dev/nope')),    null);
 });
 
 test('filterPayloadCommon(atlas, ...) keeps v0.20-shape names+objectives', () => {
