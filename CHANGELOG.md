@@ -8,6 +8,26 @@ Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares 
 ### Special thanks
 Enormous thanks to **syrairc** for green-lighting [ExileCampaigns2](https://github.com/syrairc/ExileCampaigns2)'s integration into POE2GPS. v0.21's campaign step guide is a direct port of upstream route data + advance logic. Upstream: <https://github.com/syrairc/ExileCampaigns2> · license: `TODO(syrairc-license)` · commit: `TODO(syrairc-hash)`.
 
+### PMS-13 deploy runbook (maintainer)
+
+The v0.21 Cloudflare Worker rewrite splits `/submit` into three sibling routes
+(`/submit-atlas`, `/submit-buffs`, `/submit-preload`) with a shared NFKD+leet profanity
+filter and a KV-backed 5/60s rate limit. The KV binding requires a namespace ID that only
+the maintainer's Cloudflare account can mint, so deploy is a manual step:
+
+```
+cd cloudflare-worker
+wrangler kv:namespace create RATE_KV        # capture the returned id
+# paste the id into wrangler.toml, replacing the placeholder sentinel
+wrangler deploy
+wrangler secret put GITHUB_TOKEN            # if not already set
+bash ../resources/poe2-data/smoke-worker.sh https://poe2gps-contribute.<you>.workers.dev
+```
+
+Only after `SMOKE PASS` prints may the `CF-DASH-BUTTONS` PR open — ordering gate from
+the v0.21 spec §12 (stale desktop clients hitting new routes before deploy see a clean 404
+rather than a schema-mismatch 400).
+
 ## [0.20.1] — 2026-07-07
 ### Changed — 🧹 **Roadclearing** *(v0.20.0 review shelf drained + browser-view substrate deepened)*
 - 🩺 **SseChannel heartbeat race closed for good.** The v0.20.0 T3 plan-mandated race between last-subscriber teardown and new-subscriber add is now impossible — both paths lock `_latestLock`. Publish contention is negligible; add/remove are rare. Loops that leaked one 15s ping under contention now don't.

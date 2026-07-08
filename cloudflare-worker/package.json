@@ -1,0 +1,9 @@
+{
+  "name": "poe2gps-contribute-worker",
+  "version": "0.21.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test worker.test.mjs"
+  }
+}
