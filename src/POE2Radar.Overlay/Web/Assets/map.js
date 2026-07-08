@@ -36,6 +36,8 @@
     atlas: null,                           // /api/atlas response
     landmarks: null,                       // /landmarks response
     atlasIcons: {},                        // name → HTMLImageElement (already decoded)
+    // T8: persistent entity map, merged from full/delta frames.
+    entities: new Map(),                   // id -> { id, x, y, cat, rar, hp, hpMax }
   };
 
   // Restore gps-mode class from either URL param (?gps=1) or last-session localStorage.
@@ -109,6 +111,21 @@
       : state.serverOffset + OFFSET_EMA_ALPHA * (rawOffset - state.serverOffset);
     state.ring.push({ t: snap.t, snap });
     if (state.ring.length > RING_SIZE) state.ring.shift();
+
+    // Delta-entity merge — see server T7 wire format.
+    if (snap.full === true && snap.entities) {
+      state.entities.clear();
+      for (const e of snap.entities) state.entities.set(e.id, e);
+    } else if (snap.full === false && snap.entitiesDelta) {
+      const d = snap.entitiesDelta;
+      if (d.add) for (const e of d.add) state.entities.set(e.id, e);
+      if (d.upd) for (const e of d.upd) {
+        const existing = state.entities.get(e.id);
+        if (existing) { existing.x = e.x; existing.y = e.y; }
+      }
+      if (d.del) for (const id of d.del) state.entities.delete(id);
+    }
+
     if (snap.area !== state.currentArea) onZoneChange(snap.area);
   }
 
@@ -362,7 +379,7 @@
     const px = pose.player.x, py = pose.player.y;
     const cx = cw / 2, cy = ch / 2;
     const halfSpan = Math.max(cw, ch) * 0.5;
-    const ents = pose.snap.entities || [];
+    const ents = Array.from(state.entities.values());
 
     const r = Math.max(2, 3 * s);
 
@@ -561,7 +578,7 @@
     drawPlayer();
 
     if (!document.body.classList.contains('obs')) {
-      const ec = (pose.snap.entities || []).length;
+      const ec = state.entities.size;
       state.hud.textContent = `${state.currentArea || '—'} · ${ec} dots · ${state.isoMode ? 'iso' : 'top'} · z${state.zoom} · ${currentFps()} fps`;
     }
   }
@@ -576,6 +593,7 @@
     state.fogCanvas = null;
     state.atlas = null;
     state.landmarks = null;
+    state.entities.clear();                      // flush entities on zone change
 
     const [t, atlas, landmarks] = await Promise.all([
       fetchTerrain(newArea),
