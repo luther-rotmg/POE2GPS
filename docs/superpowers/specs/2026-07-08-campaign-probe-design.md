@@ -18,7 +18,7 @@ The pool is the training substrate for POE2GPS's Guided Campaign + Objective Dir
 - **Read-only over game memory.** No memory writes. No new offset writes. All reads follow the existing `Poe2Live` chain patterns.
 - **Zero-cost-when-off.** With `EnableCampaignProbe = false`, `CampaignProbe.Tick(...)` short-circuits before any work. Spy test enforces zero writes + zero allocations per tick when disabled.
 - **Local capture only.** No network I/O in v1. Users share by clicking Contribute (the existing v0.21 pipeline). Nothing uploads without an explicit click.
-- **Same schema forever.** Bucket-A (offsets-shipped) events populate live at ship. Bucket-B (offsets-blocked-on-PMS-14) events emit stub records at ship with `probe_capability: "v0.22_pending"` and only the fields readable today. Post-PMS-14, one commit swaps stubs to live reads — schema unchanged so poe2open's `RouteToRules` mapper (and any other downstream consumer) doesn't churn.
+- **Same schema forever + all 12 events live at ship** (revised 2026-07-08 after upstream-offset extraction from `imkk000/poe2-offsets` — see `scratchpad/campaign-probe-offsets.md`). Previously two-bucket A/B split; now collapsed. All 12 event types populate live. Two events (`npc_dialogue_option_selected`, `quest_reward_selected`) use UI-tree signature detection instead of raw panel offsets — same technique POE2GPS already uses for landmarks + atlas nodes. PMS-14 downgrades from a "5-chain Research probe (45-60 min)" to a "10-15 min in-game verification pass" that confirms the 6 previously-Bucket-B events emit plausible values. The `probe_capability` envelope field stays for forward-compat but reads `"live"` on all 12 events at ship.
 - **Default ON.** LO's design decision. Onboarding toast fires exactly once explaining what the probe captures and how Contribute works.
 
 ## 3. Event schema
@@ -171,22 +171,19 @@ CF Worker rate limit (v0.21's 5/60s per IP) applies to `/submit-trace` — an at
 
 ## 12. Task list preview
 
-**Track A — Framework + shipped-offset events (8 tasks):**
+**Revised 2026-07-08 after upstream-offset extraction — single track, all 12 events live at ship:**
 
-1. `PROBE-RECORD` — EventRecord.cs (12 record structs + serializer)
-2. `PROBE-ANON` — AnonymizationHelpers.cs
-3. `PROBE-WRITER` — EventWriter.cs (JSONL sink + rotation + async flush)
-4. `PROBE-CORE` — CampaignProbe.cs (orchestrator + Track A event emissions)
-5. `PROBE-SETTINGS` — RadarSettings additions + SettingsMigrator entry + auto-populate install_uuid
-6. `PROBE-UI` — DashboardHtml settings toggle + reset button + Contribute-trace button + one-shot onboarding toast
-7. `PROBE-CONTRIBUTE` — ApiServer `/api/contribute-trace` + Worker `/submit-trace` route + tests
-8. `PROBE-TESTS` — full test set + README section + PMS-14 doc entry
+1. `PROBE-OFFSETS` — extend `Poe2Offsets.cs` with the 10 new offset groups from `scratchpad/campaign-probe-offsets.md` (character progression, quest flags/state, passive tree alloc vec + hop chain, Targetable component bytes, interaction components — Chest/Shrine/Transitionable/StateMachine, hover tracker). Extend `Poe2Live.cs` with accessor methods matching the shipped `PlayerInventories` chain pattern (read-only, no writes). Includes XP int64 → also closes PMS-6 (Long List #34 XP/hour Session HUD chip) as a free-rider.
+2. `PROBE-RECORD` — `EventRecord.cs` (12 record structs + envelope + serializer, snake_case JSON keys byte-for-byte per §3).
+3. `PROBE-ANON` — `AnonymizationHelpers.cs` (sha256-16 hex + UUID generator + settings-persistence).
+4. `PROBE-WRITER` — `EventWriter.cs` (JSONL sink, per-boot rotation, async flush via `Channel<EventRecord>`, gzip-on-Contribute).
+5. `PROBE-CORE` — `CampaignProbe.cs` (world-thread orchestrator, diff-observers for all 12 event types, UI-tree walk for NpcDialog + QuestReward panels using existing POE2GPS UI-walk primitives + shipped `hover.go` offsets, all events fire live).
+6. `PROBE-SETTINGS` — `RadarSettings` additions (`EnableCampaignProbe = true`, `ProbeInstallId`, `ProbeOnboardingSeen`) + `SettingsMigrator` entry + auto-populate `ProbeInstallId` on first launch.
+7. `PROBE-UI` — `DashboardHtml` Settings toggle + reset-session button + Contribute-trace button on Campaign panel + one-shot onboarding toast (Task 12's `showToast` helper reused).
+8. `PROBE-CONTRIBUTE` — `ApiServer` `/api/contribute-trace` handler + Worker `/submit-trace` sibling route (fifth kind; middleware unchanged; issue label `community-pack` + `trace`).
+9. `PROBE-TESTS` — full test set (serialization round-trip, hash determinism, per-boot rotation, opt-off spy asserting zero writes + zero allocs across 1000 ticks, onboarding-toast-shows-once, `/api/contribute-trace` handler round-trip) + README section + PMS-14 tracker entry finalized.
 
-**Track B — v0.22-offset events (3 tasks, dispatched post-PMS-14):**
-
-9. `PROBE-OFFSETS` — Poe2Offsets.cs constants + Poe2Live accessors for the 5 new chains + POE2Radar.Research probe mode
-10. `PROBE-B-EMISSIONS` — swap the 6 bucket-B events from stubs to live reads
-11. `PROBE-B-TESTS` — new tests + probe_capability flip verification
+Ships parallel to v0.21 tag routine (no v0.21 surface changes; PMS-12 + PMS-13 unrelated).
 
 ---
 
