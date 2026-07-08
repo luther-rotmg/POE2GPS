@@ -14,6 +14,12 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Game\campaign_route.json" />
+    <EmbeddedResource Include="Campaign\Guide\Data\poe2\route.json" />
+    <EmbeddedResource Include="Campaign\Guide\Data\poe2\overrides.json" />
+    <EmbeddedResource Include="Campaign\Guide\Data\poe2\area-objectives.json" />
+    <EmbeddedResource Include="Campaign\Guide\Data\poe2\area-transitions.json" />
+    <EmbeddedResource Include="Campaign\Guide\Data\poe2\area-targets.json" />
+    <EmbeddedResource Include="Campaign\Guide\Data\poe2\xp_curve.json" />
     <EmbeddedResource Include="Game\CustomLandmarks.json" />
     <EmbeddedResource Include="Game\entity_names.json" />
     <EmbeddedResource Include="Game\world_areas.json" />
