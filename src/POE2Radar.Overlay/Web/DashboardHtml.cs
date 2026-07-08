@@ -1055,13 +1055,12 @@ internal static class DashboardHtml
         <section class="view" data-view="director" hidden>
           <div class="card" id="dirQueueCard">
             <h3>Zone Plan <small>live ranked queue for this area</small></h3>
+            <div id="guideDegradeBadge" hidden style="padding:6px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--ink-dim);background:var(--bg-alt);font-size:11px;line-height:1.4">Some steps require v0.22&rsquo;s quest-flag reader &mdash; they&rsquo;ll advance at zone boundary until then.</div>
             <div id="gpsBanner" hidden style="padding:8px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--gold-bright);font-size:13px"></div>
+            <div id="guideStep" hidden style="padding:10px;margin:0 0 8px;border:1px solid var(--line);border-radius:3px;color:var(--ink);background:var(--panel2);font-size:13px;line-height:1.5"></div>
             <div id="dirQueue"></div>
-            <!-- EC2 attribution — DRAFT sentinels ship visibly so any regression surfaces in dogfood before FORMALIZE swaps them. -->
-            <div id="campaignAttrib" style="opacity:.55;font-size:11px;padding:6px 0 2px 0;border-top:1px solid var(--line-soft);margin-top:8px">
-              Campaign step guide by
-              <a href="https://github.com/syrairc/ExileCampaigns2" target="_blank" rel="noopener">syrairc (ExileCampaigns2)</a>
-              &mdash; license <code>TODO(syrairc-license)</code>, commit <code>TODO(syrairc-hash)</code>.
+            <div id="guideAttribution" style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line-soft);font-size:10px;color:var(--ink-faint);text-align:right">
+              <a href="https://github.com/syrairc/ExileCampaigns2" target="_blank" rel="noopener noreferrer" style="color:var(--ink-dim);text-decoration:none">Campaign step guide by syrairc (ExileCampaigns2 &mdash; click to view)</a>
             </div>
           </div>
           <div class="card">
@@ -1698,7 +1697,7 @@ $('#lmImport')?.addEventListener('click',()=>{
   inp.click();
 });
 
-/* ── director tab: Zone Plan (live ranked queue from /state) ── */
+/* ── director tab: Zone Plan (live ranked queue from /state) + EC2 CampaignGuide ── */
 function renderDirectorQueue(){
   const dq = document.getElementById('dirQueue');
   if (!dq) return;
@@ -1707,6 +1706,23 @@ function renderDirectorQueue(){
     const g = state && state.campaignGps;
     if (g) { gb.hidden = false; gb.textContent = '🧭 ' + g; }   // 🧭
     else { gb.hidden = true; gb.textContent = ''; }
+  }
+  // v0.21 EC2 CampaignGuide (additive; null on v0.20 backends or when EnableCampaignGps=false).
+  // Hide the step-text row + degradation badge when the payload is absent so the DOM subtree
+  // costs nothing to lay out in the off / stale-signal case (zero-cost-when-off gate).
+  const guide  = state && state.campaignGuide;
+  const stepEl = document.getElementById('guideStep');
+  const badgeEl= document.getElementById('guideDegradeBadge');
+  if (stepEl && badgeEl){
+    if (guide && guide.available && guide.text){
+      stepEl.hidden = false;
+      stepEl.textContent = '▶ ' + guide.text;
+      badgeEl.hidden = !guide.stalled;
+    } else {
+      stepEl.hidden = true;
+      stepEl.textContent = '';
+      badgeEl.hidden = true;
+    }
   }
   const dir = (state && state.director) || [];
   if (dir.length === 0){

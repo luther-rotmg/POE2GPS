@@ -290,6 +290,23 @@ public sealed class ApiServer : IDisposable
                         .Select(o => new { id = o.Id, label = o.Label, category = o.Category,
                                            priority = o.Priority, tier = o.Tier.ToString() }),
                     campaignGps = s.CampaignGps,
+                    // v0.21 EC2 Guided Campaign — additive. Null when EnableCampaignGps=false, the
+                    // embedded route failed to load, or the cursor walked off the end. v0.20.x dashboards
+                    // never read this key; the JS in DashboardHtml.cs guards on `state.campaignGuide`
+                    // before touching the DOM, so hiding it is free when off.
+                    campaignGuide = s.CampaignGuide is null ? (object?)null : new
+                    {
+                        stepId            = s.CampaignGuide.Value.StepId,
+                        text              = s.CampaignGuide.Value.Text,
+                        areaId            = s.CampaignGuide.Value.AreaId,
+                        act               = s.CampaignGuide.Value.Act,
+                        ordinal           = s.CampaignGuide.Value.Ordinal,
+                        totalSteps        = s.CampaignGuide.Value.TotalSteps,
+                        optional          = s.CampaignGuide.Value.Optional,
+                        stalled           = s.CampaignGuide.Value.Stalled,
+                        available         = s.CampaignGuide.Value.Available,
+                        degradationReason = s.CampaignGuide.Value.DegradationReason,
+                    },
                     // Session HUD: elapsed times, zone pace, deaths. Null when tracker not running.
                     session = s.Session == null ? (object?)null : new {
                         sessionElapsed    = FormatTimeSpan(s.Session.SessionElapsed),

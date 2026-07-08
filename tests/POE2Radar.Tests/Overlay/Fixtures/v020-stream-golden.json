@@ -1,0 +1,31 @@
+{
+  "inGame": true,
+  "areaCode": "G1_1",
+  "areaHash": 305419896,
+  "areaLevel": 3,
+  "areaName": "The Riverside",
+  "areaAct": 1,
+  "mapVisible": false,
+  "zoom": 1.0,
+  "hpPct": 100.0,
+  "manaPct": 100.0,
+  "esPct": 0.0,
+  "player": { "x": 128.5, "y": 240.75 },
+  "entityCount": 42,
+  "poiCount": 3,
+  "landmarkCount": 5,
+  "counts": { "Monster": 30, "Chest": 2, "Waypoint": 1 },
+  "worldMs": 4.1,
+  "renderMs": 2.7,
+  "fps": 240.0,
+  "rpmPerSec": 5.5,
+  "healthState": "green",
+  "healthMessage": null,
+  "monoliths": [],
+  "director": [
+    { "id": "obj.wp",   "label": "Waypoint",         "category": "Waypoint", "priority": 100, "tier": "Exit" },
+    { "id": "obj.boss", "label": "Beira of the Moonlight", "category": "SideBoss", "priority": 90, "tier": "SideBoss" }
+  ],
+  "campaignGps": "Head to the Riverside encampment exit",
+  "session": null
+}
