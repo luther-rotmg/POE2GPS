@@ -815,7 +815,7 @@ internal static class DashboardHtml
               <div id="preloadFreqTable" style="max-height:280px;overflow-y:auto;font-size:11px"></div>
             </div>
             <div class="row">
-              <button class="numin" id="prContribute" title="Contribute your observed preload path frequency table to the community master list (one click). With no Contribute URL set, opens the submission form instead.">Contribute preload &rarr;</button>
+              <button class="numin" id="prContribute" title="Contribute your observed preload path frequency table to the community master list (one click). With no Contribute URL set, shows a Restore-default toast — never opens an external tab silently.">Contribute preload &rarr;</button>
               <span class="saved" id="savedMsgPr">&#10003; contributed &mdash; thank you!</span>
             </div>
           </div>
@@ -883,7 +883,7 @@ internal static class DashboardHtml
             <div class="row"><div class="rl hint-row">Observed buffs this session (from nearby elites) — turn on "Display ALL" to populate:</div></div>
             <div id="bnObserved" style="max-height:200px;overflow:auto"></div>
             <div class="row">
-              <button class="numin" id="bnContribute" title="Contribute your observed buff ids + tiers to the community master list (one click). With no Contribute URL set, opens the submission form instead.">Contribute buffs &rarr;</button>
+              <button class="numin" id="bnContribute" title="Contribute your observed buff ids + tiers to the community master list (one click). With no Contribute URL set, shows a Restore-default toast — never opens an external tab silently.">Contribute buffs &rarr;</button>
               <span class="saved" id="savedMsgBn">&#10003; contributed &mdash; thank you!</span>
             </div>
           </div>
@@ -1089,7 +1089,7 @@ internal static class DashboardHtml
               <input id="eaSearch" class="numin" type="text" placeholder="filter…" style="width:200px">
               <button class="numin" id="eaExport">Export pack</button>
               <label class="numin" style="cursor:pointer">Import pack<input id="eaImport" type="file" accept="application/json" style="display:none"></label>
-              <button class="numin" id="eaContribute" title="Contribute your discovered names + labels to the community master list (one click). With no Contribute URL set, opens the submission form instead.">Contribute names →</button>
+              <button class="numin" id="eaContribute" title="Contribute your discovered names + labels to the community master list (one click). With no Contribute URL set, shows a Restore-default toast — never opens an external tab silently.">Contribute names →</button>
               <span class="saved" id="savedMsgEa">&#10003; contributed — thank you!</span>
             </div>
           </div>
@@ -1874,14 +1874,74 @@ $('#eaExport')?.addEventListener('click',async()=>{
   }catch(e){}
 });
 function flashEa(){ const m=$('#savedMsgEa'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
-let _eaContribUrl=null;
-async function eaContribUrl(){ if(_eaContribUrl===null){ try{ const s=await getJSON('/api/settings'); _eaContribUrl=(s.contributeUrl||'').trim(); }catch(e){ _eaContribUrl=''; } } return _eaContribUrl; }
+/* ── minimal toast helper (CF-FALLBACK-UX) — bottom-right stack, optional action button, 6s dismiss.
+   Zero-cost-when-off: #toastHost is lazily appended on first showToast() call. ── */
+function showToast(msg, actionLabel, actionFn){
+  let host=document.getElementById('toastHost');
+  if(!host){ host=document.createElement('div'); host.id='toastHost';
+    host.style.cssText='position:fixed;right:16px;bottom:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:360px;pointer-events:none;';
+    document.body.appendChild(host); }
+  const t=document.createElement('div');
+  t.style.cssText='background:var(--panel2,#1b1610);border:1px solid var(--line,#3a2f1d);color:var(--ink,#e8dcc2);padding:10px 12px;border-radius:6px;box-shadow:var(--shadow,0 8px 20px rgba(0,0,0,.6));font:12px "IBM Plex Mono",Consolas,monospace;pointer-events:auto;display:flex;align-items:center;gap:10px;';
+  const span=document.createElement('span'); span.textContent=msg; span.style.flex='1'; t.appendChild(span);
+  if(actionLabel && typeof actionFn==='function'){
+    const b=document.createElement('button'); b.className='numin'; b.textContent=actionLabel;
+    b.style.cssText='padding:4px 8px;cursor:pointer;';
+    b.onclick=async()=>{ b.disabled=true; try{ await actionFn(); }finally{ t.remove(); } };
+    t.appendChild(b);
+  }
+  const x=document.createElement('button'); x.textContent='×'; x.setAttribute('aria-label','dismiss');
+  x.style.cssText='background:none;border:0;color:var(--ink-dim,#9c8e72);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;';
+  x.onclick=()=>t.remove(); t.appendChild(x);
+  host.appendChild(t);
+  setTimeout(()=>{ if(t.parentNode) t.remove(); }, 6000);
+}
+/* Sentinel-split (CF-FALLBACK-UX): distinct reasons for {settingsFetchFailed, contributeUrlEmpty, ok}.
+   Old code collapsed the two failure modes into `_eaContribUrl=''` and silently opened a GitHub
+   template — a lie of contribution. Now the two states each get their own user-visible toast. */
+let _eaContribCache=null; // {ok,url,reason,defaultUrl}
+async function eaContribUrl(){
+  if(_eaContribCache!==null) return _eaContribCache;
+  try{
+    const s=await getJSON('/api/settings');
+    const url=(s.contributeUrl||'').trim();
+    const defaultUrl=(s.defaultContributeUrl||'').trim();
+    if(!url){ _eaContribCache={ok:false, url:'', reason:'contributeUrlEmpty', defaultUrl}; }
+    else    { _eaContribCache={ok:true,  url,   reason:'ok',                defaultUrl}; }
+  }catch(e){
+    _eaContribCache={ok:false, url:'', reason:'settingsFetchFailed', defaultUrl:''};
+  }
+  return _eaContribCache;
+}
+async function restoreDefaultContribUrl(defaultUrl){
+  if(!defaultUrl){ showToast('No default URL available — set one in Settings.'); return; }
+  try{
+    const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contributeUrl:defaultUrl})});
+    if(r.ok){ _eaContribCache=null; showToast('Contribute URL restored to default. Click Contribute again to send.'); }
+    else   { showToast('Could not restore default URL (HTTP '+r.status+').'); }
+  }catch(e){ showToast('Could not restore default URL (network error).'); }
+}
+/* Shared gate: returns true if the Contribute POST should proceed; otherwise surfaces the
+   correct toast (settingsFetchFailed vs contributeUrlEmpty) and returns false.
+   Extended to the Task-11 buff + preload buttons so all three Contribute paths kill the
+   silent window.open fallback consistently. */
+async function contribGateOrToast(){
+  const c=await eaContribUrl();
+  if(c.reason==='settingsFetchFailed'){
+    showToast('Could not read settings from the overlay — is it still running?');
+    return false;
+  }
+  if(c.reason==='contributeUrlEmpty'){
+    showToast('No Contribute URL is set — nothing will be sent.', 'Restore default URL', ()=>restoreDefaultContribUrl(c.defaultUrl));
+    return false;
+  }
+  return true;
+}
 $('#eaContribute')?.addEventListener('click',async()=>{
-  const url=await eaContribUrl();
-  if(!url){ window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener'); return; }
+  if(!await contribGateOrToast()) return;
   if(!window._eaOkOnce){ if(!confirm('Share your discovered entity names + objectives publicly? This contains no character data.')) return; window._eaOkOnce=true; }
   try{ const r=await fetch('/api/contribute',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashEa(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
+    if(r.ok){ flashEa(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 /* v0.21 CF-DASH-BUTTONS: buff + preload Contribute buttons + zero-cost-when-off DOM sync */
@@ -1902,19 +1962,17 @@ document.addEventListener('change', e=>{
 });
 
 $('#bnContribute')?.addEventListener('click', async()=>{
-  const url = await eaContribUrl();
-  if(!url){ window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener'); return; }
+  if(!await contribGateOrToast()) return;
   if(!window._bnOkOnce){ if(!confirm('Share your observed buff ids + tiers publicly? This contains no character data.')) return; window._bnOkOnce=true; }
   try{ const r = await fetch('/api/contribute-buffs',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashBn(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
+    if(r.ok){ flashBn(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 $('#prContribute')?.addEventListener('click', async()=>{
-  const url = await eaContribUrl();
-  if(!url){ window.open('https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml','_blank','noopener'); return; }
+  if(!await contribGateOrToast()) return;
   if(!window._prOkOnce){ if(!confirm('Share your observed preload path frequencies publicly? This contains no character data.')) return; window._prOkOnce=true; }
   try{ const r = await fetch('/api/contribute-preload',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashPr(); } else { alert('Contribute failed ('+r.status+').'); } }catch(e){ alert('Contribute failed.'); }
+    if(r.ok){ flashPr(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 /* ── gear tab: god-roll detector (experimental, default off) ── */

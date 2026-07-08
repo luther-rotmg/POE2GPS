@@ -1306,6 +1306,7 @@ public sealed class ApiServer : IDisposable
         terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
         groundItems = _settings.GroundItems, // ground-item value overlay (enabled / highlight threshold / league)
         contributeUrl = _settings.ContributeUrl,
+        defaultContributeUrl = RadarSettings.DefaultContributeUrl, // Restore-default toast (CF-FALLBACK-UX)
         highlightDynastyMaps = _settings.HighlightDynastyMaps,
         atlasHideCompleted   = _settings.AtlasHideCompleted,
         atlasHideAccessible  = _settings.AtlasHideAccessible,
