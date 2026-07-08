@@ -1,50 +1,41 @@
-# Contributing to the Entity Atlas (community mapping)
+# Contributing to the Entity Atlas -- Deprecated page
 
-POE2GPS names Path of Exile 2 entities from a built-in table
-(`src/POE2Radar.Core/Game/entity_names.json`). It can't possibly know every entity in the game — so the
-**Entity Atlas** turns naming into a community effort. The goal: **eventually map the entire game.**
+> **This page has moved.** The Entity Atlas contributor flow is now folded into the
+> unified community-pack pipeline. See **[CONTRIBUTING.md](../CONTRIBUTING.md)** at the
+> repo root for the current path (atlas names + buff metadata + preload metadata all
+> funnel through the same rail as of v0.21).
 
-## For players — submit the names you tag
+## For players -- one-click Contribute (unchanged)
 
-1. Run the overlay, play, and open the dashboard → **Entity Atlas** tab (F12 / `localhost:7777`).
-2. Under **Needs a name**, type a friendly name for entities the radar shows as a raw path. (It updates
-   your own radar instantly — a local override in `config/entity_names_user.json`.)
-3. When you've named a batch, click **Export pack** → you get an `atlas-pack.json`.
-4. Submit it via the **Contribute names** button in the tab (or open an
-   [Entity name submission](https://github.com/luther-rotmg/POE2GPS/issues/new?template=entity-name-submission.yml)
-   issue) and attach the file.
+1. Run the overlay, open the dashboard (F12 / `localhost:7777`) -> **Entity Atlas** tab.
+2. Name entities under **Needs a name** -- your radar updates instantly (local override
+   in `config/entity_names_user.json`).
+3. Click **Contribute names**. The dashboard POSTs your pack to the community Worker
+   (`/submit-atlas`), which opens a labelled issue on your behalf.
 
-That's it. Only the `names` are used — no character name, position, or account data is in the pack.
+Only the `names` map is sent. No character name, position, or account data leaves your
+machine.
 
-## For maintainers — fold submissions into the next release
+## For maintainers -- use `merge_community.py`
 
-Submissions arrive as issues labelled `atlas-submission`. Each release:
+As of v0.21 the single merge rail is `merge_community.py`. It handles atlas / buff /
+preload submissions from one command:
 
-1. Download the attached `atlas-pack.json` files into a scratch folder.
-2. Dry-run the merge to review counts (existing curated names are kept by default):
+```bash
+# Fold approved community-pack submissions into the entity_names.json seed.
+python resources/poe2-data/merge_community.py --catalog names --state open
+```
 
-   ```bash
-   python resources/poe2-data/merge_atlas_packs.py \
-       src/POE2Radar.Core/Game/entity_names.json  packs/*.json  --dry-run
-   ```
+`merge_community.py` reads issues by label. Pre-v0.21 submissions were labelled
+`atlas-submission`; the v0.21 relabel script
+(`resources/poe2-data/relabel-atlas-issues.sh`) added `community-pack` to every open
+atlas-submission issue so nothing was orphaned.
 
-3. Merge for real (drop `--dry-run`; add `--overwrite` only to let submissions replace existing names):
+The old script `merge_atlas_packs.py` is retained in-tree but prints a deprecation
+banner on every invocation. Please do not use it for new releases.
 
-   ```bash
-   python resources/poe2-data/merge_atlas_packs.py \
-       src/POE2Radar.Core/Game/entity_names.json  packs/*.json
-   ```
+## Why the change?
 
-   The tool lower-cases keys and strips `@<level>` suffixes to match `EntityNameResolver`, and writes the
-   table back **sorted + compact** so diffs stay clean.
-
-4. Spot-check the diff (`git diff` the JSON), build + run the gate, and ship it in the next release. The
-   new names are now embedded for everyone.
-
-## Notes
-
-- **Curated names win by default.** The merge keeps an existing name unless you pass `--overwrite`, so a
-  good built-in label isn't clobbered by a rough submission.
-- **`objectives` in a pack are ignored by the merge tool** — they're personal Director catalog entries.
-  Only the `names` map is community data.
-- The pipeline is data-only and read-only with respect to the game; it never modifies PoE2.
+Buff and preload contributions ship through the same funnel as of v0.21, so one merge
+script + one label (`community-pack`) covers all three catalogs. See root
+[CONTRIBUTING.md](../CONTRIBUTING.md) for the full contributor flow.
