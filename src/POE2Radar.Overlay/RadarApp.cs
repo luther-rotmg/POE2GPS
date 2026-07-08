@@ -474,7 +474,7 @@ public sealed class RadarApp : IDisposable
         // sticks. NOTE: this matches on the affix-mod ids we read (+0x168); if the abyss faction mod proves
         // to live in the ModNames vector (+0x150) we don't currently read, this won't fire and we extend the
         // read — verify live via the dashboard Entities view on an Abyss monster.
-        if (!_settings.AbyssRuleSeeded)
+        if (!_settings.AppliedMigrations.Contains("seed:abyss-rule"))
         {
             const string abyssRuleName = "Abyss Lightless (Void)";
             var rules = _displayRules.All.ToList();
@@ -492,14 +492,14 @@ public sealed class RadarApp : IDisposable
                 _displayRules.Replace(rules);
                 Console.WriteLine("Display rules: seeded default Abyss Lightless (Void) monster rule.");
             }
-            _settings.AbyssRuleSeeded = true; _settings.Save();
+            _settings.AppliedMigrations.Add("seed:abyss-rule"); _settings.Save();
         }
         // One-time (v2): apply the curated icon glyphs to the STOCK display rules. Names are matched
         // SEPARATOR-INSENSITIVELY (normalized to lowercase alphanumerics) because the stock names contain a
         // "·" whose code point didn't match a literal key in the v1 pass — silently skipping Monster·Unique
         // and the chests. Each entry only retouches a rule still on its OLD default shape, so user
         // customizations are preserved; idempotent (already-applied rules no longer match their old shape).
-        if (!_settings.IconDefaultsApplied2)
+        if (!_settings.AppliedMigrations.Contains("seed:icon-defaults-v2"))
         {
             static string Norm(string s)
             {
@@ -530,13 +530,15 @@ public sealed class RadarApp : IDisposable
                 if (iconMap.TryGetValue(Norm(r.Name), out var m) && string.Equals(r.Shape, m.from, StringComparison.OrdinalIgnoreCase))
                 { r.Shape = m.to; changed++; }
             if (changed > 0) _displayRules.Replace(rules);
-            _settings.IconDefaultsApplied = true; _settings.IconDefaultsApplied2 = true; _settings.Save();
+            if (!_settings.AppliedMigrations.Contains("seed:icon-defaults-v1")) _settings.AppliedMigrations.Add("seed:icon-defaults-v1");
+            _settings.AppliedMigrations.Add("seed:icon-defaults-v2");
+            _settings.Save();
             Console.WriteLine($"Display rules: applied curated icon glyphs to {changed} stock rule(s).");
         }
         // One-time cleanup: the legacy "watched" defaults were seeded as Diamond, (any)-category rules placed
         // BEFORE the mechanic rules, so they shadowed them (everything drew as a diamond) — and the bare
         // "Ritual"/"Breach"/"Essence" mechanic matches with no category gate tagged the leagues' MONSTERS.
-        if (!_settings.RuleCleanupV1)
+        if (!_settings.AppliedMigrations.Contains("seed:rule-cleanup-v1"))
         {
             static bool AnyCat(DisplayRule r) => r.Categories is null or { Count: 0 };
             var rules = _displayRules.All.ToList();
@@ -562,13 +564,13 @@ public sealed class RadarApp : IDisposable
                 if (string.Equals(r.Shape, "Diamond", StringComparison.OrdinalIgnoreCase) && poiIcons.TryGetValue(r.Name, out var ic))
                     r.Shape = ic;
             _displayRules.Replace(rules);
-            _settings.RuleCleanupV1 = true; _settings.Save();
+            _settings.AppliedMigrations.Add("seed:rule-cleanup-v1"); _settings.Save();
             Console.WriteLine($"Display rules: cleanup removed {before - rules.Count} stale duplicate(s), gated mechanic rules, reskinned POIs.");
         }
         // One-time: give the non-monster mechanic/special rules a default in-game LABEL where they had none,
         // so their marker shows text (Expedition/Ritual/Breach already had labels from the legacy watched set;
         // Strongbox/Essence/Shrine/Transition/chests did not). Only fills an empty label (never overwrites).
-        if (!_settings.MechanicLabelsV1)
+        if (!_settings.AppliedMigrations.Contains("seed:mechanic-labels-v1"))
         {
             static string Norm(string s)
             {
@@ -586,12 +588,12 @@ public sealed class RadarApp : IDisposable
             foreach (var r in rules)
                 if (string.IsNullOrEmpty(r.Label) && labelMap.TryGetValue(Norm(r.Name), out var lbl)) { r.Label = lbl; n++; }
             if (n > 0) _displayRules.Replace(rules);
-            _settings.MechanicLabelsV1 = true; _settings.Save();
+            _settings.AppliedMigrations.Add("seed:mechanic-labels-v1"); _settings.Save();
             Console.WriteLine($"Display rules: added default labels to {n} non-monster rule(s).");
         }
         // One-time: broaden the ground-item categories from the old 4 to the full high-value set (now that
         // non-uniques actually price + draw). Only replaces the EXACT old default, so a custom set is kept.
-        if (!_settings.GroundDefaultsV2)
+        if (!_settings.AppliedMigrations.Contains("seed:ground-defaults-v2"))
         {
             var cur = _settings.GroundItems.Categories ?? new();
             var old = new HashSet<string>(new[] { "Uniques", "Runes", "Essences", "Currency" }, StringComparer.OrdinalIgnoreCase);
@@ -600,12 +602,12 @@ public sealed class RadarApp : IDisposable
                 _settings.GroundItems.Categories = new GroundItemSettings().Categories; // the new broad default
                 Console.WriteLine("Ground items: broadened category set to the full high-value default.");
             }
-            _settings.GroundDefaultsV2 = true; _settings.Save();
+            _settings.AppliedMigrations.Add("seed:ground-defaults-v2"); _settings.Save();
         }
         // One-time: bump monster Magic/Rare/Unique rule sizes — the Fang/Claw/Skull glyphs are far less
         // legible than the old flat shapes at the same radar size. Only retouches a rule still on its OLD
         // default size (within a small epsilon), so a size you've customized is preserved.
-        if (!_settings.IconSizesV1)
+        if (!_settings.AppliedMigrations.Contains("seed:icon-sizes-v1"))
         {
             static string Norm(string s)
             {
@@ -625,13 +627,14 @@ public sealed class RadarApp : IDisposable
                 if (sizeMap.TryGetValue(Norm(r.Name), out var m) && Math.Abs(r.Size - m.from) < 0.05f)
                 { r.Size = m.to; n++; }
             if (n > 0) _displayRules.Replace(rules);
-            _settings.IconSizesV1 = true; _settings.Save();
+            _settings.AppliedMigrations.Add("seed:icon-sizes-v1"); _settings.Save();
             Console.WriteLine($"Display rules: bumped {n} monster icon size(s) for glyph legibility.");
         }
         // One-time: seed OffScreenArrow=true on default Unique monster + Boss/Citadel-named rules so
         // new users get arrows out-of-the-box. Additive — never clears a flag the user already set.
-        // Gated by EntityArrowsSeeded so a user who clears the flag from the dashboard keeps it gone.
-        if (!_settings.EntityArrowsSeeded)
+        // Gated by "seed:entity-arrows" in AppliedMigrations so a user who clears the flag from the
+        // dashboard keeps it gone.
+        if (!_settings.AppliedMigrations.Contains("seed:entity-arrows"))
         {
             var rules = _displayRules.All.ToList();
             var n = 0;
@@ -644,7 +647,7 @@ public sealed class RadarApp : IDisposable
                 if (isUnique || hasBossOrCitadel) { r.OffScreenArrow = true; n++; }
             }
             if (n > 0) _displayRules.Replace(rules);
-            _settings.EntityArrowsSeeded = true; _settings.Save();
+            _settings.AppliedMigrations.Add("seed:entity-arrows"); _settings.Save();
             Console.WriteLine($"Display rules: seeded OffScreenArrow on {n} Unique/Boss/Citadel rule(s).");
         }
         _displayRulesGen = _displayRules.Generation;
@@ -1483,11 +1486,24 @@ public sealed class RadarApp : IDisposable
         var monoliths = worldFresh && mr.AreaHash == _areaHash
             ? mr.Markers : (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>();
 
+        // v0.20.1 T9: project the world-thread's already-computed selectedPaths list into the wire-format
+        // PathPolyline shape (float grid coords) for /api/paths + /stream. No new memory reads — this is
+        // the same list the Direct2D overlay draws in OverlayRenderer.DrawPaths. Skips the projection
+        // entirely when the list is empty (common case: no nav target selected) so the empty-state cost
+        // is a single Array.Empty<>() reference.
+        var pathsWire = selectedPaths.Count > 0
+            ? selectedPaths.Select(p => new PathPolyline(
+                p.Points.Select(pt => ((float)pt.x, (float)pt.y)).ToArray())).ToArray()
+            : Array.Empty<PathPolyline>();
+
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
             snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
             Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps,
-            RpmPerSec: _rpmPerSec);
+            RpmPerSec: _rpmPerSec)
+        {
+            Paths = pathsWire,
+        };
         _sse?.Publish(_state);
 
         var realActive = renderActive;   // SR-2: reuse focus check computed before the read block (avoids a second GetForegroundWindow call)
@@ -3021,7 +3037,7 @@ public sealed class RadarApp : IDisposable
         ("MapUniqueCastaway",          "#ff9933", false),
     };
 
-    // Default colour groups (#7), adopted from the plugin's Map Styles. Seeded once (AtlasGroupsSeeded).
+    // Default colour groups (#7), adopted from the plugin's Map Styles. Seeded once (guarded by "seed:atlas-groups" in AppliedMigrations).
     private static readonly (string Name, string Color, string[] Maps)[] DefaultAtlasGroups =
     {
         ("Citadels", "#e0b341", new[] { "The Copper Citadel", "The Iron Citadel", "The Stone Citadel" }),
@@ -3035,8 +3051,8 @@ public sealed class RadarApp : IDisposable
     /// <summary>One-time seed of the built-in "Map Targets" preset (#6): Citadels/Halls/uniques, matched by
     /// exact internal MapId and resolved to live display names so rules stay editable in the dashboard.
     /// ADDITIVE: only adds a tag/colour if not already present — never clears or overrides user rules.
-    /// Gated on <see cref="Poe2Atlas.AllTagsResolved"/> so the full node set is available. Sets
-    /// <see cref="RadarSettings.AtlasTargetsSeeded"/> + <see cref="RadarSettings.AtlasRulesInitialized"/>
+    /// Gated on <see cref="Poe2Atlas.AllTagsResolved"/> so the full node set is available. Adds
+    /// "seed:atlas-targets" + "seed:atlas-rules" to <see cref="RadarSettings.AppliedMigrations"/>
     /// and saves; subsequent calls are no-ops via the guard in BuildAtlasMarks.</summary>
     private void SeedAtlasDefaults(IReadOnlyList<Poe2Atlas.AtlasNodeLive> nodes)
     {
@@ -3066,17 +3082,17 @@ public sealed class RadarApp : IDisposable
                 _settings.AtlasHighlightColors[name] = color;
         }
 
-        _settings.AtlasTargetsSeeded  = true;
-        _settings.AtlasRulesInitialized = true; // locks out legacy Citadel-only re-seed too
+        if (!_settings.AppliedMigrations.Contains("seed:atlas-targets")) _settings.AppliedMigrations.Add("seed:atlas-targets");
+        if (!_settings.AppliedMigrations.Contains("seed:atlas-rules"))   _settings.AppliedMigrations.Add("seed:atlas-rules"); // locks out legacy Citadel-only re-seed too
 
         // Seed colour groups (#7): only if not already seeded and the list is empty (additive guard).
-        if (!_settings.AtlasGroupsSeeded)
+        if (!_settings.AppliedMigrations.Contains("seed:atlas-groups"))
         {
             _settings.AtlasGroups ??= new List<AtlasMapGroup>();
             if (_settings.AtlasGroups.Count == 0)
                 foreach (var (name, color, maps) in DefaultAtlasGroups)
                     _settings.AtlasGroups.Add(new AtlasMapGroup { Name = name, Color = color, Maps = new List<string>(maps) });
-            _settings.AtlasGroupsSeeded = true;
+            _settings.AppliedMigrations.Add("seed:atlas-groups");
         }
 
         _settings.Save();
@@ -3168,7 +3184,7 @@ public sealed class RadarApp : IDisposable
         // edits the rules from the dashboard. Boss is intentionally NOT defaulted (too common). Wait until
         // tag resolution has caught up (it's budget-limited per tick) so we seed ALL citadels, not just the
         // first batch resolved.
-        if (!_settings.AtlasRulesInitialized && _atlas.AllTagsResolved)
+        if (!_settings.AppliedMigrations.Contains("seed:atlas-rules") && _atlas.AllTagsResolved)
         {
             var cit = nodes.Where(n => !string.IsNullOrEmpty(n.MapName) && n.MapName.Contains("Citadel", StringComparison.OrdinalIgnoreCase))
                            .Select(n => n.MapName).Distinct().ToList();
@@ -3178,7 +3194,7 @@ public sealed class RadarApp : IDisposable
                 _settings.AtlasNavTags = new List<string>(cit);       // + auto-route to them
                 _settings.AtlasArrowTags = new List<string>(cit);     // + off-screen arrow
                 foreach (var c in cit) _settings.AtlasHighlightColors[c] = "#e0b341"; // Citadel gold
-                _settings.AtlasRulesInitialized = true;
+                _settings.AppliedMigrations.Add("seed:atlas-rules");
                 _settings.Save();
             }
         }
@@ -3186,7 +3202,7 @@ public sealed class RadarApp : IDisposable
         // One-time "Map Targets" preset (#6): additively seed Citadels/Halls/uniques by exact MapId,
         // resolved to live display names so they're editable in the dashboard. Runs independently of the
         // legacy Citadel seed above — the additive "only if absent" guard ensures no double-entry conflict.
-        if (!_settings.AtlasTargetsSeeded && _atlas.AllTagsResolved)
+        if (!_settings.AppliedMigrations.Contains("seed:atlas-targets") && _atlas.AllTagsResolved)
         {
             SeedAtlasDefaults(nodes);
         }
@@ -3414,7 +3430,8 @@ public sealed class RadarApp : IDisposable
         _settings.AtlasNavTags = navs;
         _settings.AtlasArrowTags = arrows;
         _settings.AtlasHighlightColors = colors;
-        _settings.AtlasRulesInitialized = true;   // any explicit edit locks out the Citadel default-seed
+        if (!_settings.AppliedMigrations.Contains("seed:atlas-rules"))
+            _settings.AppliedMigrations.Add("seed:atlas-rules");   // any explicit edit locks out the Citadel default-seed
         _settings.Save();
     }
 

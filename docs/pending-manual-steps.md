@@ -12,7 +12,6 @@
 
 | # | Item | What it unlocks | What LO does | Rough time | Blocks roadmap items |
 |---|---|---|---|---|---|
-| 1 | **Vitals offset re-validation** | Refreshes the shipped Life/Mana/ES offsets for the current PoE2 patch and updates the README compatibility badge | Launch PoE2 → open `POE2Radar.Research` → run `--vitals`; copy resolved offsets into `Poe2Offsets.cs:122`; screenshot for README badge context | 15 min | v0.20.1 tag (Short List #1) |
 | 2 | **Atlas icon PNG harvest** | Fills the empty `atlas-icons.json` slot values (currently all `""` with placeholder `_note`) so fogged-node content icons stop rendering blank | Enter each atlas mechanic zone once (Expedition, Ritual, Breach, Delirium, Harvest, Essence, plus pinnacle/citadel/waypoint variants); screenshot each map icon, crop to 32×32 PNG, name per the `_note` scheme; drop into `src/POE2Radar.Overlay/Web/Assets/atlas-icons/` and update the JSON | 2-3 hrs | Downstream cleanliness of Short List #7 (dashboard polish) + browser views Long List #37, #39 |
 | 3 | **v0.20.1 "Roadclearing" RC smoke tester coordination** | Real gameplay QA before tagging v0.20.1 | Hand `v0.20.1-rc.1` to two Discord regulars (natural fit: Diamondsr + torx per credits); collect 30-min-of-mapping report; sign off the smoke checklist | ~1 day round-trip | v0.20.1 public tag |
 | 4 | **Real player-heading Research probe** | Lets us drop the velocity-fallback and ship a real facing angle for the arrow + path polyline correctness | Run `POE2Radar.Research --heading` variants in-game; walk cardinal directions and record the field that tracks it independently of movement; hand LO the offset for `Poe2Offsets.cs` | 30-45 min | Long List #30 (real player heading) → gates cleaner Long List #19 (path polylines) look-ahead |
@@ -28,4 +27,4 @@
 
 ## Done
 
-*Nothing yet — first roadmap.*
+- **2026-07-07 — Vitals offset re-validation** for PoE2 0.5.4 (unblocked v0.20.1 tag; Short List #1). LO confirmed shipped Life/Mana/ES constants are current with no drift since the 2026-07-02 ES slide (0x248→0x264 already captured). No Research run needed. TODO comment at `Poe2Offsets.cs:122` rewritten as a re-validation event note; README badge held at 0.5.4.

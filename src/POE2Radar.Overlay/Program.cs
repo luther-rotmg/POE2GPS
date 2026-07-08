@@ -78,7 +78,7 @@ if (startupSettings.AutoUpdate.Mode != "off")
     updateTask = System.Threading.Tasks.Task.Run(() => UpdateChecker.CheckAsync());
 if (startupSettings.AutoUpdate.Mode == "silent" && installDir != null)
     _ = System.Threading.Tasks.Task.Run(() =>
-        POE2Radar.Overlay.Update.AutoUpdater.CheckAndStageAsync("silent", UpdateChecker.Current, installDir, System.Threading.CancellationToken.None, precheck: updateTask));
+        POE2Radar.Overlay.Update.AutoUpdater.CheckAndStageAsync("silent", UpdateChecker.Current, installDir, System.Threading.CancellationToken.None, precheck: updateTask, settings: startupSettings));
 
 using var app = new RadarApp(process, reader, updateTask);
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; app.RequestShutdown(); };

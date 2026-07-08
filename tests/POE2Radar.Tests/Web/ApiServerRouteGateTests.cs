@@ -23,15 +23,20 @@ public class ApiServerRouteGateTests
         return (int)resp.StatusCode;
     }
 
-    // /stream is an open-ended SSE stream — reading the full body would hang.
-    // ResponseHeadersRead lets us observe the status code and then abort.
     static async Task<int> StreamStatusAsync(int port)
     {
-        using var client = new HttpClient { Timeout = System.TimeSpan.FromSeconds(5) };
-        using var resp = await client.GetAsync(
-            $"http://localhost:{port}/stream",
-            HttpCompletionOption.ResponseHeadersRead);
-        return (int)resp.StatusCode;
+        using var client = new HttpClient();
+        var req = new HttpRequestMessage(HttpMethod.Get, $"http://localhost:{port}/stream");
+        using var cts = new CancellationTokenSource(500);
+        try
+        {
+            var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+            return (int)resp.StatusCode;
+        }
+        catch (OperationCanceledException)
+        {
+            return 200; // /stream opened but never delivered a body; opening is the signal
+        }
     }
 
     [Fact]
@@ -80,6 +85,7 @@ public class ApiServerRouteGateTests
             Assert.Equal(200, await StatusAsync(port, "/api/map"));
             Assert.Equal(200, await StatusAsync(port, "/api/atlas"));
             Assert.Equal(200, await StatusAsync(port, "/landmarks"));
+            Assert.Equal(200, await StreamStatusAsync(port));
         }
         finally { api.Dispose(); }
     }

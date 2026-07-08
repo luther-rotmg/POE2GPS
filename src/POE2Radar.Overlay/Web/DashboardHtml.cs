@@ -27,6 +27,7 @@ internal static class DashboardHtml
     --blood:#9c342a; --blood-bright:#d6584a;
     --rare:#f1e36b; --magic:#7f93ff; --unique:#d2641e; --normal:#cdc6b4;
     --good:#79b06a; --poi:#4bb3c4;
+    --danger:#f66; --muted:#4a525c; --bg-alt:#1a1a1a;
     --shadow:0 18px 40px -20px rgba(0,0,0,.9);
   }
   *{box-sizing:border-box}
@@ -199,6 +200,7 @@ internal static class DashboardHtml
   /* ── console / control panel ── */
   .panel-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:22px; align-items:start}
   .card{border:1px solid var(--line); border-radius:4px; background:var(--panel); padding:18px 22px; box-shadow:var(--shadow)}
+  .card-title{font-family:Consolas,monospace; font-size:13px; color:var(--fg,var(--ink)); margin:0 0 8px 0; padding:0; font-weight:600}
   .card h3{font-family:"Cinzel","Georgia",serif; font-size:12px; letter-spacing:.2em; text-transform:uppercase; color:var(--gold); margin:0 0 8px}
   .card h3 .tag{color:var(--ink-faint); font-size:10px; letter-spacing:.1em}
   .row{display:flex; align-items:center; justify-content:space-between; gap:16px; padding:11px 0; border-bottom:1px dotted var(--line-soft)}
@@ -1026,6 +1028,10 @@ internal static class DashboardHtml
               </select>
             </label>
             <div id="au-pending" class="muted" style="margin-top:6px"></div>
+            <div class="row"><div class="rl">Update channel<small>stable = /releases/latest (default). preview = pick the newest GitHub prerelease. Needs an app restart to apply.</small></div>
+              <select data-set="updateChannel"><option value="stable">stable</option><option value="preview">preview (RC)</option></select></div>
+            <div class="row"><div class="rl">Update URL override<small>Custom release-list URL. Leave blank for the default GitHub endpoint. Useful for mainland/VPN users on a Gitee mirror. Needs an app restart to apply.</small></div>
+              <input type="text" data-set="updateUrl" placeholder="https://api.github.com/repos/luther-rotmg/POE2GPS/releases/latest" style="width:280px"></div>
             <p class="muted" style="margin-top:6px">Updates come only from github.com/luther-rotmg/POE2GPS over HTTPS (SHA-256 verified). No telemetry, no pricing.</p>
           </div>
         </div>
@@ -2008,7 +2014,7 @@ function renderAtlasHighlight(d){
   });
   const sa=key=> atlasHlSort.key===key ? (atlasHlSort.dir<0?' ▼':' ▲') : '';
   const cell='display:grid;grid-template-columns:30px 30px 34px 1fr 50px 90px;gap:8px;align-items:center;padding:5px 9px';
-  let html='<div style="'+cell+';position:sticky;top:0;background:var(--panel,#1a1a1a);border-bottom:1px solid var(--line);font-weight:600;font-size:11px;text-transform:uppercase;opacity:.75">'
+  let html='<div style="'+cell+';position:sticky;top:0;background:var(--panel,var(--bg-alt));border-bottom:1px solid var(--line);font-weight:600;font-size:11px;text-transform:uppercase;opacity:.75">'
     +'<span data-sort="trk" title="Highlight: ring the map in-game (click to sort)" style="cursor:pointer">&#9745;'+sa('trk')+'</span>'
     +'<span data-sort="nav" title="Nav-to: draw a route to it (click to sort)" style="cursor:pointer">&#8674;'+sa('nav')+'</span>'
     +'<span data-sort="arw" title="Arrow: edge arrow toward it when off-screen (click to sort)" style="cursor:pointer">&#10148;'+sa('arw')+'</span>'
@@ -2019,8 +2025,8 @@ function renderAtlasHighlight(d){
     const key=r.title.toLowerCase(); const trk=atlasHl.has(key), nav=atlasNav.has(key), arw=atlasArrow.has(key);
     return '<div class="hlrow" data-tag="'+esc(r.title)+'" title="click row = toggle Highlight" style="'+cell+';cursor:pointer;border-bottom:1px solid var(--line)'+((trk||nav||arw)?';background:rgba(60,160,255,.14)':'')+'">'
       +'<span style="font-size:15px">'+(trk?'☑':'☐')+'</span>'
-      +'<span class="hlnav" data-tag="'+esc(r.title)+'" title="toggle nav-to (route)" style="font-size:15px;cursor:pointer;color:'+(nav?'#3ddc97':'#4a525c')+'">&#8674;</span>'
-      +'<span class="hlarw" data-tag="'+esc(r.title)+'" title="toggle off-screen arrow" style="font-size:15px;cursor:pointer;color:'+(arw?'#e0b341':'#4a525c')+'">➤</span>'
+      +'<span class="hlnav" data-tag="'+esc(r.title)+'" title="toggle nav-to (route)" style="font-size:15px;cursor:pointer;color:'+(nav?'#3ddc97':'var(--muted)')+'">&#8674;</span>'
+      +'<span class="hlarw" data-tag="'+esc(r.title)+'" title="toggle off-screen arrow" style="font-size:15px;cursor:pointer;color:'+(arw?'#e0b341':'var(--muted)')+'">➤</span>'
       +'<span title="'+esc(r.title)+'">'+esc(r.title)+'</span>'
       +'<span class="amono" style="text-align:right">'+r.count+'</span>'
       +'<span>'+catBadge(r.cat)+'</span></div>';
@@ -2337,7 +2343,7 @@ async function renderLanInfo(){
     const box=document.getElementById('lanUrls'); if(!box) return;
     if(!li.addresses||!li.addresses.length){ box.innerHTML='<code style="font-size:12px;color:var(--ink-faint)">no LAN address detected</code>'; return; }
     const note = li.bindFailed
-      ? '<small style="color:#f66">LAN bind failed &mdash; running loopback-only. Restart POE2GPS as administrator.</small>'
+      ? '<small style="color:var(--danger)">LAN bind failed &mdash; running loopback-only. Restart POE2GPS as administrator.</small>'
       : (li.bound==='lan' ? '' : '<small style="color:var(--ink-faint)">LAN access is off &mdash; toggle it on above, then restart.</small>');
     box.textContent='';
     const dim = li.bound!=='lan';
@@ -2595,7 +2601,23 @@ $('#kbReset')?.addEventListener('click',async()=>{
     const view=document.querySelector('[data-view="settings"]'); if(!view) return;
     view.querySelectorAll('.card').forEach(card=>{
       if(card.id==='statusCard'||card.id==='qsCard'){ card.hidden=false; return; }
-      card.hidden = !!(q && !card.textContent.toLowerCase().includes(q));
+
+      // Reset any prior no-match hide so this iteration can unhide it if it now matches.
+      card.hidden = false;
+
+      // Empty query → everything visible; nothing more to do.
+      if (!q) return;
+
+      // Scope search corpus based on collapse state: collapsed cards match on title only,
+      // since their body is display:none via `.card.collapsed > :not(h3) { display: none }`.
+      const isCollapsed = card.classList.contains('collapsed');
+      const corpus = isCollapsed
+        ? (card.querySelector('h3')?.textContent ?? '')
+        : card.textContent;
+
+      if (corpus.toLowerCase().indexOf(q) === -1) {
+        card.hidden = true;
+      }
     });
   }
 

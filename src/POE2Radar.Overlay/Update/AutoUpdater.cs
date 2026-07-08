@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text.Json;
 using POE2Radar.Core.Update;
+using POE2Radar.Overlay.Config;
 
 namespace POE2Radar.Overlay.Update;
 
@@ -37,13 +38,26 @@ internal static class AutoUpdater
 
     // ─────────────────────────── background check + stage (never blocks startup) ───────────────────────────
 
-    public static async Task CheckAndStageAsync(string mode, string current, string installDir, CancellationToken ct, Task<UpdateChecker.Result>? precheck = null)
+    public static async Task CheckAndStageAsync(string mode, string current, string installDir, CancellationToken ct, Task<UpdateChecker.Result>? precheck = null, RadarSettings? settings = null)
     {
         if (mode != "silent") return;
         try
         {
-            var res = precheck != null ? await precheck : await UpdateChecker.CheckAsync();
-            if (res.Latest is not { Length: > 0 } tag || !AutoUpdatePolicy.IsNewer(current, tag)) return;
+            // Discovery URL selection: when the user is on the preview (RC) channel OR has set a custom
+            // release-list URL, take the settings-aware path (fetches directly, honouring the override
+            // and the /releases list schema). Otherwise reuse the precheck the banner already fired so
+            // stable-default users still make exactly ONE GitHub request per launch (unchanged v0.20.0
+            // behaviour — byte-for-byte the same call).
+            var preview = settings != null &&
+                          string.Equals(settings.UpdateChannel, "preview", StringComparison.OrdinalIgnoreCase);
+            var overrideUrl = settings?.UpdateUrl;
+            var useCustomPath = preview || !string.IsNullOrWhiteSpace(overrideUrl);
+
+            string? tag;
+            if (useCustomPath) tag = await ResolveTargetTagAsync(preview, overrideUrl, ct);
+            else               tag = (precheck != null ? await precheck : await UpdateChecker.CheckAsync()).Latest;
+
+            if (tag is not { Length: > 0 } || !AutoUpdatePolicy.IsNewer(current, tag)) return;
 
             var state = ReadState(installDir);
             if (!AutoUpdatePolicy.ShouldAttempt(state, tag)) return;
@@ -55,6 +69,90 @@ internal static class AutoUpdater
             else    { BumpFailure(installDir, tag); }
         }
         catch { /* offline / rate-limited / IO — try again next launch */ }
+    }
+
+    /// <summary>
+    /// Fetch the release-discovery URL and pull out a target tag. Preview channel scans /releases and
+    /// returns the newest prerelease by <c>published_at</c> desc; if no prerelease exists we fall back
+    /// to the default <c>/releases/latest</c> endpoint so the user is never left updateless. Stable
+    /// channel just parses <c>tag_name</c> off the single release object /releases/latest returns.
+    /// </summary>
+    private static async Task<string?> ResolveTargetTagAsync(bool preview, string? urlOverride, CancellationToken ct)
+    {
+        var listUrl = AutoUpdatePolicy.Resolve(preview, urlOverride);
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("POE2GPS-UpdateCheck");
+        http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+
+        var json = await http.GetStringAsync(listUrl, ct).ConfigureAwait(false);
+        var tag = preview ? PickNewestPrerelease(json) : ParseLatest(json);
+
+        // Preview-channel fallback: no prerelease published yet → treat as if channel were stable for
+        // this cycle (matches the "never leave the user updateless" invariant in the plan). Only fires
+        // when we control the URL — an overridden URL might not offer /releases/latest, so we honour
+        // whatever list-shape it returns instead of hitting a possibly-nonexistent path.
+        if (preview && tag is null && string.IsNullOrWhiteSpace(urlOverride))
+        {
+            var fallback = AutoUpdatePolicy.Resolve(preview: false, urlOverride: null);
+            var fjson = await http.GetStringAsync(fallback, ct).ConfigureAwait(false);
+            tag = ParseLatest(fjson);
+        }
+
+        return tag;
+    }
+
+    /// <summary>Parse the tag off a single-release object (the /releases/latest schema).</summary>
+    internal static string? ParseLatest(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty("tag_name", out var t))
+                return t.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    /// <summary>Pick the newest prerelease's tag from a /releases list, ordered by <c>published_at</c>
+    /// descending. Returns null if no prerelease is present.</summary>
+    internal static string? PickNewestPrerelease(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+
+            string? bestTag = null;
+            DateTimeOffset bestTs = DateTimeOffset.MinValue;
+            var haveTs = false;
+
+            foreach (var e in doc.RootElement.EnumerateArray())
+            {
+                if (!e.TryGetProperty("prerelease", out var pr) || pr.ValueKind != JsonValueKind.True) continue;
+                var tagEl = e.TryGetProperty("tag_name", out var t) ? t : default;
+                if (tagEl.ValueKind != JsonValueKind.String) continue;
+                var tag = tagEl.GetString();
+                if (string.IsNullOrEmpty(tag)) continue;
+
+                // Prefer published_at ordering (matches the "picks the newest prerelease via published_at
+                // desc" contract). Fall back to list order for entries missing the timestamp so a draft-y
+                // release still surfaces something to compare instead of dropping every candidate.
+                if (e.TryGetProperty("published_at", out var pubEl) && pubEl.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(pubEl.GetString(), out var ts))
+                {
+                    if (!haveTs || ts > bestTs) { bestTs = ts; bestTag = tag; haveTs = true; }
+                }
+                else if (!haveTs && bestTag is null)
+                {
+                    bestTag = tag;
+                }
+            }
+            return bestTag;
+        }
+        catch { }
+        return null;
     }
 
     private static async Task<bool> TryStageAsync(string tag, string installDir, CancellationToken ct)

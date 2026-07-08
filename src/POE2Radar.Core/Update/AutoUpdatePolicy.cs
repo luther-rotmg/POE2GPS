@@ -10,6 +10,24 @@ public static class AutoUpdatePolicy
     /// <summary>Per-target retry state persisted next to the exe (JSON). A NEW target resets the gate.</summary>
     public record UpdateState(string TargetVersion, int Failures);
 
+    // Default release-discovery URLs. Kept internal (not const-exposed publicly) so the tests in the
+    // sibling test assembly can pin them via InternalsVisibleTo-free access through Resolve(), while
+    // downstream callers stay funnelled through Resolve() for uniform override handling.
+    internal const string DefaultLatestUrl   = "https://api.github.com/repos/luther-rotmg/POE2GPS/releases/latest";
+    internal const string DefaultReleasesUrl = "https://api.github.com/repos/luther-rotmg/POE2GPS/releases";
+
+    /// <summary>
+    /// Resolve the release-discovery URL based on channel + optional override.
+    /// stable = <c>/releases/latest</c> (single-release JSON); preview = <c>/releases</c> (list — the
+    /// caller filters for the newest prerelease). A non-empty <paramref name="urlOverride"/> wins over
+    /// both, for mainland/VPN users on a mirror or self-hosted testers on a private endpoint.
+    /// </summary>
+    public static string Resolve(bool preview, string? urlOverride)
+    {
+        if (!string.IsNullOrWhiteSpace(urlOverride)) return urlOverride!;
+        return preview ? DefaultReleasesUrl : DefaultLatestUrl;
+    }
+
     /// <summary>True iff <paramref name="latest"/> is a strictly higher semver than <paramref name="current"/>.</summary>
     public static bool IsNewer(string current, string latest)
     {

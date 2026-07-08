@@ -396,7 +396,7 @@ public sealed class ApiServer : IDisposable
                         break;
                     }
                     var applied = ApplySettings(ReadBody(ctx));
-                    var restartKeys = new[] { "allowLanAccess", "enableWebMap", "enableWebObs" };
+                    var restartKeys = new[] { "allowLanAccess", "enableWebMap", "enableWebObs", "updateChannel", "updateUrl" };
                     var restartRequired = System.Array.FindAll(applied, k => System.Array.IndexOf(restartKeys, k) >= 0);
                     Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, applied, restartRequired, settings = ReadSettings() }, Json));
                 }
@@ -1049,6 +1049,21 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/paths":
+            {
+                // v0.20.1 T9: current selected-target route polylines for /map and /obs. Same OR-gate
+                // as the other data endpoints so /obs alone can fetch paths without enabling /map.
+                // Payload matches the `paths` field on /stream (SseChannel.SnapshotForBrowser) so
+                // clients can seed on connect + stay in sync from the SSE deltas.
+                if (!_settings.EnableWebMap && !_settings.EnableWebObs) { NotFound(ctx); break; }
+                var pathsJson = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    paths = s.Paths.Select(p => new { points = p.Points.Select(pt => new { x = pt.x, y = pt.y }) })
+                }, Json);
+                WriteMaybeGzipped(ctx, pathsJson, "application/json; charset=utf-8");
+                break;
+            }
+
             case "/api/map":
             {
                 // v0.20.0 T5: same OR-gate — the shared renderer needs terrain from either entry point.
@@ -1223,6 +1238,8 @@ public sealed class ApiServer : IDisposable
         allowLanAccess = _settings.AllowLanAccess, // opt-in LAN view binding; needs a restart to apply
         enableWebMap = _settings.EnableWebMap,
         enableWebObs = _settings.EnableWebObs,
+        updateChannel = _settings.UpdateChannel, // stable|preview — restart to apply
+        updateUrl = _settings.UpdateUrl,         // null (default) = built-in GitHub API; restart to apply
         styles = _settings.Styles,   // per-item icon shapes/colors/sizes + mechanic overrides
         hpBars = _settings.HpBars,   // monster HP-bar geometry (width/height/offset)
         terrain = _settings.Terrain, // walkable-terrain bitmap colors/transparency
@@ -1272,7 +1289,7 @@ public sealed class ApiServer : IDisposable
         atlasContentIconSize     = _settings.AtlasContentIconSize,
         // Off-screen entity arrows: whole settings object + seeded flag (so dashboard can read state).
         entityArrows             = _settings.EntityArrows,
-        entityArrowsSeeded       = _settings.EntityArrowsSeeded,
+        entityArrowsSeeded       = _settings.AppliedMigrations.Contains("seed:entity-arrows"),
         // OBS overlay + Discord Presence settings. ClientId is intentionally omitted from the GET
         // response — it is write-only (set via POST) and must not appear in screenshots or streams.
         obsOverlay               = _settings.ObsOverlay,
@@ -1321,6 +1338,15 @@ public sealed class ApiServer : IDisposable
                 case "intelligentTargetCycling" when TryBool(p.Value, out var b): _settings.IntelligentTargetCycling = b; applied.Add(p.Name); break;
                 case "showMonolithPanel" when TryBool(p.Value, out var b): _settings.Monoliths.ShowPanel = b; applied.Add(p.Name); break;
                 case "contributeUrl" when TryString(p.Value, out var s): _settings.ContributeUrl = s.Trim(); applied.Add(p.Name); break;
+                // Auto-update channel + URL override (v0.20.1). Both restart-required — the updater
+                // reads them once during Program startup. Channel is whitelisted to {stable,preview}
+                // so a malformed POST can't wedge the updater on an unknown mode; a blank/whitespace
+                // updateUrl POST is normalised to null so an empty dashboard field resets the override.
+                case "updateChannel" when TryString(p.Value, out var uc) && (uc == "stable" || uc == "preview"):
+                    _settings.UpdateChannel = uc; applied.Add(p.Name); break;
+                case "updateUrl" when TryStringOrNull(p.Value, out var uu):
+                    _settings.UpdateUrl = string.IsNullOrWhiteSpace(uu) ? null : uu!.Trim();
+                    applied.Add(p.Name); break;
                 case "fpsCap" when TryInt(p.Value, out var n): _settings.FpsCap = Math.Clamp(n, 15, 360); applied.Add(p.Name); break;
                 case "hpBarNormal" when TryBool(p.Value, out var b): _settings.HpBarNormal = b; applied.Add(p.Name); break;
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
@@ -1397,7 +1423,12 @@ public sealed class ApiServer : IDisposable
                 case "enableWebObs" when TryBool(p.Value, out var eo): _settings.EnableWebObs = eo; applied.Add(p.Name); break;
                 // Atlas colour groups (#7): the dashboard re-POSTs the full array on edit.
                 case "atlasGroups" when p.Value.ValueKind == JsonValueKind.Array:
-                    if (TryParseAtlasGroups(p.Value, out var atlasGrps)) { _settings.AtlasGroups = atlasGrps; _settings.AtlasGroupsSeeded = true; applied.Add(p.Name); }
+                    if (TryParseAtlasGroups(p.Value, out var atlasGrps)) {
+                        _settings.AtlasGroups = atlasGrps;
+                        if (!_settings.AppliedMigrations.Contains("seed:atlas-groups"))
+                            _settings.AppliedMigrations.Add("seed:atlas-groups");
+                        applied.Add(p.Name);
+                    }
                     break;
                 case "atlasRouteArrowSpacing" when TryFloat(p.Value, out var f): _settings.AtlasRouteArrowSpacing = Math.Clamp(f, 2f, 60f); applied.Add(p.Name); break;
                 case "atlasShowContentIcons" when TryBool(p.Value, out var b): _settings.AtlasShowContentIcons = b; applied.Add(p.Name); break;
@@ -2226,6 +2257,17 @@ public sealed class ApiServer : IDisposable
         v = ""; return false;
     }
 
+    /// <summary>Nullable-string variant of <see cref="TryString"/>: accepts a JSON string OR JSON null.
+    /// Used for optional-override settings (e.g. <c>updateUrl</c>) where the dashboard clears the field
+    /// by POSTing <c>null</c> (or an empty string, normalised by the caller). Existing <c>TryString</c>
+    /// callers still require a non-null value, so their contract is unchanged.</summary>
+    private static bool TryStringOrNull(JsonElement e, out string? v)
+    {
+        if (e.ValueKind == JsonValueKind.Null)   { v = null; return true; }
+        if (e.ValueKind == JsonValueKind.String) { v = e.GetString(); return true; }
+        v = null; return false;
+    }
+
     private static bool TryFloat(JsonElement e, out float v)
     {
         if (e.ValueKind == JsonValueKind.Number && e.TryGetSingle(out v)) return true;
@@ -2351,6 +2393,12 @@ public sealed class ApiServer : IDisposable
     }
 }
 
+/// <summary>One selected navigation route projected to a wire-format polyline. Grid-space coordinates
+/// (matches how the native Direct2D overlay draws in <c>OverlayRenderer.DrawPaths</c>); consumers on the
+/// browser side project them the same way the terrain map is projected. Additive wire field — v0.20.0
+/// clients ignore it silently, so the record is defined here alongside <see cref="RadarState"/>.</summary>
+public sealed record PathPolyline(IReadOnlyList<(float x, float y)> Points);
+
 /// <summary>Immutable snapshot published by the tick loop for the API to serve.</summary>
 public sealed record RadarState(
     bool InGame,
@@ -2391,4 +2439,10 @@ public sealed record RadarState(
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,
             Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), 100, 100, 100, "", "", 0);
+
+    /// <summary>v0.20.1 T9: selected-target route polylines, projected from
+    /// <c>OverlayRenderer.ctx.SelectedPaths</c> in <c>RadarApp.Tick()</c> without any new memory reads.
+    /// Defaults to an empty array (never null) so wire-format projection is O(1) when no targets are
+    /// selected. Set via object initializer on the <see cref="RadarState"/> construction site.</summary>
+    public IReadOnlyList<PathPolyline> Paths { get; init; } = Array.Empty<PathPolyline>();
 }

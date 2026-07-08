@@ -120,17 +120,11 @@ public sealed class RadarSettings
     // Per-rule ring colour (tag → "#RRGGBB"), so each highlighted map draws in its filter's category
     // colour in-game (Citadel gold, Boss red, …). Set from the dashboard alongside AtlasHighlightTags.
     public Dictionary<string, string> AtlasHighlightColors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-    // Seeded-defaults guard: false until the atlas rules have been initialized once (either by seeding
-    // the Citadel defaults when nodes are first read, or by any dashboard edit). Stops re-seeding.
-    public bool AtlasRulesInitialized { get; set; }
-    // Guard for the built-in "Map Targets" preset (#6): set true after SeedAtlasDefaults runs once
-    // (gated on AllTagsResolved). Never re-seeds — user edits from the dashboard persist independently.
-    public bool AtlasTargetsSeeded { get; set; }
     // Map colour groups (#7): named sets of map display names → one ring/label colour, so a whole category
     // (Citadels, Halls, Uniques, Expedition) recolours together. Seeded with sensible defaults once
-    // (AtlasGroupsSeeded). A node in a group draws in the group colour when it has no per-rule colour.
+    // (guarded by "seed:atlas-groups" in AppliedMigrations). A node in a group draws in the group colour
+    // when it has no per-rule colour.
     public List<AtlasMapGroup> AtlasGroups { get; set; } = new();
-    public bool AtlasGroupsSeeded { get; set; }
     // DEBUG: draw EVERY atlas node (overriding the highlight-only rule) — for offset/coverage diagnostics.
     // Off by default: normally only nodes matching AtlasHighlightTags (or manually selected) are drawn.
     public bool AtlasDrawAll { get; set; } = false;
@@ -162,30 +156,15 @@ public sealed class RadarSettings
     public bool AtlasShowContentIcons { get; set; } = true;
     public float AtlasContentIconSize { get; set; } = 26f;
 
-    // One-time guard: false until the default "Abyss Lightless (Void)" monster display rule has been
-    // seeded into display_rules.json. Set true after seeding so a user who deletes the rule keeps it gone.
-    public bool AbyssRuleSeeded { get; set; }
-
-    // One-time guard: false until the curated icon glyphs have been applied to the stock display rules
-    // (Skull/Crown/Chest/MapPin/…). The migration only retouches rules still on their OLD default shape,
-    // so user customizations are preserved; set true afterward so it runs at most once.
-    public bool IconDefaultsApplied { get; set; }
-    // v2 guard: re-runs the icon migration with separator-insensitive name matching (the v1 pass missed the
-    // rules whose names contain "·" due to a code-point mismatch) and the monster Magic/Rare glyphs.
-    public bool IconDefaultsApplied2 { get; set; }
-    // One-time guard: removes the stale legacy "watched" Diamond rules that duplicated (and shadowed) the
-    // mechanic rules, gates Ritual/Breach/Essence to Object/Other so they can't tag league monsters, and
-    // reskins the remaining navigation-POI diamonds. Set true afterward so it runs at most once.
-    public bool RuleCleanupV1 { get; set; }
-    // One-time guard: gives the non-monster mechanic/special rules a default in-game LABEL where they had
-    // none (Strongbox/Essence/Shrine/Transition/chest rarities), so the marker shows text, not just an icon.
-    public bool MechanicLabelsV1 { get; set; }
-    // One-time guard: broadens the ground-item category set from the old {Uniques,Runes,Essences,Currency}
-    // to the full high-value set, now that non-uniques actually price + draw.
-    public bool GroundDefaultsV2 { get; set; }
-    // One-time guard: bumps the monster Magic/Rare/Unique rule sizes — the detailed Fang/Claw/Skull glyphs
-    // need ~1.5× the size the old flat shapes used to be legible at radar scale.
-    public bool IconSizesV1 { get; set; }
+    // Applied one-shot migrations (v0.20.1 T12): replaces the 11 per-migration bool guards
+    // (AtlasRulesInitialized, AtlasTargetsSeeded, AtlasGroupsSeeded, AbyssRuleSeeded,
+    // IconDefaultsApplied, IconDefaultsApplied2, RuleCleanupV1, MechanicLabelsV1, GroundDefaultsV2,
+    // IconSizesV1, EntityArrowsSeeded) that used to live here. Grows monotonically as new one-shot
+    // seeds land. On load, <see cref="SettingsMigrator.Migrate"/> reads any legacy bool that was
+    // <c>true</c> in an older config and appends the matching key here, so guarded seed actions
+    // don't re-fire on the first v0.20.1 launch. See <c>SettingsMigrator.Map</c> for the full
+    // legacy-bool → key mapping.
+    public List<string> AppliedMigrations { get; set; } = new();
 
     // Onboarding: false until the user has dismissed or applied the first-run quick-start card.
     // Existing users see it once on upgrade (it's dismissible + informative); no migration guard needed
@@ -220,6 +199,16 @@ public sealed class RadarSettings
     //    "silent" = check + download + apply on next launch. Default "silent" (owner-approved; disclosed
     //    in README + release notes). This supersedes the legacy CheckForUpdates bool (migrated in Load()).
     public AutoUpdateSettings AutoUpdate { get; set; } = new();
+
+    /// <summary>Update channel: "stable" (default; /releases/latest) or "preview" (RC track;
+    /// scans /releases for the newest prerelease). Anything else is treated as "stable" by the
+    /// updater. Needs an app restart to apply (checked once during startup staging).</summary>
+    public string UpdateChannel { get; set; } = "stable";
+
+    /// <summary>Optional override for the release-discovery URL. null (default) = use the built-in
+    /// GitHub API endpoint. For mainland/VPN users on a Gitee mirror or self-hosted testers pointing
+    /// at a private endpoint. Needs an app restart to apply.</summary>
+    public string? UpdateUrl { get; set; } = null;
 
     // ── God-Roll Detector (experimental). ──
     // Read inventory on a slow cadence and score each item 0–100 against your stat weights. OFF by
@@ -273,9 +262,8 @@ public sealed class RadarSettings
     public PreloadAlertSettings PreloadAlert { get; set; } = new();
 
     // ── Off-screen entity arrows: edge arrows pointing toward rule-flagged entities outside the visible radar area. ──
+    // Seed guard lives in AppliedMigrations as "seed:entity-arrows" (v0.20.1 T12).
     public EntityArrowSettings EntityArrows { get; set; } = new();
-    // One-time guard: false until OffScreenArrow=true has been seeded onto Unique+Boss/Citadel rules.
-    public bool EntityArrowsSeeded { get; set; }
 
     // ── OBS browser-source overlay (ExcludeFromCapture OFF path): the per-corner chip that renders
     //    session stats into OBS via the /obs endpoint. Off by default — OBS users opt in.
@@ -317,19 +305,34 @@ public sealed class RadarSettings
             }
 
             var json = File.ReadAllText(FilePath);
+            // Stage 1: plain deserialize (best-effort). Guarantees loaded is populated
+            // with the natively-deserialized shape, including any legacy fields that
+            // the modern model no longer declares (they'll be silently dropped by
+            // System.Text.Json, which is fine — the T12 migrator reads them off
+            // the raw JsonDocument in stage 2).
             var loaded = JsonSerializer.Deserialize<RadarSettings>(json, Json) ?? new RadarSettings();
-            // v0.19.1 migration: honor a legacy explicit CheckForUpdates=false as AutoUpdate.Mode="off".
-            // (A fresh install / any config without the key defaults to "silent".)
+
+            // Stage 2: attempt migrations. If any step throws, keep the plain-deserialized
+            // loaded so v0.19.1's CheckForUpdates→AutoUpdate.Mode="off" migration still
+            // runs on well-formed but migrator-hostile JSON.
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(json);   // `json` = the raw file text read above
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var migrated = SettingsMigrator.Migrate(doc);
+                // v0.19.1 migration: honor a legacy explicit CheckForUpdates=false as AutoUpdate.Mode="off".
+                // (A fresh install / any config without the key defaults to "silent".)
                 var root = doc.RootElement;
                 var hasAutoUpdate = root.TryGetProperty("autoUpdate", out _);
                 if (!hasAutoUpdate && root.TryGetProperty("checkForUpdates", out var cfu)
                     && cfu.ValueKind == System.Text.Json.JsonValueKind.False)
-                    loaded.AutoUpdate.Mode = "off";
+                    migrated.AutoUpdate.Mode = "off";
+                loaded = migrated;
             }
-            catch { }
+            catch
+            {
+                // Keep the plain-deserialized loaded. Users with v0.19-era files retain
+                // their CheckForUpdates preference even under migrator-parse-failure.
+            }
             // Existing configs are loaded verbatim (never re-seeded from defaults), so repair stale
             // patterns shipped by older builds in place, then persist the upgrade.
             if (loaded.Migrate())
