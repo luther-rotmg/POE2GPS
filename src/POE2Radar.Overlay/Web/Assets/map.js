@@ -98,9 +98,8 @@
   }
 
   function findBracket(renderTime) {
-    // Newest to oldest, return the first pair where a.t <= renderTime < b.t.
-    // (Older-newer order; renderTime lags newest by RENDER_DELAY_MS so we usually
-    //  land inside the ring.)
+    // Newest to oldest, return the first pair where a.t <= renderTime <= b.t.
+    // Closed interval matches how ring samples arrive at sub-ms precision.
     const ring = state.ring;
     for (let i = ring.length - 1; i > 0; i--) {
       if (ring[i - 1].t <= renderTime && renderTime <= ring[i].t) {
@@ -506,7 +505,7 @@
     const cw = state.canvas.clientWidth;
     const ch = state.canvas.clientHeight;
 
-    c.clearRect(0, 0, state.canvas.width, state.canvas.height);
+    c.clearRect(0, 0, state.canvas.clientWidth, state.canvas.clientHeight);
     if (!document.body.classList.contains('obs')) {
       c.fillStyle = 'rgba(0,0,0,0.55)';
       c.fillRect(0, 0, cw, ch);
@@ -532,7 +531,9 @@
     }
   }
 
+  let _zoneChangeToken = 0;
   async function onZoneChange(newArea) {
+    const myToken = ++_zoneChangeToken;
     state.currentArea = newArea;
     state.ring.length = 0;                       // stale samples belong to the old zone
     state.serverOffset = 0;
@@ -546,6 +547,9 @@
       fetchJson('/api/atlas').catch(() => null),
       fetchJson('/landmarks').catch(() => null),
     ]);
+
+    // If another zone-change ran while we awaited, drop our results.
+    if (myToken !== _zoneChangeToken) return;
 
     if (t) {
       state.terrain = { areaHash: t.areaHash, w: t.w, h: t.h, interior: t.interior, edges: t.edges };
@@ -584,12 +588,12 @@
     localStorage.setItem('gps_mode', on ? '1' : '0');
   }
 
-  // Initial state — set once at load per state.gpsMode (T9).
-  if (state.gpsMode) document.body.classList.add('gps-mode');
-
   const gpsBtn = document.getElementById('gpsToggle');
   if (gpsBtn) gpsBtn.addEventListener('click', toggleGpsMode);
   document.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    const t = e.target;
+    if (t && t.matches && t.matches('input, textarea, [contenteditable]')) return;
     if (e.key === 'g' || e.key === 'G') toggleGpsMode();
   });
 

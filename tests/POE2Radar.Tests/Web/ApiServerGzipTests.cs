@@ -10,9 +10,6 @@ namespace POE2Radar.Tests.Web;
 
 public class ApiServerGzipTests
 {
-    static int _portCounter = 43500;
-    static int NextPort() => System.Threading.Interlocked.Increment(ref _portCounter);
-
     [Fact]
     public async Task ApiMap_returns_gzipped_body_when_client_accepts_gzip()
     {
