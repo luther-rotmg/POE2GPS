@@ -10,6 +10,20 @@ namespace POE2Radar.Overlay.Web;
 /// </summary>
 internal static class DashboardHtml
 {
+    // ── EC2 (ExileCampaigns2) attribution surface — DRAFT phase ────────────────────
+    // Route data + advance-engine logic ported from https://github.com/syrairc/ExileCampaigns2
+    // with syrairc's verbal go-ahead. The four `TODO(syrairc-*)` sentinels below are LOAD-BEARING
+    // for the CI attribution gate (`scripts/attribution-sentinel-gate.ps1`) and get grep-and-swapped
+    // for the real license terms + pinned commit hash in EC2-ATTR-FORMALIZE once PMS-12 lands.
+    // Cross-task interface map: `CampaignGuideAttribution` is consumed by EC2-UI for the SSE
+    // `CampaignGuide` payload row, and by ApiServer.cs for the `/api/about` endpoint.
+    public const string CampaignGuideAttribution =
+        "Campaign step guide by syrairc (ExileCampaigns2 — click to view)";
+    public const string CampaignGuideUpstreamUrl =
+        "https://github.com/syrairc/ExileCampaigns2";
+    public const string CampaignGuideLicense = "TODO(syrairc-license)";
+    public const string CampaignGuideCommit  = "TODO(syrairc-hash)";
+
     public const string Page = """
 <!DOCTYPE html>
 <html lang="en">
@@ -1043,6 +1057,12 @@ internal static class DashboardHtml
             <h3>Zone Plan <small>live ranked queue for this area</small></h3>
             <div id="gpsBanner" hidden style="padding:8px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--gold-bright);font-size:13px"></div>
             <div id="dirQueue"></div>
+            <!-- EC2 attribution — DRAFT sentinels ship visibly so any regression surfaces in dogfood before FORMALIZE swaps them. -->
+            <div id="campaignAttrib" style="opacity:.55;font-size:11px;padding:6px 0 2px 0;border-top:1px solid var(--line-soft);margin-top:8px">
+              Campaign step guide by
+              <a href="https://github.com/syrairc/ExileCampaigns2" target="_blank" rel="noopener">syrairc (ExileCampaigns2)</a>
+              &mdash; license <code>TODO(syrairc-license)</code>, commit <code>TODO(syrairc-hash)</code>.
+            </div>
           </div>
           <div class="card">
             <h3>Needs cataloguing <small>notable POIs/landmarks you've seen that no objective covers yet</small></h3>

@@ -3,6 +3,11 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [Unreleased] — v0.21 "Guided Campaign"
+
+### Special thanks
+Enormous thanks to **syrairc** for green-lighting [ExileCampaigns2](https://github.com/syrairc/ExileCampaigns2)'s integration into POE2GPS. v0.21's campaign step guide is a direct port of upstream route data + advance logic. Upstream: <https://github.com/syrairc/ExileCampaigns2> · license: `TODO(syrairc-license)` · commit: `TODO(syrairc-hash)`.
+
 ## [0.20.1] — 2026-07-07
 ### Changed — 🧹 **Roadclearing** *(v0.20.0 review shelf drained + browser-view substrate deepened)*
 - 🩺 **SseChannel heartbeat race closed for good.** The v0.20.0 T3 plan-mandated race between last-subscriber teardown and new-subscriber add is now impossible — both paths lock `_latestLock`. Publish contention is negligible; add/remove are rare. Loops that leaked one 15s ping under contention now don't.

@@ -703,6 +703,20 @@ public sealed class ApiServer : IDisposable
                 Write(ctx, 200, JsonSerializer.Serialize(_version?.Invoke() ?? new { current = "?", latest = (string?)null, updateAvailable = false, url = "" }, Json));
                 break;
 
+            case "/api/about":
+                // EC2 (ExileCampaigns2) attribution surface — mirrored from DashboardHtml constants
+                // so the DRAFT-phase sentinels flow through a single source of truth. EC2-UI (Task 6)
+                // echoes these fields into the SSE `CampaignGuide` payload; EC2-ATTR-FORMALIZE
+                // grep-and-swaps the two `TODO(syrairc-*)` sentinels for the real values.
+                Write(ctx, 200, JsonSerializer.Serialize(new
+                {
+                    campaignGuideAttribution = DashboardHtml.CampaignGuideAttribution,
+                    campaignGuideUpstream    = DashboardHtml.CampaignGuideUpstreamUrl,
+                    campaignGuideLicense     = DashboardHtml.CampaignGuideLicense, // TODO(syrairc-license)
+                    campaignGuideCommit      = DashboardHtml.CampaignGuideCommit,  // TODO(syrairc-hash)
+                }, Json));
+                break;
+
             case "/api/atlas":
                 // v0.20.0 T5: same OR-gate as /landmarks — map.js needs atlas data whether /map or /obs
                 // is the entry point. Off when both toggles are off.
