@@ -2601,8 +2601,23 @@ $('#kbReset')?.addEventListener('click',async()=>{
     const view=document.querySelector('[data-view="settings"]'); if(!view) return;
     view.querySelectorAll('.card').forEach(card=>{
       if(card.id==='statusCard'||card.id==='qsCard'){ card.hidden=false; return; }
-      if(card.offsetParent === null) return; // skip hidden cards
-      card.hidden = !!(q && !card.textContent.toLowerCase().includes(q));
+
+      // Reset any prior no-match hide so this iteration can unhide it if it now matches.
+      card.hidden = false;
+
+      // Empty query → everything visible; nothing more to do.
+      if (!q) return;
+
+      // Scope search corpus based on collapse state: collapsed cards match on title only,
+      // since their body is display:none via `.card.collapsed > :not(h3) { display: none }`.
+      const isCollapsed = card.classList.contains('collapsed');
+      const corpus = isCollapsed
+        ? (card.querySelector('h3')?.textContent ?? '')
+        : card.textContent;
+
+      if (corpus.toLowerCase().indexOf(q) === -1) {
+        card.hidden = true;
+      }
     });
   }
 
