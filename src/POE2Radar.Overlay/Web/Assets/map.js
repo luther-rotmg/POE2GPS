@@ -14,7 +14,6 @@
 
   // --------- Query-param handling for /obs?gps=1 ---------
   const params = new URLSearchParams(location.search);
-  if (params.get('gps') === '1') document.body.classList.add('gps-mode');
 
   // --------- Persistent state ---------
   const state = {
@@ -38,6 +37,10 @@
     landmarks: null,                       // /landmarks response
     atlasIcons: {},                        // name → HTMLImageElement (already decoded)
   };
+
+  // Restore gps-mode class from either URL param (?gps=1) or last-session localStorage.
+  // state.gpsMode ORs both paths — see state initializer above.
+  if (state.gpsMode) document.body.classList.add('gps-mode');
 
   async function loadAtlasIcons() {
     const r = await fetch('/assets/atlas-icons.json');
