@@ -28,6 +28,7 @@ public sealed class Poe2Atlas
     private volatile bool _scanning;     // a background locate is in flight
     private nint _scanLo, _scanHi;       // game-heap slab to scan (derived from the live chain anchor)
     private readonly byte[] _scanChunk = new byte[1 << 20];   // background Task.Run scan thread only
+    private readonly byte[] _regionBuffer = new byte[1 << 20]; // Reused 1 MiB scratch buffer for ReadRegion; single-caller world thread means no locking required
 
     private nint CatalogBase
     {
@@ -197,7 +198,7 @@ public sealed class Poe2Atlas
         var winLo = (long)catalogBase - 0x1000_0000L; // ±256 MB around the catalog
         var winHi = (long)catalogBase + 0x1000_0000L;
         var best = new List<RegionMap>();
-        var chunk = new byte[1 << 20];
+        var chunk = _regionBuffer;
         var overlap = Stride * 32;
         foreach (var (regionBase, regionSize) in _reader.Process.EnumerateReadableRegions(privateOnly: false))
         {
