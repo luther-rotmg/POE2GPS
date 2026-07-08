@@ -1026,6 +1026,10 @@ internal static class DashboardHtml
               </select>
             </label>
             <div id="au-pending" class="muted" style="margin-top:6px"></div>
+            <div class="row"><div class="rl">Update channel<small>stable = /releases/latest (default). preview = pick the newest GitHub prerelease. Needs an app restart to apply.</small></div>
+              <select data-set="updateChannel"><option value="stable">stable</option><option value="preview">preview (RC)</option></select></div>
+            <div class="row"><div class="rl">Update URL override<small>Custom release-list URL. Leave blank for the default GitHub endpoint. Useful for mainland/VPN users on a Gitee mirror. Needs an app restart to apply.</small></div>
+              <input type="text" data-set="updateUrl" placeholder="https://api.github.com/repos/luther-rotmg/POE2GPS/releases/latest" style="width:280px"></div>
             <p class="muted" style="margin-top:6px">Updates come only from github.com/luther-rotmg/POE2GPS over HTTPS (SHA-256 verified). No telemetry, no pricing.</p>
           </div>
         </div>

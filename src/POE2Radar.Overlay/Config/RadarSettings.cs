@@ -221,6 +221,16 @@ public sealed class RadarSettings
     //    in README + release notes). This supersedes the legacy CheckForUpdates bool (migrated in Load()).
     public AutoUpdateSettings AutoUpdate { get; set; } = new();
 
+    /// <summary>Update channel: "stable" (default; /releases/latest) or "preview" (RC track;
+    /// scans /releases for the newest prerelease). Anything else is treated as "stable" by the
+    /// updater. Needs an app restart to apply (checked once during startup staging).</summary>
+    public string UpdateChannel { get; set; } = "stable";
+
+    /// <summary>Optional override for the release-discovery URL. null (default) = use the built-in
+    /// GitHub API endpoint. For mainland/VPN users on a Gitee mirror or self-hosted testers pointing
+    /// at a private endpoint. Needs an app restart to apply.</summary>
+    public string? UpdateUrl { get; set; } = null;
+
     // ── God-Roll Detector (experimental). ──
     // Read inventory on a slow cadence and score each item 0–100 against your stat weights. OFF by
     // default; when off, no inventory is read at all. See the dashboard "Gear ⭐" tab.
