@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using POE2Radar.Core.Campaign.Probe;
 using POE2Radar.Overlay.Web;
 
 namespace POE2Radar.Overlay.Config;
@@ -170,6 +171,26 @@ public sealed class RadarSettings
     // Existing users see it once on upgrade (it's dismissible + informative); no migration guard needed
     // because false is the correct default for everyone.
     public bool FirstRunSeen { get; set; } = false;
+
+    // ── Campaign trace probe (v0.22). Captures anonymized zone traversals to a local JSONL file
+    //    users inspect before sharing via Contribute. Default ON per design decision — the
+    //    onboarding toast (gated on ProbeOnboardingSeen) fires exactly once explaining what's
+    //    captured. Zero-cost-when-off: CampaignProbe.Tick short-circuits before any work when
+    //    EnableCampaignProbe is false. ──
+    /// <summary>Master gate for the campaign probe. Default true. Turn OFF for zero cost —
+    /// the tick loop short-circuits before any work.</summary>
+    public bool EnableCampaignProbe { get; set; } = true;
+
+    /// <summary>Stable random UUIDv4 minted on first launch, persisted across boots. Auto-populated
+    /// by <see cref="SettingsMigrator"/> ("probe_install_id_v1") from
+    /// <c>AnonymizationHelpers.NewInstallUuid()</c> when empty on load. Never tied to the user's
+    /// identity or the machine's identity — anonymous by construction. Users can regenerate via
+    /// <see cref="ResetTraceSession"/> (Settings UI "Reset trace session id" button).</summary>
+    public string ProbeInstallId { get; set; } = "";
+
+    /// <summary>Set to true when the one-shot onboarding toast has been dismissed. False on first
+    /// launch → toast fires once explaining the probe + Contribute flow.</summary>
+    public bool ProbeOnboardingSeen { get; set; } = false;
 
     // ── HTTP API. ──
     public int ApiPort { get; set; } = 7777;
@@ -406,6 +427,19 @@ public sealed class RadarSettings
                 if (IsStaleExp(AutoNavPatterns[i])) { AutoNavPatterns[i] = precise; changed = true; }
 
         return changed;
+    }
+
+    /// <summary>
+    /// Regenerate <see cref="ProbeInstallId"/> to a fresh v4 UUID and persist synchronously via
+    /// <see cref="Save"/>. Invoked by the Settings-UI "Reset trace session id" button so anyone
+    /// worried about cross-boot correlation via a stable install_uuid can reset before contributing.
+    /// Does NOT clear <see cref="ProbeOnboardingSeen"/> — a session-id regenerate is not an
+    /// onboarding reset. Silent on IO error — <see cref="Save"/> already swallows and logs.
+    /// </summary>
+    public void ResetTraceSession()
+    {
+        ProbeInstallId = AnonymizationHelpers.NewInstallUuid();
+        Save();
     }
 
     /// <summary>Persist current settings to disk atomically (write-to-tmp then replace — crash-safe).

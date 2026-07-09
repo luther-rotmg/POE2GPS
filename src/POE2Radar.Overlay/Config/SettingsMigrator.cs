@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Text.Json;
+using POE2Radar.Core.Campaign.Probe;
 
 namespace POE2Radar.Overlay.Config;
 
@@ -74,6 +75,16 @@ public static class SettingsMigrator
                 applied.Add(migrationKey);
             }
         }
+
+        // v0.22 campaign-probe: on first load with an empty/missing ProbeInstallId, mint a fresh
+        // v4 UUID and stamp "probe_install_id_v1" into AppliedMigrations. Idempotent — a second
+        // load sees a populated ProbeInstallId and no-ops (the key already lives in the set).
+        if (string.IsNullOrEmpty(settings.ProbeInstallId))
+        {
+            settings.ProbeInstallId = AnonymizationHelpers.NewInstallUuid();
+            applied.Add("probe_install_id_v1");
+        }
+
         settings.AppliedMigrations = new List<string>(applied);
         return settings;
     }
