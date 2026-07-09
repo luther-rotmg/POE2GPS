@@ -364,6 +364,16 @@ public sealed class RadarApp : IDisposable
     private readonly POE2Radar.Core.Campaign.Guide.WorldStateAdapter? _worldStateAdapter;
     private readonly POE2Radar.Core.Campaign.Guide.RouteCursor? _routeCursor;
     private readonly bool _campaignGuideAvailable;
+    // ── v0.22 Campaign Probe — parallel rail. Constructed unconditionally at startup; the runtime
+    // EnableCampaignProbe toggle is polled inside CampaignProbe.Tick (zero-cost when off). Wrapped
+    // in a try/catch so a base-directory permission fault doesn't take the world thread down —
+    // the probe simply stays null and CampaignReconcile skips it. The EventWriter itself has an
+    // IsDisabled degrade path (Task 4) that catches file-open failures on the writer side.
+    private readonly POE2Radar.Core.Campaign.Probe.EventWriter? _campaignProbeWriter;
+    private readonly POE2Radar.Core.Campaign.Probe.CampaignProbe? _campaignProbe;
+    // Scratch list — the probe's IWorldSnapshot needs a UiTreeRoots list. We reuse this same
+    // one-element list every tick to avoid a per-tick allocation for the roots array.
+    private readonly List<nint> _campaignProbeUiRoots = new(1) { 0 };
     private volatile object? _campaignGuide;   // boxed CampaignStepInstruction — null when off / unavailable / route completed
     private string _lastGuideAreaCode = "";    // world thread only, drives RouteCursor.OnAreaChange forward-snap
     private nint _navTargetsArea = -1;                                   // AreaInstance the auto-nav was applied for
@@ -420,6 +430,38 @@ public sealed class RadarApp : IDisposable
             _worldStateAdapter = null;
             _routeCursor = null;
             ConsoleTheme.Kv("campaign guide", $"unavailable: {ex.Message}");
+        }
+        // Campaign Probe (v0.22, PROBE-CORE) — read-only parallel rail. Safety-net the install id
+        // for hand-edited settings files (Task 5's migrator handles the normal path). Failure at
+        // construction leaves _campaignProbe null; CampaignReconcile then skips the probe branch.
+        try
+        {
+            if (string.IsNullOrEmpty(_settings.ProbeInstallId))
+            {
+                _settings.ProbeInstallId = POE2Radar.Core.Campaign.Probe.AnonymizationHelpers.NewInstallUuid();
+                try { _settings.Save(); } catch { /* best-effort persistence; probe still works this boot */ }
+            }
+            var probeDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "poe2gps", "campaign_traces");
+            var bootMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            _campaignProbeWriter = new POE2Radar.Core.Campaign.Probe.EventWriter(
+                _settings.ProbeInstallId, bootMs, probeDir);
+            _campaignProbe = new POE2Radar.Core.Campaign.Probe.CampaignProbe(
+                isEnabledGate:     () => _settings.EnableCampaignProbe,
+                installIdProvider: () => _settings.ProbeInstallId ?? "",
+                writer:            _campaignProbeWriter,
+                live:              _live,
+                bootId:            _campaignProbeWriter.CurrentBootId);
+            ConsoleTheme.Kv("campaign probe", _campaignProbeWriter.IsDisabled
+                ? "writer disabled (file open failed — see prior log line)"
+                : $"live · boot {_campaignProbeWriter.CurrentBootId} · {_campaignProbeWriter.CurrentFilePath}");
+        }
+        catch (Exception ex)
+        {
+            _campaignProbe = null;
+            _campaignProbeWriter = null;
+            ConsoleTheme.Kv("campaign probe", $"init failed: {ex.GetType().Name}: {ex.Message}");
         }
         // Independent reader stacks for the render + API threads (see the field declarations): each owns
         // its own MemoryReader/Poe2Live so the world walk, the render-frame reads, and the API tile scan
@@ -1914,7 +1956,7 @@ public sealed class RadarApp : IDisposable
         // Campaign GPS (cross-zone) takes precedence when it actively owns the selection; otherwise the
         // in-zone Objective Director runs. Both read-only — only edit _selectedIds.
         var gpsOwned = false;
-        if (_settings.EnableCampaignGps) gpsOwned = CampaignReconcile(areaCode, player, areaInstance, localPlayer);
+        if (_settings.EnableCampaignGps) gpsOwned = CampaignReconcile(areaCode, player, inGameState, areaInstance, localPlayer);
         else { _campaignGps = null; _campaignGuide = null; }
         if (!gpsOwned && _settings.EnableDirector)
         {
@@ -2537,7 +2579,7 @@ public sealed class RadarApp : IDisposable
     /// <see cref="POE2Radar.Core.Campaign.Guide.CampaignStepInstruction"/> to <c>_campaignGuide</c>
     /// (boxed under the same volatile-write discipline as <c>_campaignGps</c>). Zero-cost when
     /// disabled/unavailable: single boolean branch, no allocation, no work.</para></summary>
-    private bool CampaignReconcile(string areaCode, NumVec2 player, nint areaInstance, nint localPlayer)
+    private bool CampaignReconcile(string areaCode, NumVec2 player, nint inGameState, nint areaInstance, nint localPlayer)
     {
         var ins = POE2Radar.Core.Campaign.CampaignGps.Decide(
             areaCode, _questProgress, POE2Radar.Core.Game.CampaignRoute.Shared, _landmarks, _entities, player);
@@ -2563,6 +2605,48 @@ public sealed class RadarApp : IDisposable
         else
         {
             _campaignGuide = null;
+        }
+
+        // Campaign Probe — parallel rail on the same world-thread snapshot. The Tick short-circuits
+        // internally when EnableCampaignProbe is false (zero allocation, no writer touch), but we
+        // still gate the snap construction here to skip the ZoneGuide friendly-name lookup + the
+        // vitals read below when the user has opted out (spec §11 opt-off).
+        if (_settings.EnableCampaignProbe && _campaignProbe is not null)
+        {
+            var friendlyName = ZoneGuide.Shared.FriendlyName(areaCode);
+            var zoneMeta = ZoneGuide.Shared.Area(areaCode);
+            var isTown = zoneMeta is { Town: true };
+            var isHideout = friendlyName.Contains("Hideout", StringComparison.OrdinalIgnoreCase);
+            // Alive = HP > 0 (ES depletes first but death occurs when HP hits 0). A null vitals read
+            // is treated as alive so a transient read failure never fires a false player_death event.
+            var vitals = _live.PlayerVitals(localPlayer);
+            var alive = vitals is null || vitals.Value.HpCur > 0;
+            // UiTreeRoots: single-element list pointing at the current InGameState-derived UiRoot.
+            // _campaignProbeUiRoots is a reused scratch list to avoid allocating an array per tick.
+            // Probe's UI-walk root: v1 leaves this at 0 (Poe2Live.WalkUiTree yields nothing on a zero
+            // root, so dialog / quest-reward panel observers stay silent in prod). Populating the real
+            // UiRoot address is deferred to the follow-up UI panel classifier (PMS-14-lite) which will
+            // extend Poe2Live with a UiRoot(inGameState) accessor. Tests inject their own root list.
+            _campaignProbeUiRoots[0] = 0;
+            var probeSnap = new POE2Radar.Core.Campaign.Probe.CampaignProbeSnap(
+                InGameState:               inGameState,
+                AreaInstance:              areaInstance,
+                LocalPlayer:               localPlayer,
+                AreaCode:                  areaCode,
+                AreaName:                  friendlyName,
+                AreaHash:                  _live.AreaHash(areaInstance),
+                AreaLevel:                 _live.AreaLevel(areaInstance),
+                IsTown:                    isTown,
+                IsHideout:                 isHideout,
+                PlayerWorldPos:            new POE2Radar.Core.Campaign.Probe.WorldPos(player.X, player.Y),
+                CharacterLevel:            _charLevel,
+                CurrentXp:                 _live.PlayerExperience(localPlayer),
+                IsPlayerAlive:             alive,
+                UiTreeRoots:               _campaignProbeUiRoots,
+                Entities:                  _entities,
+                AllocatedPassiveNodeIds:   _live.AllocatedPassiveNodeIds(areaInstance),
+                LastDamageSourceMetadata:  null);
+            _campaignProbe.Tick(probeSnap);
         }
 
         if (ins.ExitObjectiveId != null) { SetActiveTarget(ins.ExitObjectiveId); return true; }
