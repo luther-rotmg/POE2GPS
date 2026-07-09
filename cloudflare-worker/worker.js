@@ -1,7 +1,9 @@
-// POE2GPS community-pack collector (v3). Splits the v2 single-route into three sibling routes:
+// POE2GPS community-pack collector (v3). Splits the v2 single-route into sibling routes:
 //   POST /submit-atlas   — {names, objectives}  (v0.20 backward-compat payload shape)
 //   POST /submit-buffs   — {buffs}              (buff metadata paths + tier)
 //   POST /submit-preload — {preloads}           (metadata paths; bare .dds/.ao rejected)
+//   POST /submit-trace   — {install_uuid, boot_id, event_count, jsonl_gzip_b64}
+//                          (Task 7 PROBE-CONTRIBUTE — anonymized campaign traces; per-boot upload)
 //   POST /submit         — legacy alias -> /submit-atlas (v0.20.x clients + rollback safety;
 //                          same {names, objectives} payload shape as /submit-atlas)
 // Shared middleware: NFKD+leet profanity fold, KV rate limit 5/60s per CF-Connecting-IP, and
@@ -93,6 +95,7 @@ export function routeFor(url) {
     case '/submit-atlas':   return { kind: 'atlas' };
     case '/submit-buffs':   return { kind: 'buffs' };
     case '/submit-preload': return { kind: 'preload' };
+    case '/submit-trace':   return { kind: 'trace' };   // Task 7 PROBE-CONTRIBUTE — fifth sibling
     case '/submit':         return { kind: 'atlas' };   // legacy v0.20.x alias
     default:                return null;
   }
@@ -181,6 +184,34 @@ export function filterPayloadCommon(kind, pack) {
     return { preloads };
   }
 
+  if (kind === 'trace') {
+    // Task 7 PROBE-CONTRIBUTE. Spec §2/§8 posture: only install_uuid + boot_id + event_count +
+    // gzipped bytes cross the wire. No profanity fold — the JSONL is gzipped random-looking bytes
+    // and any user-typed values inside were already sha256-hashed to 16 chars by AnonymizationHelpers
+    // before the writer serialized them.
+    if (!pack || typeof pack !== 'object') return { error: 'expected trace envelope' };
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (typeof pack.install_uuid !== 'string' || !uuidRe.test(pack.install_uuid))
+      return { error: 'bad install_uuid' };
+    if (typeof pack.boot_id !== 'string' || !uuidRe.test(pack.boot_id))
+      return { error: 'bad boot_id' };
+    if (!Number.isInteger(pack.event_count) || pack.event_count <= 0)
+      return { error: 'bad event_count' };
+    if (typeof pack.jsonl_gzip_b64 !== 'string' || pack.jsonl_gzip_b64.length === 0)
+      return { error: 'bad jsonl_gzip_b64' };
+    if (!/^[A-Za-z0-9+/=]+$/.test(pack.jsonl_gzip_b64))
+      return { error: 'bad jsonl_gzip_b64' };
+    // Approximate the gzipped bytes without decoding: base64 is 4/3 the byte length.
+    const approxBytes = Math.floor(pack.jsonl_gzip_b64.length * 3 / 4);
+    if (approxBytes > MAX_BYTES) return { error: 'trace too large' };
+    return { trace: {
+      install_uuid:   pack.install_uuid,
+      boot_id:        pack.boot_id,
+      event_count:    pack.event_count,
+      jsonl_gzip_b64: pack.jsonl_gzip_b64,
+    } };
+  }
+
   return { error: 'unknown route' };
 }
 
@@ -231,6 +262,22 @@ function buildIssue(kind, f) {
       labels: [...baseLabels, 'preload'],
     };
   }
+
+  if (kind === 'trace') {
+    const t = f.trace;
+    const body =
+      `**Campaign trace: ${t.event_count} events** (auto-filtered)\n\n`
+      + `- install_uuid: \`${t.install_uuid}\`\n`
+      + `- boot_id: \`${t.boot_id}\`\n`
+      + `- gzipped bytes (approx): ${Math.floor(t.jsonl_gzip_b64.length * 3 / 4)}\n\n`
+      + `<details><summary>Gzipped JSONL (base64)</summary>\n\n\`\`\`\n${t.jsonl_gzip_b64}\n\`\`\`\n</details>\n\n`
+      + '*Review, then label `approved` to fold into `resources/campaign-traces/<install_uuid>/<boot_epoch_ms>.jsonl`.*';
+    return {
+      title:  `Community pack (trace): ${t.event_count} events`,
+      body,
+      labels: [...baseLabels, 'trace'],
+    };
+  }
 }
 
 function json(status, obj, extraHeaders) {
@@ -267,7 +314,8 @@ export default {
     if (f.error) return json(400, { error: f.error });
     const nonEmpty = (route.kind === 'atlas'   && (f.names.length || f.objectives.length))
                   || (route.kind === 'buffs'   && f.buffs.length)
-                  || (route.kind === 'preload' && f.preloads.length);
+                  || (route.kind === 'preload' && f.preloads.length)
+                  || (route.kind === 'trace'   && f.trace && f.trace.event_count > 0);
     if (!nonEmpty) return json(400, { error: 'nothing valid after filtering' });
 
     const gh = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
@@ -284,7 +332,9 @@ export default {
 
     const accepted = route.kind === 'atlas'
       ? { names: f.names.length, objectives: f.objectives.length }
-      : route.kind === 'buffs' ? { buffs: f.buffs.length } : { preloads: f.preloads.length };
+      : route.kind === 'buffs' ? { buffs: f.buffs.length }
+      : route.kind === 'preload' ? { preloads: f.preloads.length }
+      : { trace_events: f.trace.event_count };
     return json(200, { ok: true, accepted });
   },
 };

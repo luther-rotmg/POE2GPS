@@ -98,6 +98,10 @@ public sealed class ApiServer : IDisposable
     // without dereferencing either. RadarApp wires real instances when either toggle is on.
     private readonly SseChannel? _sse;
     private readonly AssetHost? _assetHost;
+    // v0.22 PROBE-CONTRIBUTE: per-boot JSONL sink shared with CampaignProbe. Null when the writer
+    // failed to open at RadarApp construction time (or in tests that don't need probe wiring) —
+    // /api/contribute-trace short-circuits to a clean 400 in that case.
+    private readonly POE2Radar.Core.Campaign.Probe.EventWriter? _traceWriter;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -133,7 +137,8 @@ public sealed class ApiServer : IDisposable
         bool allowLanAccess = false,
         int port = 7777,
         SseChannel? sse = null,
-        AssetHost? assetHost = null)
+        AssetHost? assetHost = null,
+        POE2Radar.Core.Campaign.Probe.EventWriter? traceWriter = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -166,6 +171,7 @@ public sealed class ApiServer : IDisposable
         _port = port;
         _sse = sse;
         _assetHost = assetHost;
+        _traceWriter = traceWriter;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -716,6 +722,66 @@ public sealed class ApiServer : IDisposable
                 var pack = JsonSerializer.Serialize(new { preloads = BuildPreloadsPack() }, Json);
                 var (ok, status) = ContributeForward(SiblingContributeUrl(url, "preload"), pack).GetAwaiter().GetResult();
                 Write(ctx, ok ? 200 : 502, JsonSerializer.Serialize(new { ok, status }, Json));
+                break;
+            }
+
+            case "/api/contribute-trace":
+            {
+                // Task 7 PROBE-CONTRIBUTE: one-click submission of one boot's worth of anonymized
+                // campaign-probe events to the Worker's /submit-trace sibling route. Loopback-Host-
+                // gated (mirror of /api/contribute-{atlas,buffs,preload}). No PII beyond
+                // install_uuid + boot_id per spec §2. Zero-cost-when-off short-circuit hits BEFORE
+                // any file I/O so the probe-disabled path allocates nothing here either.
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                if (!_settings.EnableCampaignProbe || _traceWriter == null)
+                { Write(ctx, 400, JsonSerializer.Serialize(new { error = "campaign probe disabled" }, Json)); break; }
+                var url = _settings.ContributeUrl?.Trim() ?? "";
+                if (url.Length == 0) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "no contribute url configured" }, Json)); break; }
+                var installUuid = _settings.ProbeInstallId?.Trim() ?? "";
+                if (installUuid.Length != 36) { Write(ctx, 400, JsonSerializer.Serialize(new { error = "no install uuid" }, Json)); break; }
+
+                // Flush the async writer so we read a complete boot file, then pick current-or-most-recent.
+                _traceWriter.FlushSync();
+                var tracePath = SelectTraceFileForContribute(
+                    _traceWriter.CurrentFilePath,
+                    _traceWriter.EventsWritten,
+                    _traceWriter.MostRecentCompletePath());
+                if (tracePath == null || !System.IO.File.Exists(tracePath))
+                { Write(ctx, 400, JsonSerializer.Serialize(new { error = "no trace to contribute" }, Json)); break; }
+
+                var jsonlBytes = System.IO.File.ReadAllBytes(tracePath);
+                if (jsonlBytes.Length == 0)
+                { Write(ctx, 400, JsonSerializer.Serialize(new { error = "trace file empty" }, Json)); break; }
+
+                // Count events = newline count (JSONL is one record per line). Cheap + accurate.
+                long eventCount = 0;
+                for (int i = 0; i < jsonlBytes.Length; i++) if (jsonlBytes[i] == (byte)'\n') eventCount++;
+
+                var pack = BuildTracePack(installUuid, _traceWriter.CurrentBootId, eventCount, jsonlBytes);
+                var packBytes = System.Text.Encoding.UTF8.GetByteCount(pack);
+                // 256 KB Worker MAX_BYTES (spec §11 file-size risk). Enforced here to give the user a
+                // clean 413 with the file path so they know which boot was too big to share.
+                if (packBytes > 262144)
+                { Write(ctx, 413, JsonSerializer.Serialize(new { error = "payload too large after gzip", bytes = packBytes, path = tracePath }, Json)); break; }
+
+                var (ok, status) = ContributeForward(SiblingContributeUrl(url, "trace"), pack).GetAwaiter().GetResult();
+                Write(ctx, ok ? 200 : 502, JsonSerializer.Serialize(new { ok, status, event_count = eventCount, bytes = packBytes }, Json));
+                break;
+            }
+
+            case "/api/probe/reset-install-id":
+            {
+                // Task 7 PROBE-CONTRIBUTE: dashboard "Reset trace session id" button. Loopback-Host-
+                // gated per audit finding #12 — a stable install_uuid is the ONLY correlation handle
+                // between contributed traces, so the reset MUST NOT be exposed to LAN peers. Delegates
+                // to RadarSettings.ResetTraceSession() (Task 5), which mints a fresh v4 UUID and
+                // persists synchronously. The response returns the new uuid so the dashboard can
+                // update its display without a follow-up GET.
+                if (ctx.Request.HttpMethod != "POST") { Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json)); break; }
+                if (!IsLoopbackHost(ctx.Request)) { Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json)); break; }
+                _settings.ResetTraceSession();
+                Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, new_install_uuid = _settings.ProbeInstallId }, Json));
                 break;
             }
 
@@ -2222,6 +2288,39 @@ public sealed class ApiServer : IDisposable
             @"/submit-[a-z]+$",
             System.Text.RegularExpressions.RegexOptions.CultureInvariant);
         return re.IsMatch(trimmed) ? re.Replace(trimmed, "/submit-" + sibling) : trimmed + "/submit-" + sibling;
+    }
+
+    /// <summary>Chooses which per-boot JSONL trace file to hand to /api/contribute-trace.
+    /// Rule (spec §4.2, §10 "no cross-boot correlation"): prefer the CURRENT boot's file
+    /// when at least one event has been written, otherwise fall back to the newest already-
+    /// closed boot's file. Null return = nothing worth sharing yet.
+    /// Internal for testability — the caller composes with EventWriter properties.</summary>
+    internal static string? SelectTraceFileForContribute(string? currentPath, long currentEventCount, string? mostRecentComplete)
+    {
+        if (!string.IsNullOrEmpty(currentPath) && currentEventCount > 0) return currentPath;
+        if (!string.IsNullOrEmpty(mostRecentComplete)) return mostRecentComplete;
+        return null;
+    }
+
+    /// <summary>Serializes the {install_uuid, boot_id, event_count, jsonl_gzip_b64} envelope
+    /// the Worker's /submit-trace route expects. The JSONL bytes are gzipped and base64-encoded
+    /// inline; the Worker unzips and validates envelope shape downstream. snake_case keys are
+    /// byte-for-byte per spec §4.3. Internal for testability.</summary>
+    internal static string BuildTracePack(string installUuid, string bootId, long eventCount, byte[] jsonlBytes)
+    {
+        using var ms = new System.IO.MemoryStream();
+        using (var gz = new System.IO.Compression.GZipStream(ms, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+        {
+            gz.Write(jsonlBytes, 0, jsonlBytes.Length);
+        }
+        var b64 = System.Convert.ToBase64String(ms.ToArray());
+        return JsonSerializer.Serialize(new
+        {
+            install_uuid    = installUuid,
+            boot_id         = bootId,
+            event_count     = eventCount,
+            jsonl_gzip_b64  = b64,
+        });
     }
 
     /// <summary>Projects <c>_buffsDiag()</c> into the Worker's <c>/submit-buffs</c> pack shape:

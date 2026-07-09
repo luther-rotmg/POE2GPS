@@ -772,7 +772,8 @@ public sealed class RadarApp : IDisposable
                              allowLanAccess: _settings.AllowLanAccess,
                              port: _settings.ApiPort,
                              sse: _sse,
-                             assetHost: _assetHost);
+                             assetHost: _assetHost,
+                             traceWriter: _campaignProbeWriter);
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();

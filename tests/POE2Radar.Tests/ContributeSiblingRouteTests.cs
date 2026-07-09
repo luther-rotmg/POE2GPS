@@ -15,6 +15,9 @@ public class ContributeSiblingRouteTests
     [InlineData("https://x.workers.dev/submit-anything", "preload", "https://x.workers.dev/submit-preload")]
     [InlineData("https://x.workers.dev/submit-buffs",    "preload", "https://x.workers.dev/submit-preload")]
     [InlineData("https://x.workers.dev/api/v1",          "preload", "https://x.workers.dev/api/v1/submit-preload")]
+    [InlineData("https://x.workers.dev",                 "trace",   "https://x.workers.dev/submit-trace")]
+    [InlineData("https://x.workers.dev/submit-atlas",    "trace",   "https://x.workers.dev/submit-trace")]
+    [InlineData("https://x.workers.dev/submit-preload/", "trace",   "https://x.workers.dev/submit-trace")]
     public void SiblingContributeUrl_rewrites_trailing_submit_segment_or_appends(string url, string sibling, string expected)
     {
         Assert.Equal(expected, ApiServer.SiblingContributeUrl(url, sibling));

@@ -107,3 +107,65 @@ test('rateLimit fail-open when no KV binding (dev/tests without env)', async () 
   assert.equal(await rateLimit({}, '1.2.3.4'), true);
   assert.equal(await rateLimit(null, '1.2.3.4'), true);
 });
+
+// ── Task 7 PROBE-CONTRIBUTE — /submit-trace as the FIFTH sibling route ──
+// v0.21 /submit legacy alias MUST remain intact; trace is added AFTER preload, not replacing.
+import { gzipSync } from 'node:zlib';
+
+test('routeFor maps /submit-trace to kind:trace (fifth sibling route)', () => {
+  assert.equal(routeFor(new URL('https://w.dev/submit-trace')).kind, 'trace');
+  // Regression: v0.21 legacy alias untouched — /submit still routes to atlas.
+  assert.equal(routeFor(new URL('https://w.dev/submit')).kind,         'atlas');
+});
+
+test('filterPayloadCommon(trace, ...) accepts a well-formed envelope', () => {
+  const jsonl = Buffer.from(
+    '{"event_type":"zone_entered","area_name":"Clearfell"}\n' +
+    '{"event_type":"boss_encountered","boss_display_name":"Beira"}\n', 'utf8');
+  const b64 = gzipSync(jsonl).toString('base64');
+  const r = filterPayloadCommon('trace', {
+    install_uuid:   '11111111-2222-4333-8444-555555555555',
+    boot_id:        'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    event_count:    2,
+    jsonl_gzip_b64: b64,
+  });
+  assert.equal(r.error, undefined);
+  assert.equal(r.trace.event_count, 2);
+  assert.equal(r.trace.install_uuid, '11111111-2222-4333-8444-555555555555');
+});
+
+test('filterPayloadCommon(trace, ...) rejects malformed install_uuid + missing fields', () => {
+  const good_b64 = gzipSync(Buffer.from('{"event_type":"zone_entered"}\n')).toString('base64');
+  assert.ok(filterPayloadCommon('trace', {}).error, 'empty pack');
+  assert.ok(filterPayloadCommon('trace', {
+    install_uuid: 'not-a-uuid', boot_id: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    event_count: 1, jsonl_gzip_b64: good_b64,
+  }).error, 'bad install_uuid');
+  assert.ok(filterPayloadCommon('trace', {
+    install_uuid: '11111111-2222-4333-8444-555555555555',
+    boot_id:      'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    event_count:  0,   // must be > 0
+    jsonl_gzip_b64: good_b64,
+  }).error, 'zero event_count');
+  assert.ok(filterPayloadCommon('trace', {
+    install_uuid: '11111111-2222-4333-8444-555555555555',
+    boot_id:      'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    event_count:  1,
+    jsonl_gzip_b64: 'not@base64!!',
+  }).error, 'bad base64');
+});
+
+test('filterPayloadCommon(trace, ...) does NOT run profanity fold on gzipped bytes', () => {
+  // Gzipped bytes are random-looking; the NFKD leet fold is a no-op here. Anything the client
+  // COULD have typed as free-text was already sha256-hashed to 16 chars by the writer, so a
+  // gzipped body that happens to contain slur-like byte patterns still passes filter — the
+  // filter's job at this layer is envelope shape, not text scrubbing.
+  const b64 = gzipSync(Buffer.from('irrelevant')).toString('base64');
+  const r = filterPayloadCommon('trace', {
+    install_uuid: '11111111-2222-4333-8444-555555555555',
+    boot_id:      'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',
+    event_count:  1,
+    jsonl_gzip_b64: b64,
+  });
+  assert.equal(r.error, undefined);
+});
