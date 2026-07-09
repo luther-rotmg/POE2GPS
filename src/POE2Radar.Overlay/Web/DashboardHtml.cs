@@ -700,6 +700,10 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" data-set="enableCampaignGps"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Quest-memory precision<small>only effective once quest offsets are validated in-game; refines Campaign GPS.</small></div>
               <label class="sw"><input type="checkbox" data-set="enableQuestMemory"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Campaign trace probe<small>helps POE2GPS&rsquo;s Campaign Director learn campaign routes from your play &mdash; local JSONL only, nothing uploads until you click Contribute trace</small></div>
+              <label class="sw"><input type="checkbox" data-set="enableCampaignProbe"><span class="track"></span><span class="knob"></span></label></div>
+            <div class="row"><div class="rl">Reset trace session id<small>regenerate the anonymous install id used in your local traces (breaks cross-boot correlation for anyone consuming the public pool)</small></div>
+              <button class="numin" id="tpResetInstall" title="Regenerates ProbeInstallId server-side. Existing local JSONL files keep their old id; only new boots use the new one.">Reset trace session id</button></div>
             <div class="row"><div class="rl">Curated landmark names<small>community labels (boss / reward / exits)</small></div>
               <label class="sw"><input type="checkbox" data-set="useCuratedLandmarks"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Hide from screen capture<small>stealth: keep the overlay out of screenshots / OBS / share-screen. Turn off to capture the overlay itself</small></div>
@@ -1063,6 +1067,9 @@ internal static class DashboardHtml
         <section class="view" data-view="director" hidden>
           <div class="card" id="dirQueueCard">
             <h3>Zone Plan <small>live ranked queue for this area</small></h3>
+            <div class="row" style="margin:0 0 8px 0"><div class="rl" style="flex:1"><small>Local trace probe is capturing your zone traversals. Share one boot to the public pool so POE2GPS&rsquo;s Campaign Director learns from your play.</small></div>
+              <button class="numin" id="tpContribute" title="Packs the most recent complete boot&rsquo;s JSONL trace and POSTs it via the Contribute pipeline (same worker route as atlas/buffs/preload). Hidden when the probe is off.">Contribute trace</button>
+              <span class="saved" id="savedMsgTp">&#10003; trace shared &mdash; thank you!</span></div>
             <div id="guideDegradeBadge" hidden style="padding:6px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--ink-dim);background:var(--bg-alt);font-size:11px;line-height:1.4">A few quest steps can&rsquo;t auto-advance yet &mdash; they&rsquo;ll skip forward automatically when you enter the next zone. Expected on v0.21 and doesn&rsquo;t need any action.</div>
             <div id="gpsBanner" hidden style="padding:8px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--gold-bright);font-size:13px"></div>
             <div id="guideStep" hidden style="padding:10px;margin:0 0 8px;border:1px solid var(--line);border-radius:3px;color:var(--ink);background:var(--panel2);font-size:13px;line-height:1.5"></div>
@@ -1195,6 +1202,7 @@ async function loadSettings(){
     renderBnObserved();
     if(window._syncDiagPanel) window._syncDiagPanel();
     if(typeof syncContribVisibility === 'function') syncContribVisibility();
+    if(typeof showProbeOnboardingIfNeeded === 'function') showProbeOnboardingIfNeeded(s);
   }catch(e){}
 }
 
@@ -1954,11 +1962,13 @@ function flashPr(){ const m=$('#savedMsgPr'); if(!m) return; m.classList.add('sh
 function syncContribVisibility(){
   const bnEn = document.querySelector('[data-bn="enabled"]')?.checked;
   const prEn = document.querySelector('[data-set="preloadEnabled"]')?.checked;
+  const tpEn = document.querySelector('[data-set="enableCampaignProbe"]')?.checked;
   const bnBtn = $('#bnContribute'); if (bnBtn) bnBtn.style.display = bnEn ? '' : 'none';
   const prBtn = $('#prContribute'); if (prBtn) prBtn.style.display = prEn ? '' : 'none';
+  const tpBtn = $('#tpContribute'); if (tpBtn) tpBtn.style.display = tpEn ? '' : 'none';
 }
 document.addEventListener('change', e=>{
-  if (e.target && (e.target.matches?.('[data-bn="enabled"]') || e.target.matches?.('[data-set="preloadEnabled"]'))) syncContribVisibility();
+  if (e.target && (e.target.matches?.('[data-bn="enabled"]') || e.target.matches?.('[data-set="preloadEnabled"]') || e.target.matches?.('[data-set="enableCampaignProbe"]'))) syncContribVisibility();
 });
 
 $('#bnContribute')?.addEventListener('click', async()=>{
@@ -1974,6 +1984,41 @@ $('#prContribute')?.addEventListener('click', async()=>{
   try{ const r = await fetch('/api/contribute-preload',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     if(r.ok){ flashPr(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
+
+/* v0.22 PROBE-UI: Contribute-trace + reset-install-id + one-shot onboarding toast.
+   Zero-cost-when-off: #tpContribute hidden via syncContribVisibility when EnableCampaignProbe=false;
+   onboarding toast only fires when EnableCampaignProbe && !ProbeOnboardingSeen (one-shot, latches on
+   window._probeOnboardingFired so multiple loadSettings() calls in a single Dashboard boot can&rsquo;t
+   re-fire the toast even before the Got-it click round-trips). */
+function flashTp(){ const m=$('#savedMsgTp'); if(!m) return; m.classList.add('show'); clearTimeout(m._t); m._t=setTimeout(()=>m.classList.remove('show'),1600); }
+
+$('#tpContribute')?.addEventListener('click', async()=>{
+  if(!await contribGateOrToast()) return;
+  if(!window._tpOkOnce){ if(!confirm('Share your most recent boot’s campaign trace publicly? Zone traversals only — no character data, hashed NPC/dialogue text.')) return; window._tpOkOnce=true; }
+  try{ const r = await fetch('/api/contribute-trace',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok){ flashTp(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+});
+
+$('#tpResetInstall')?.addEventListener('click', async()=>{
+  if(!confirm('Regenerate the anonymous trace-session id? Existing local JSONL files keep their old id — only new boots use the new one.')) return;
+  try{ const r = await fetch('/api/probe/reset-install-id',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(r.ok){ showToast('Trace session id regenerated.'); } else { showToast('Reset failed (HTTP '+r.status+').'); } }catch(e){ showToast('Reset failed (network error).'); }
+});
+
+async function showProbeOnboardingIfNeeded(s){
+  if(!s) return;
+  if(!(s.enableCampaignProbe===true)) return;
+  if(s.probeOnboardingSeen===true) return;
+  if(window._probeOnboardingFired) return;
+  window._probeOnboardingFired=true;
+  showToast(
+    'Campaign trace probe is on. Your zone traversals get logged to a local file (nothing uploads). One-click Contribute trace in the Campaign panel shares a session so POE2GPS’s Campaign Director gets smarter with more players’ routes. The shared pool is public. Turn off in ⚙ Settings → Campaign trace probe.',
+    'Got it',
+    async()=>{
+      try{ await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({probeOnboardingSeen:true})}); }catch(e){}
+    }
+  );
+}
 
 /* ── gear tab: god-roll detector (experimental, default off) ── */
 let gWeights={byStatId:{},target:100,godRollThreshold:85};
