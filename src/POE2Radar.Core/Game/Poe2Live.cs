@@ -1352,28 +1352,18 @@ public sealed class Poe2Live
         var result = new List<RitualReward>();
         var uiRoot = Ptr(inGameState + Poe2.InGameState.UiRoot);
         if (uiRoot == 0) return result;
-        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
 
         // 1) Confirm the shop is open + find a signature text element. BFS the VISIBLE tree (invisible
         //    subtrees pruned → cheap); the signature only renders while the tribute shop is up.
+        //    BFS shared with PROBE-CORE via WalkUiTree — same visit set, same order.
         nint sigEl = 0;
-        var queue = new Queue<nint>(); queue.Enqueue(uiRoot);
-        var visited = new HashSet<nint>();
-        while (queue.Count > 0 && visited.Count < 20000)
+        foreach (var el in WalkUiTree(uiRoot))
         {
-            var el = queue.Dequeue();
-            if (el == 0 || !visited.Add(el)) continue;
-            var visible = _reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var flags) && (flags & visBit) != 0;
-            if (!visible && el != uiRoot) continue;             // prune invisible subtree
-            if (ChildSpan(el, out var f, out var nn))
-                for (long k = 0; k < nn; k++) queue.Enqueue(Ptr(f + (nint)(k * 8)));
-            if (sigEl == 0)
-            {
-                var t = ReadStdWString(el + Poe2.UiElement.Text);
-                if (t.Length >= 6 && (t.Contains("Rituals Remaining", StringComparison.OrdinalIgnoreCase)
-                                      || t.Contains("tribute to the king", StringComparison.OrdinalIgnoreCase)))
-                    sigEl = el;
-            }
+            if (sigEl != 0) continue;                            // preserve original: enumerate full tree
+            var t = ReadStdWString(el + Poe2.UiElement.Text);
+            if (t.Length >= 6 && (t.Contains("Rituals Remaining", StringComparison.OrdinalIgnoreCase)
+                                  || t.Contains("tribute to the king", StringComparison.OrdinalIgnoreCase)))
+                sigEl = el;
         }
         if (sigEl == 0) return result;   // shop closed
 
@@ -1954,5 +1944,206 @@ public sealed class Poe2Live
             if (slot == selfPtr) kept.Add((slot, selfPtr));
         }
         return kept;
+    }
+
+    // ── UI-tree BFS (extracted from ReadRitualRewards for PROBE-CORE) ──────────
+    /// <summary>Breadth-first walk of the UI element tree rooted at <paramref name="uiRoot"/>,
+    /// yielding each visited element address. Invisible subtrees are PRUNED
+    /// (<see cref="Poe2.UiElement.FlagVisibleBit"/>) — the root is descended unconditionally so
+    /// callers pass <c>*(InGameState + <see cref="Poe2.InGameState.UiRoot"/>)</c> without
+    /// pre-checking its visible bit. Bounded by <paramref name="maxVisit"/> (default 20 000).
+    /// Same visit set + order as the original <see cref="ReadRitualRewards"/> BFS — a single
+    /// reusable primitive so PROBE-CORE's NpcDialog / QuestReward signature walks can share it.
+    /// Allocates a fresh <see cref="Queue{T}"/> + <see cref="HashSet{T}"/> per call → callers on the
+    /// world thread should treat this as a throttled operation, not per-frame.</summary>
+    public IEnumerable<nint> WalkUiTree(nint uiRoot, uint maxVisit = 20000)
+    {
+        if (uiRoot == 0) yield break;
+        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
+        var queue = new Queue<nint>();
+        queue.Enqueue(uiRoot);
+        var visited = new HashSet<nint>();
+        while (queue.Count > 0 && visited.Count < maxVisit)
+        {
+            var el = queue.Dequeue();
+            if (el == 0 || !visited.Add(el)) continue;
+            var visible = _reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var flags) && (flags & visBit) != 0;
+            if (!visible && el != uiRoot) continue;             // prune invisible subtree
+            if (ChildSpan(el, out var f, out var nn))
+                for (long k = 0; k < nn; k++) queue.Enqueue(Ptr(f + (nint)(k * 8)));
+            yield return el;
+        }
+    }
+
+    // ── Campaign-Probe accessors (Task PROBE-OFFSETS, spec §4) ─────────────────
+    // All read-only over ServerData / component memory. No writes. No allocations
+    // on the disabled path (PROBE-CORE is gated on _settings.EnableCampaignProbe
+    // upstream; these methods are simply the read primitives it composes).
+
+    /// <summary>Current character experience (uint32 @ Player+0x1D8). Widened to long for
+    /// serialisation ergonomics; PoE2 caps XP at ~4.25B which fits in uint32. Also feeds the
+    /// PMS-6 XP/hour Session HUD chip. Returns 0 when the Player component is unresolved.</summary>
+    public long PlayerExperience(nint localPlayer)
+    {
+        var c = PlayerComp(localPlayer);
+        return c != 0 && _reader.TryReadStruct<uint>(c + Poe2.PlayerComponent.CurrentExperience, out var xp) ? xp : 0L;
+    }
+
+    /// <summary>Walks the passive-tree hop chain from <paramref name="areaInstance"/> to
+    /// ServerPlayerData, then reads the allocated-node <c>StdVector&lt;uint16&gt;</c> at
+    /// <see cref="Poe2.PassiveTree.AllocVecBegin"/>..<see cref="Poe2.PassiveTree.AllocVecEnd"/>.
+    /// Returns an empty list on any failed hop or an implausible entry count (&gt;<see cref="Poe2.PassiveTree.AllocMax"/>).
+    /// Never throws.</summary>
+    public IReadOnlyList<ushort> AllocatedPassiveNodeIds(nint areaInstance)
+    {
+        var empty = System.Array.Empty<ushort>();
+        try
+        {
+            var node = areaInstance;
+            foreach (var hop in Poe2.PassiveTree.HopChain)
+            {
+                node = Ptr(node + hop);
+                if (node == 0) return empty;
+            }
+            if (!_reader.TryReadStruct<nint>(node + Poe2.PassiveTree.AllocVecBegin, out var begin)) return empty;
+            if (!_reader.TryReadStruct<nint>(node + Poe2.PassiveTree.AllocVecEnd,   out var end))   return empty;
+            if (begin == 0 || end == 0 || (long)end < (long)begin) return empty;
+
+            var byteSpan = (long)end - (long)begin;
+            if (byteSpan <= 0 || byteSpan % Poe2.PassiveTree.EntryStride != 0) return empty;
+
+            var count = (int)(byteSpan / Poe2.PassiveTree.EntryStride);
+            if (count > Poe2.PassiveTree.AllocMax) return empty;
+
+            var result = new List<ushort>(count);
+            for (var i = 0; i < count; i++)
+            {
+                if (!_reader.TryReadStruct<ushort>(begin + (nint)(i * Poe2.PassiveTree.EntryStride), out var id)) return result;
+                result.Add(id);
+            }
+            return result;
+        }
+        catch
+        {
+            return empty;
+        }
+    }
+
+    /// <summary>Read the four Targetable component bytes (IsTargetable/IsHighlight/IsTargeted/IsHidden).
+    /// Caller passes the entity address; this resolves the "Targetable" component and reads the bytes.
+    /// Returns false when the component is missing or any byte fails to read; out parameters are 0 on false.</summary>
+    public bool TryReadTargetable(nint entity, out byte isTargetable, out byte isHighlight, out byte isTargeted, out byte isHidden)
+    {
+        isTargetable = isHighlight = isTargeted = isHidden = 0;
+        var comp = ResolveComponent(entity, "Targetable");
+        if (comp == 0) return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.Targetable.IsTargetable, out isTargetable)) return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.Targetable.IsHighlight,  out isHighlight))  return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.Targetable.IsTargeted,   out isTargeted))   return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.Targetable.IsHidden,     out isHidden))     return false;
+        return true;
+    }
+
+    /// <summary>Read Chest.OpenState + Chest.LabelVisible in one hop. <paramref name="isOpened"/> follows
+    /// the 2026-06-06 polarity flip (0 = closed, non-zero = opened).</summary>
+    public bool TryReadChestState(nint entity, out bool isOpened, out bool labelVisible)
+    {
+        isOpened = labelVisible = false;
+        var comp = ResolveComponent(entity, "Chest");
+        if (comp == 0) return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.ChestComponent.OpenState,    out var open))  return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.ChestComponent.LabelVisible, out var label)) return false;
+        isOpened = open != 0;
+        labelVisible = label != 0;
+        return true;
+    }
+
+    /// <summary>Read Shrine.IsUsed byte. Non-zero = used (already activated).</summary>
+    public bool TryReadShrineUsed(nint entity, out bool isUsed)
+    {
+        isUsed = false;
+        var comp = ResolveComponent(entity, "Shrine");
+        if (comp == 0) return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.Shrine.IsUsed, out var b)) return false;
+        isUsed = b != 0;
+        return true;
+    }
+
+    /// <summary>Read Transitionable.State (int16). Non-zero values encode traversal states.</summary>
+    public bool TryReadTransitionableState(nint entity, out short state)
+    {
+        state = 0;
+        var comp = ResolveComponent(entity, "Transitionable");
+        if (comp == 0) return false;
+        return _reader.TryReadStruct<short>(comp + Poe2.Transitionable.State, out state);
+    }
+
+    /// <summary>Read TriggerableBlockage.IsBlocked byte.</summary>
+    public bool TryReadTriggerableBlockage(nint entity, out bool isBlocked)
+    {
+        isBlocked = false;
+        var comp = ResolveComponent(entity, "TriggerableBlockage");
+        if (comp == 0) return false;
+        if (!_reader.TryReadStruct<byte>(comp + Poe2.TriggerableBlockage.IsBlocked, out var b)) return false;
+        isBlocked = b != 0;
+        return true;
+    }
+
+    /// <summary>Read one bool entry out of the per-player quest-flags dictionary
+    /// (PlayerServerData+0x230). Walks: AreaInstance → ServerData (+0x598) → PlayerServerData
+    /// StdVector (+0x48) [0] → PlayerServerData → QuestFlags dictionary → probe key.
+    /// Dictionary internals are traversed via the shipped StdMap conventions
+    /// (<see cref="Poe2.StdMapNode"/>). Returns false when any hop fails or the key is missing.</summary>
+    public bool TryReadQuestFlag(nint areaInstance, uint questFlagKey, out bool value)
+    {
+        value = false;
+        try
+        {
+            var serverData = Ptr(areaInstance + Poe2.AreaInstance.ServerDataPtr);
+            if (serverData == 0) return false;
+            if (!_reader.TryReadStruct<StdVector>(serverData + Poe2.ServerData.PlayerServerDataVec, out var v)) return false;
+            if (v.First == 0) return false;
+            var psd = Ptr(v.First);
+            if (psd == 0) return false;
+
+            // Dictionary<QuestFlag,bool> at psd + 0x230. Read the std::map root node ptr and BST-walk
+            // by uint key; StdMapNode layout: {Left,Parent,Right, IsNil(byte @+0x19), Data{Key,Value}@+0x20}.
+            if (!_reader.TryReadStruct<nint>(psd + Poe2.PlayerServerData.QuestFlags, out var rootHolder)) return false;
+            if (rootHolder == 0) return false;
+
+            // std::map layout: rootHolder is the header node; header.Parent is the true root.
+            if (!_reader.TryReadStruct<nint>(rootHolder + Poe2.StdMapNode.Parent, out var cur)) return false;
+            for (var guard = 0; guard < 4096 && cur != 0; guard++)
+            {
+                if (!_reader.TryReadStruct<byte>(cur + Poe2.StdMapNode.IsNil, out var nil) || nil != 0) return false;
+                if (!_reader.TryReadStruct<uint>(cur + Poe2.StdMapNode.KeyId, out var key)) return false;
+                if (key == questFlagKey)
+                {
+                    if (!_reader.TryReadStruct<byte>(cur + Poe2.StdMapNode.ValueEntityPtr, out var b)) return false;
+                    value = b != 0;
+                    return true;
+                }
+                var branch = questFlagKey < key ? Poe2.StdMapNode.Left : Poe2.StdMapNode.Right;
+                if (!_reader.TryReadStruct<nint>(cur + branch, out cur)) return false;
+            }
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Resolve the current hovered entity via the UI-root hover-tracker chain
+    /// (<c>*(UiRoot+0x7D8) → tracker → +0x18</c>). This is the anchor PROBE-CORE uses for
+    /// <c>npc_dialogue_started</c> — when the NpcDialog panel is visible (UI-tree signature walk),
+    /// the hovered entity at dialog-open time identifies the NPC. Returns 0 on any failed hop.</summary>
+    public nint HoveredEntityViaTracker(nint inGameState)
+    {
+        var uiRoot = Ptr(inGameState + Poe2.InGameState.UiRoot);
+        if (uiRoot == 0) return 0;
+        var tracker = Ptr(uiRoot + Poe2.HoverTracker.FromUiRoot);
+        if (tracker == 0) return 0;
+        return Ptr(tracker + Poe2.HoverTracker.HoveredEntityDirect);
     }
 }

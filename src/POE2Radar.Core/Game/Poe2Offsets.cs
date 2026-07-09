@@ -147,11 +147,15 @@ public static class Poe2
         public const int ModelBounds          = 0x144; // candidate (3 floats right after world pos)
     }
 
-    /// <summary>Player component — character name + level. ✓ validated (name StdWString, level byte 27).</summary>
+    /// <summary>Player component — character name + level + experience. ✓ Name/Level validated live
+    /// (StdWString @ +0x1B0, level byte @ +0x204, 27 confirmed). CurrentExperience (+0x1D8) is a uint32
+    /// per the imkk000/poe2-offsets extraction (2026-07-08); PoE2's 100-cap experience ~4.25B fits.
+    /// Widened to long by callers for JSON serialisation ergonomics.</summary>
     public static class PlayerComponent
     {
-        public const int Name  = 0x1B0; // ✓ StdWString
-        public const int Level = 0x204; // ✓ byte (low byte of a u32 slot)
+        public const int Name              = 0x1B0; // ✓ StdWString
+        public const int CurrentExperience = 0x1D8; // uint32 — upstream (imkk000/poe2-offsets 2026-07-08)
+        public const int Level             = 0x204; // ✓ byte (low byte of a u32 slot)
     }
 
     /// <summary>Camera object (at InGameState+0x368). Holds the WorldToScreen matrix.</summary>
@@ -374,7 +378,8 @@ public static class Poe2
     /// flipped 0→1). The fork's extra sub-offsets did NOT survive validation on our build.</summary>
     public static class ChestComponent
     {
-        public const int OpenState       = 0x168; // ✓ 0 = closed/openable, non-zero = opened/used (polarity flipped 2026-06-06)
+        public const int OpenState    = 0x168; // ✓ 0 = closed/openable, non-zero = opened/used (polarity flipped 2026-06-06)
+        public const int LabelVisible = 0x021; // byte — upstream (imkk000/poe2-offsets 2026-07-08)
     }
 
     /// <summary>Positioned component.</summary>
@@ -584,9 +589,10 @@ public static class Poe2
     /// at +0x18. Singletons share vtable (image+0x2D707D8). The capture anchor for "what am I pointing at".</summary>
     public static class HoverTracker
     {
-        public const int FromUiRoot   = 0x7D8; // *(UiRoot + 0x7D8) → tracker container
-        public const int WorldTracker = 0x630; // + 0x630 → world hover tracker
-        public const int HoveredEntity = 0x18; // + 0x18 → hovered entity/element
+        public const int FromUiRoot          = 0x7D8; // *(UiRoot + 0x7D8) → tracker container
+        public const int WorldTracker        = 0x630; // + 0x630 → world hover tracker
+        public const int HoveredEntity       = 0x18;  // + 0x18 → hovered entity/element (existing)
+        public const int HoveredEntityDirect = 0x18;  // canonical anchor for PROBE-CORE (alias of HoveredEntity)
     }
 
     /// <summary>Loaded-files list (Preload Alert). ✓ validated live 2026-06-30 via --preload.
@@ -600,5 +606,93 @@ public static class Poe2
         public const int FilesPointer  = 0x08;
         public const int NameStr       = 0x08;
         public const int AreaChangeCnt = 0x40;
+    }
+
+    // ── Campaign-Probe offset floor (PROBE-OFFSETS, imkk000/poe2-offsets 2026-07-08) ────────────
+
+    /// <summary>PlayerServerData record (element [0] of ServerData's PlayerServerData StdVector at
+    /// ServerData+0x48). Hosts per-player mutable state. QuestFlags at +0x230 is a
+    /// <c>Dictionary&lt;QuestFlag, bool&gt;</c> the game uses to gate quest branches (drives
+    /// <c>npc_dialogue_option_selected</c> inference and <c>waypoint_travel</c> context in the campaign
+    /// probe). Source: imkk000/poe2-offsets element.go (2026-07-08 extraction).</summary>
+    public static class PlayerServerData
+    {
+        public const int QuestFlags = 0x230; // Dictionary<QuestFlag,bool> (drives quest-progression events)
+    }
+
+    /// <summary>Quest definition + entry layout. Source: imkk000/poe2-offsets quest.go (2026-07-08).
+    /// <c>DefinitionPtr</c> / <c>EntryPtr</c> live off the quest root; <c>EntryState</c> (byte) and
+    /// <c>EntryObjective</c> track per-quest progress. <c>RowId</c> / <c>RowName</c> live inside a
+    /// quest-row struct (definition table entry).</summary>
+    public static class Quest
+    {
+        public const int DefinitionPtr   = 0x2E0; // ptr to Quest definition
+        public const int EntryPtr        = 0x2F0; // ptr to Quest entry
+        public const int EntryState      = 0x3C;  // byte — entry state (drives dialogue_option/waypoint context)
+        public const int EntryObjective  = 0x3D;  // objective sub-state byte
+        public const int RowId           = 0x00;  // quest id within row
+        public const int RowName         = 0x0C;  // quest name within row
+    }
+
+    /// <summary>Passive tree allocation. Reached from AreaInstance via the four-hop pointer chain
+    /// (HopChain) that lands on ServerPlayerData; the allocated-node vector runs from AllocVecBegin
+    /// (+0x8A8) to AllocVecEnd (+0x8B0) with 4-byte stride — each entry is a uint16 node id (top 2
+    /// bytes pad). Source: imkk000/poe2-offsets passive_tree.go (2026-07-08). Drives the campaign
+    /// probe's <c>passive_allocated</c> diff-observer.</summary>
+    public static class PassiveTree
+    {
+        public const int AllocVecBegin = 0x8A8; // on ServerPlayerData
+        public const int AllocVecEnd   = 0x8B0; // = begin + 8 (StdVector last)
+        public const int EntryStride   = 4;     // uint16 node id + 2 bytes pad
+        public const int AllocMax      = 1024;  // sanity cap on entry count
+        /// <summary>Pointer chain from AreaInstance to ServerPlayerData: dereference each offset in order.</summary>
+        public static readonly int[] HopChain = { 0x60, 0x40, 0xCE0, 0x418 };
+    }
+
+    /// <summary>Targetable component byte flags. Source: imkk000/poe2-offsets world_components.go
+    /// (2026-07-08). Drives interaction detection — used by the campaign probe to refine
+    /// <c>area_transition_used</c> (only fire when Transition entity was actually targeted).</summary>
+    public static class Targetable
+    {
+        public const int IsTargetable = 0x69; // byte — 1 when entity accepts targeting
+        public const int IsHighlight  = 0x6A; // byte — 1 when highlight ring shown
+        public const int IsTargeted   = 0x6B; // byte — 1 when player has this entity targeted
+        public const int IsHidden     = 0x71; // byte — 1 when entity is hidden from cursor
+    }
+
+    /// <summary>Shrine component. Source: imkk000/poe2-offsets world_components.go (2026-07-08).</summary>
+    public static class Shrine
+    {
+        public const int IsUsed = 0x24; // byte — 1 after activation
+    }
+
+    /// <summary>Transitionable component (area-transition entities carry this alongside Targetable).
+    /// State is int16 — non-zero values encode "opened" / "traversed". Source: imkk000/poe2-offsets
+    /// world_components.go (2026-07-08).</summary>
+    public static class Transitionable
+    {
+        public const int State = 0x120; // int16
+    }
+
+    /// <summary>TriggerableBlockage component (barriers, breakable walls). Source: imkk000/poe2-offsets
+    /// world_components.go (2026-07-08).</summary>
+    public static class TriggerableBlockage
+    {
+        public const int IsBlocked = 0x30; // byte
+    }
+
+    /// <summary>StateMachine extended layout for probe-side state reads. The existing
+    /// <see cref="StateMachine.ListenerVec"/> (+0x20) drives the RuneStation chain; the additional
+    /// state and timer vectors here (+0x160..+0x180) expose per-entity state slots used by
+    /// Chest/Shrine/Transitionable interaction detection. Source: imkk000/poe2-offsets
+    /// world_components.go (2026-07-08). Named "StateMachineExt" (not shadowing the shipped
+    /// <see cref="StateMachine"/>) so the RuneStation code path is untouched.</summary>
+    public static class StateMachineExt
+    {
+        public const int StatesBegin = 0x160;
+        public const int StatesEnd   = 0x168;
+        public const int TimersBegin = 0x178;
+        public const int TimersEnd   = 0x180;
+        public const int EntryStride = 8;
     }
 }
