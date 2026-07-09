@@ -180,6 +180,26 @@ When you label an entity or POI in the **Entity Atlas** tab (dashboard → **F12
 
 <sub>The collector is a small open-source Cloudflare Worker ([`cloudflare-worker/`](cloudflare-worker/)); the GitHub token lives only as a server-side Worker secret — **never** in the app. Forking POE2GPS? Point it at your own collector via the **Contribute URL** setting.</sub>
 
+## 🧭 Campaign trace probe
+
+POE2GPS ships an **opt-out** campaign trace probe (default **on**). While you play the campaign, it writes an anonymized JSONL of your zone traversals — zone enters, area transitions, boss encounters, checkpoints, waypoints, NPC dialogue starts, dialogue picks, quest reward picks, passive allocations, level-ups, deaths, and waypoint travel — to a local file. **Nothing uploads until you click Contribute.**
+
+**What it captures (12 event types):**
+`zone_entered`, `area_transition_used`, `boss_encountered`, `checkpoint_touched`, `waypoint_unlocked`, `player_death`, `waypoint_travel`, `npc_dialogue_started`, `npc_dialogue_option_selected`, `quest_reward_selected`, `passive_allocated`, `level_up`. Every record carries a common envelope (`ts_epoch_ms`, `install_uuid`, `boot_id`, `event_type`, `probe_capability`, `schema_version`, `act_hint`, `area_name`). NPC / dialogue / reward text is **sha256-hashed to 16 hex characters** before it is written — the raw strings never leave your machine.
+
+**Where the JSONL lives:**
+`%APPDATA%\poe2gps\campaign_traces\<install_uuid>_<boot_epoch_ms>.jsonl` — one file per POE2GPS boot. Open it in any text editor and read every line yourself before sharing.
+
+**How to Contribute:**
+Open the POE2GPS Dashboard → Campaign panel → **Contribute trace**. That posts the current boot's JSONL through the same sibling-route worker POE2GPS uses for atlas / buffs / preload contributions. The shared pool is public and consumed by POE2GPS's Campaign Director (and any tool that reads the public pool) to learn campaign routes from real play.
+
+**Turn it off:**
+Dashboard → ⚙️ Settings → **Campaign trace probe** — one click, effective immediately, zero writes when off. You can also **Reset trace session id** from Settings if you want a fresh `install_uuid` before contributing.
+
+**Onboarding toast** — the first time the probe is on and you open the Dashboard, POE2GPS shows a one-shot toast so you can find the toggle:
+
+> **Campaign trace probe is on.** Your zone traversals get logged to a local file (nothing uploads). One-click **Contribute trace** in the Campaign panel shares a session so POE2GPS's Campaign Director gets smarter with more players. The shared pool is public. Turn off in **Settings → Campaign trace probe.** [Got it]
+
 ## 🏗️ Architecture
 
 - **`src/POE2Radar.Core`** — read-only memory plumbing (`OpenProcess` read-only + `NtReadVirtualMemory`), the PoE2 offset table, the live read layer, the `Stealth/RandomName` generator, and the `Campaign/` objective catalog + director.
