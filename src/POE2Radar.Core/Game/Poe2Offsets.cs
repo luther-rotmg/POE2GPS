@@ -116,19 +116,19 @@ public static class Poe2
     // ── Components (offsets from the component object base) ───────────────────
 
     /// <summary>Life — vital blocks. History: pre-0.5.4 Health/Mana/ES = 0x1A8/0x1F8/0x230; 0.5.4 (re-validated
-    /// 2026-06-04, 980/980 HP, 427 mana, 274 ES) slid to 0x1B0/0x208/0x248. 2026-07-02 patch: **EnergyShield
-    /// drifted again 0x248→0x264** (confirmed by 2 users + the vital-offset auto-heal); Health/Mana unchanged
-    /// (no drift warning). The VitalStruct internal layout (Max@+0x2C, Current@+0x30) is UNCHANGED throughout.
-    /// Re-validation event 2026-07-07 (v0.20.1): LO confirmed the shipped constants are current for PoE2
-    /// 0.5.4; no further drift observed since the 2026-07-02 ES slide. The auto-heal
-    /// (Poe2Live.EnsureVitalOffsets) still self-heals any further per-user drift, so a wrong constant
-    /// degrades gracefully rather than breaking.</summary>
+    /// 2026-06-04, 980/980 HP, 427 mana, 274 ES) slid to 0x1B0/0x208/0x248. 2026-07-02 patch: EnergyShield
+    /// drifted 0x248→0x264. 2026-07-10 patch: **EnergyShield drifted again 0x264→0x24C** (confirmed live by
+    /// LO + auto-heal log lines from multiple users after that day's game update; Health/Mana unchanged). The
+    /// VitalStruct internal layout (Max@+0x2C, Current@+0x30) is UNCHANGED throughout every one of these
+    /// slides. Baking 0x24C in as the shipped default (Support v0.27) so users on the current patch stop
+    /// paying the auto-heal cost on every launch; the auto-heal (Poe2Live.EnsureVitalOffsets) remains as
+    /// the belt-and-suspenders backstop for any future drift.</summary>
     public static class Life
     {
         public const int Owner        = 0x008; // ComponentHeader.EntityPtr (back-pointer to entity)
         public const int Health       = 0x1B0; // ✓ VitalStruct (was 0x1A8 pre-0.5.4)
         public const int Mana         = 0x208; // ✓ VitalStruct (was 0x1F8 pre-0.5.4)
-        public const int EnergyShield = 0x264; // ✓ VitalStruct — drifted 0x248→0x264 on the 2026-07-02 patch (was 0x230 pre-0.5.4)
+        public const int EnergyShield = 0x24C; // ✓ VitalStruct — drifted 0x264→0x24C on the 2026-07-10 patch (chain: 0x230 → 0x248 → 0x264 → 0x24C)
     }
 
     /// <summary>VitalStruct — ✓ (Max/Current confirmed). Reuse <see cref="VitalStruct"/> for reads.</summary>
