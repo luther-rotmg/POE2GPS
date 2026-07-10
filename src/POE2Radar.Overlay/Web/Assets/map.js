@@ -239,7 +239,10 @@
         await new Promise(r => setTimeout(r, RETRY_MS));
         continue;
       }
-      if (!data || data.areaHash !== area) return null;
+      // SIG-MAP-FIX (v0.23): /api/map ships areaHash as a JSON number; SSE ships area as a hex string
+      // (uint.ToString("x")). Coerce the number to hex before comparing. Locked by
+      // ApiMapAreaHashWireFormatTests on the C# side — do not drift.
+      if (!data || data.areaHash === undefined || data.areaHash.toString(16) !== area) return null;
       const w = data.width, h = data.height;
       const walkable = base64ToUint8(data.walkable);
       if (walkable.length !== w * h) return null;
