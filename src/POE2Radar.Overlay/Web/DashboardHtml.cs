@@ -233,6 +233,24 @@ internal static class DashboardHtml
   .hint-row{color:var(--ink-faint)!important; font-size:11px!important; font-style:italic}
   .saved{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--good); opacity:0; transition:opacity .3s}
   .saved.show{opacity:1}
+  /* Support — v0.27 (LO ask): cosmetic dashboard palettes for Ko-fi supporters. Applied by setting
+     data-palette on the <body>. Two supporter-only palettes ship: 'kalguuran' (warm gold on deep
+     amber, callback to the Kalguuran act aesthetic) and 'terminal' (green-phosphor CRT). Default
+     empty renders the shipped palette everyone sees. */
+  body[data-palette="kalguuran"]{
+    --gold: #f5c94f; --gold-bright: #ffdb6a; --gold-deep: #b98a1e;
+    --ink: #f0e6cf; --ink-dim: #c9b995; --ink-faint: #8c7d5b;
+    --panel: #241708; --panel2: #1c1207; --bg: #150c05; --bg-alt: #2c1e0e;
+    --line: #4a3319; --line-soft: #38260f;
+    --good: #ffd66a;
+  }
+  body[data-palette="terminal"]{
+    --gold: #66ff66; --gold-bright: #99ff99; --gold-deep: #339933;
+    --ink: #b0ffb0; --ink-dim: #7fc17f; --ink-faint: #4d724d;
+    --panel: #061006; --panel2: #050c05; --bg: #030803; --bg-alt: #0a1a0a;
+    --line: #206620; --line-soft: #144614;
+    --good: #99ff99;
+  }
   /* Reach — v0.26 (CHOR-7): Settings tab section-header dividers. Full-width row in the settings
      panel-grid, so the cards below it flow into the next row with a clear visual break. */
   .sec-hdr{grid-column:1/-1;border-top:1px solid var(--line-soft);padding:16px 4px 4px;margin-top:4px;
@@ -622,12 +640,37 @@ internal static class DashboardHtml
         </div>
         <input type="search" id="settingsSearch" placeholder="Search settings&hellip;">
         <div class="panel-grid">
-          <!-- Reach — v0.26 (LO ask): supporters roll. Subtle-but-visible card at the top of Settings.
-               Reads /api/supporters (embedded supporters.json) and renders name pills. -->
+          <!-- Support — v0.27 (LO ask, expanded): supporters roll v2. Total count, latest supporter,
+               rotating community pitch quote. Reads /api/supporters. -->
           <div class="card" id="supportersCard" style="grid-column:1/-1">
-            <h3>Supporters <span class="tag">&middot; running on curiosity and coffee</span></h3>
-            <div class="row" style="align-items:flex-start"><div class="rl hint-row" style="flex:1">POE2GPS is a free tool that reads memory legally, feeds a community pool, and ships open source. If it saved you time in a map, consider chipping in &mdash; every drop is one person's work against a game that changes its offsets every patch. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">&#9749; Ko&#8209;fi</a></div></div>
-            <div id="supportersList" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 4px"></div>
+            <h3>🤝 Supporters <span class="tag">&middot; running on curiosity and coffee</span></h3>
+            <div class="row" style="align-items:flex-start;gap:20px;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px">
+                <div id="supportersQuote" style="font-size:12px;color:var(--ink);line-height:1.55;font-style:italic;padding:4px 0 8px">POE2GPS runs on curiosity and coffee. Every drop is one person's work against a game that changes its offsets every patch. If it saved you time in a map, consider chipping in &mdash; it directly buys the hours that ship the next drop.</div>
+                <div style="font-size:11px;color:var(--ink-faint);margin-top:6px">
+                  <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none;font-weight:600">&#9749; Buy the next coffee on Ko&#8209;fi &rarr;</a>
+                </div>
+              </div>
+              <div style="min-width:150px;text-align:right">
+                <div style="font-family:'Cinzel',Georgia,serif;font-size:28px;color:var(--gold-bright);letter-spacing:.05em"><span id="supportersCount">&mdash;</span></div>
+                <div style="font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-faint)">community backers</div>
+                <div id="supportersLatest" style="font-size:11px;color:var(--ink);margin-top:8px"></div>
+              </div>
+            </div>
+            <div id="supportersList" style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 4px"></div>
+            <hr style="border:none;border-top:1px dashed var(--line-soft);margin:14px 0 10px">
+            <div style="font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px">Ko&#8209;fi supporter perks</div>
+            <div class="row"><div class="rl">Supporter code<small>Paste the code emailed after your Ko&#8209;fi donation. Cosmetic-only unlock &mdash; base tool is identical for everyone. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">Ko&#8209;fi &rarr;</a></small></div>
+              <input class="numin" type="text" data-set="supporterCode" placeholder="paste code here" style="width:180px;font-family:monospace">
+              <span id="supporterCodeState" style="font-size:11px;color:var(--ink-faint);letter-spacing:.14em;text-transform:uppercase;margin-left:8px"></span></div>
+            <div class="row"><div class="rl">Dashboard palette<small>Supporter-only; falls back to Default when the code is missing.</small></div>
+              <select class="numin" data-set="dashboardPalette" style="width:180px">
+                <option value="">Default</option>
+                <option value="kalguuran">Kalguuran Gold</option>
+                <option value="terminal">Wraeclast Terminal</option>
+              </select></div>
+            <div class="row"><div class="rl">Show overlay Supporter chip<small>Small &#9749; Supporter chip on the Session HUD when the code validates. Off by default.</small></div>
+              <label class="sw"><input type="checkbox" data-set="showSupporterBadge"><span class="track"></span><span class="knob"></span></label></div>
           </div>
 
           <div class="card" id="qsCard" style="grid-column:1/-1">
@@ -2943,21 +2986,46 @@ async function loadBosses(){
 }
 document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventListener('click', loadBosses));
 
-/* ── Reach — v0.26 (LO ask): supporters roll ───────────────────────────────────────────────────
-   Loaded once on first Settings-tab activation. Reads /api/supporters and renders pill chips
-   with a tier color. Missing / empty response leaves the section blank rather than showing
-   an error — supporters are optional recognition, not a required feature. */
+/* ── Support — v0.27 (LO ask, expanded): supporters roll v2 ────────────────────────────────────
+   Reads /api/supporters. Renders:
+   - large total-count number + label
+   - "Latest supporter: @name" line (last entry in the JSON — LO manages authoring order)
+   - rotating pitch quote from a small pool (cycles roughly every minute)
+   - pill chips with tier color for every supporter (hover a pill to see their role) */
+const SUPPORTER_QUOTES = [
+  "POE2GPS runs on curiosity and coffee. Every drop is one person's work against a game that changes its offsets every patch. If it saved you time in a map, consider chipping in — it directly buys the hours that ship the next drop.",
+  "This tool is free, open source, and read-only by policy. If it stayed out of your way and gave you a working GPS, one coffee funds the next round of patch-drift-chasing.",
+  "Every atlas node icon, every waygate marker, every session HUD chip — that's community feedback plus a lot of memory-reading late-night hours. Coffee helps.",
+  "POE2GPS ships against a moving target — GGG's offsets change every patch, and so does the workload. A tip on Ko-fi keeps the lights on for the maintainer.",
+  "The Waystone risk parser, the boss cheat sheets, the /map layer, the campaign probe — all shipped on the free tier. Chip in if it earned it.",
+];
 let __supportersLoaded = false;
 async function loadSupporters(){
-  if (__supportersLoaded) return; __supportersLoaded = true;
   const list = document.getElementById('supportersList');
+  const countEl = document.getElementById('supportersCount');
+  const latestEl = document.getElementById('supportersLatest');
+  const quoteEl = document.getElementById('supportersQuote');
+  // Rotate the pitch quote on every Settings-tab activation (idx changes per minute).
+  if (quoteEl && SUPPORTER_QUOTES.length) {
+    const idx = Math.floor((Date.now() / 60000) % SUPPORTER_QUOTES.length);
+    quoteEl.textContent = SUPPORTER_QUOTES[idx];
+  }
+  if (__supportersLoaded) return; __supportersLoaded = true;
   if (!list) return;
   try {
     const r = await fetch('/api/supporters');
     if (!r.ok) return;
     const data = await r.json();
     const sups = data?.supporters || [];
-    if (!sups.length) { list.innerHTML = '<span style="color:var(--ink-faint);font-size:11px">Be the first to join the roll &mdash; <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright)">chip in on Ko&#8209;fi</a></span>'; return; }
+    if (countEl) countEl.textContent = String(sups.length);
+    if (!sups.length) {
+      list.innerHTML = '<span style="color:var(--ink-faint);font-size:11px">Be the first to join the roll &mdash; <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright)">chip in on Ko&#8209;fi</a></span>';
+      return;
+    }
+    // Latest = last entry in the JSON (LO manages authoring order for "latest" semantics).
+    const latest = sups[sups.length - 1];
+    if (latestEl && latest) latestEl.innerHTML = `Latest: <b style="color:var(--gold-bright)">${latest.name}</b>`;
+
     const TIER_COL = { gold:'#f5c94f', silver:'#c8c8c8', bronze:'#c78d5a', community:'#8090a0' };
     list.innerHTML = sups.map(s => {
       const col = TIER_COL[s.tier] || TIER_COL.community;
@@ -2969,6 +3037,40 @@ async function loadSupporters(){
 document.querySelectorAll('.tab[data-tab="settings"]').forEach(t => t.addEventListener('click', loadSupporters));
 // Also try to load immediately in case Settings is the initial view.
 loadSupporters();
+
+/* Support — v0.27 (LO ask): apply the supporter cosmetic palette and reveal chip state.
+   Reads /api/settings (whole payload) to grab the isSupporter flag + palette + code state, applies
+   the data-palette attribute on <body>, and lights the "VALID" chip next to the code input. Silently
+   falls back to Default palette when the code is missing or invalid so users can't render the app
+   broken by pasting garbage. */
+async function applySupporterCosmetics(){
+  try {
+    const r = await fetch('/api/settings');
+    if (!r.ok) return;
+    const s = await r.json();
+    const chip = document.getElementById('supporterCodeState');
+    const codeIn = document.querySelector('[data-set="supporterCode"]');
+    const paletteSel = document.querySelector('[data-set="dashboardPalette"]');
+    if (codeIn && !document.activeElement?.matches?.('[data-set="supporterCode"]')) codeIn.value = s.supporterCode || '';
+    if (paletteSel && !document.activeElement?.matches?.('[data-set="dashboardPalette"]')) paletteSel.value = s.dashboardPalette || '';
+    if (chip) {
+      if (!s.supporterCode) { chip.textContent = ''; chip.style.color = 'var(--ink-faint)'; }
+      else if (s.isSupporter) { chip.textContent = '✓ Valid'; chip.style.color = 'var(--good)'; }
+      else { chip.textContent = '✗ Unrecognized'; chip.style.color = '#e88'; }
+    }
+    // Apply the palette only when the code validates — non-supporters see the default palette
+    // even if they somehow POSTed a palette value.
+    const effectivePalette = s.isSupporter ? (s.dashboardPalette || '') : '';
+    document.body.setAttribute('data-palette', effectivePalette);
+  } catch (err) { /* silent */ }
+}
+applySupporterCosmetics();
+// Re-check on every settings save so the palette applies live when the code turns green.
+document.addEventListener('change', e => {
+  if (e.target?.matches?.('[data-set="supporterCode"], [data-set="dashboardPalette"], [data-set="showSupporterBadge"]')) {
+    setTimeout(applySupporterCosmetics, 200);
+  }
+});
 
 /* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
    The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered

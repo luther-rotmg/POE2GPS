@@ -3,6 +3,30 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.27.0] — 2026-07-10 "Support" 🤝
+
+### Added — 🤝 **Support** *(the community-first release · every supporter gets a place on the roll · cosmetic perks for Ko-fi backers · today's ES-offset patch baked in)*
+
+- 🩹 **ES-offset patch baked in.** GGG shifted the EnergyShield offset again today (0x264 → 0x24C). The auto-heal fixed it correctly for everyone the moment they launched, but nobody should have to pay that startup cost on every launch. Baked the new offset into the shipped default so v0.27+ launches clean; the auto-heal stays as the belt-and-suspenders backstop for any *future* drift.
+- 🤝 **Supporters card v2 — total count + latest supporter + rotating pitch.** The Supporters card at the top of Settings now shows the live community-backer total, the latest supporter's name in gold, and rotates through five community pitch quotes so the message stays fresh across visits. Pill roll below still shows every backer with a tier color and a hover-title for their role.
+- 📄 **SUPPORTERS.md hall of fame.** New top-level [`SUPPORTERS.md`](SUPPORTERS.md) is a browsable markdown table sorted by tier (🥇 Gold / 🥈 Silver / 🥉 Bronze / 💛 Community) — auto-generated from `supporters.json` so every release ships a fresh copy. Also linked from the README so it's discoverable without opening the app.
+- ☕ **Ko-fi supporter code + cosmetic dashboard palettes.** Ko-fi backers now get a code (LO ships codes via Ko-fi email / Discord DM after donations). Paste the code into ⚙️ Settings → **Supporter code**, and two cosmetic palettes unlock: **Kalguuran Gold** (warm gold on deep amber, callback to the Kalguuran act aesthetic) and **Wraeclast Terminal** (green-phosphor CRT). Also unlocks an optional **☕ Supporter chip** on the Session HUD — off by default; toggle in Settings. All cosmetic — the tool's functional surface stays identical for everyone forever. `SupporterCodeValidator` in `Core/Support/` uses SHA-256 on shipped hashes; local-only, never phones home, honor-system gate.
+- 📝 **README Ko-fi pitch rewritten.** The Ko-fi section now leads with the free-forever promise, then makes the actual pitch (what a coffee funds), then lists the three community perks: Supporters-roll placement, cosmetic unlock code, and Discord `☕ Supporter` role. Sets the tone that this is a community-first drop, not a paywall migration.
+
+### Deferred to v0.28 "Companion"
+
+Everything from v0.26's deferred list plus this drop's scope-cuts:
+
+- **Language wire-in** for atlas display sites (the setting reads but no site consumes it yet).
+- **Boss cheat-sheet overlay panel** (dashboard tab is the browsable surface; overlay panel is reactive-on-arena-entry).
+- **Waystone Ctrl+Alt+W hotkey** (grab clipboard + open the tab).
+- **Long List #39** Full-page browser views (Rules / Landmarks / Nameplates).
+- **Supporter-only preset packs** (3-4 curated `.poe2preset` files).
+- **Roadmap voting card** (supporters get 3 votes / non-supporters 1).
+- **Ko-fi webhook automation** (email code delivery).
+
+---
+
 ## [0.26.0] — 2026-07-10 "Reach"
 
 ### Added — 🌏 **Reach** *(boss cheat sheets · waystone mod-risk warnings · localized atlas names · dashboard groupings · a supporters roll · issue templates get a lane for post-patch drift)*

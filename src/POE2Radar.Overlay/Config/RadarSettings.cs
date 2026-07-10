@@ -82,6 +82,21 @@ public sealed class RadarSettings
     // English until they ship their own translates blocks.
     public string Language { get; set; } = "";
 
+    // Support — v0.27 (LO ask): Ko-fi supporter code. Users paste the code LO ships them via Ko-fi
+    // email / Discord DM into ⚙️ Settings → Support to unlock cosmetic dashboard themes + an optional
+    // overlay supporter badge. Empty = no unlock (default). NEVER gates any functional feature; only
+    // opts into cosmetics. Local-only; never phones home. See SupporterCodeValidator for the check.
+    public string SupporterCode { get; set; } = "";
+    // Cosmetic dashboard palette name. Empty = default palette (always available). Non-default
+    // palettes are supporter-only — the dashboard reads SupporterCodeValidator.IsSupporter and
+    // silently falls back to the default palette when the code is missing / invalid, so an old
+    // config file never renders broken.
+    public string DashboardPalette { get; set; } = "";
+    // Optional overlay supporter badge. When true AND SupporterCode validates, DrawSessionHud (or a
+    // dedicated one-line Status card) shows a small "☕ Supporter" chip next to the player name.
+    // Cosmetic only. Default false — must be opted into.
+    public bool ShowSupporterBadge { get; set; } = false;
+
     /// <summary>Resolve the effective language key against the shipped translation set. When
     /// <see cref="Language"/> is empty, maps the Windows system locale (via
     /// <see cref="System.Globalization.CultureInfo.CurrentCulture"/>) to one of the shipped keys;

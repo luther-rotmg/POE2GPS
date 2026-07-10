@@ -214,11 +214,15 @@ PoE2 offsets drift with patches — validated values live in `Game/Poe2Offsets.c
 
 The **Objective Director** is the headline work-in-progress. Zone-order **Campaign GPS** already ships (experimental). Next up: deep detection/cataloging of every relevant POI (seasonal events, passive-point upgrades, free skill/support gems), richer priority tiers, and a **quest-memory precision layer** — reading your actual quest-completion state to sharpen Campaign GPS beyond its built-in zone-order table.
 
-## 💜 Support the dev
+## 🤝 Support
 
-POE2GPS is **free and open-source, and always will be** — no paywalls, no "pro" tier, nothing locked behind a donation. But keeping the offsets patched every PoE2 update, shipping features, and answering issues is real time. If it's saved you some squinting at the minimap, a tip keeps the lights on. 🙏
+POE2GPS is **free and open-source, and always will be** — the app, the community pool, and every feature stays on the free tier forever. No paywall. No "pro" version. No functionality behind a donation. What runs on coffee is the *maintainer's time*: chasing offset drifts every PoE2 patch, shipping new features, and answering issues. Every drop is one person's work against a game that changes its memory layout every patch — and that time is what a Ko-fi tip buys directly.
 
-[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/lutherrotmg)
+If POE2GPS saved you a wipe, or a squint at the minimap, or an alt-tab to a wiki, and you want to send the next coffee — [![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/lutherrotmg)
+
+- **Your name lands on the Supporters roll** — the card at the top of the dashboard's Settings tab (also in [SUPPORTERS.md](SUPPORTERS.md) in this repo) — with an optional short note about your role in the community.
+- **Ko-fi supporters get a code** for optional cosmetic dashboard themes and an overlay supporter badge — cosmetic only, base tool stays identical for everyone.
+- **Community roles + Discord recognition** — Ko-fi donations auto-assign a `☕ Supporter` role in the [POE2GPS Discord](https://discord.gg/32qdzWRja3).
 
 Totally optional — a ⭐ on the repo and sharing it with your party help just as much.
 

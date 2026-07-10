@@ -1449,6 +1449,13 @@ public sealed class ApiServer : IDisposable
         groundItems = _settings.GroundItems, // ground-item value overlay (enabled / highlight threshold / league)
         contributeUrl = _settings.ContributeUrl,
         defaultContributeUrl = RadarSettings.DefaultContributeUrl, // Restore-default toast (CF-FALLBACK-UX)
+        // Support — v0.27 (LO ask): supporter code + cosmetic dashboard palette + optional overlay badge.
+        // isSupporter is a derived read-only mirror of the honor-system check — the dashboard uses it
+        // to gate palette + badge UI, no reveal of the actual code or hash list.
+        supporterCode      = _settings.SupporterCode,
+        dashboardPalette   = _settings.DashboardPalette,
+        showSupporterBadge = _settings.ShowSupporterBadge,
+        isSupporter        = POE2Radar.Core.Support.SupporterCodeValidator.IsSupporter(_settings.SupporterCode),
         highlightDynastyMaps = _settings.HighlightDynastyMaps,
         atlasHideCompleted   = _settings.AtlasHideCompleted,
         atlasHideAccessible  = _settings.AtlasHideAccessible,
@@ -1544,6 +1551,10 @@ public sealed class ApiServer : IDisposable
                 case "intelligentTargetCycling" when TryBool(p.Value, out var b): _settings.IntelligentTargetCycling = b; applied.Add(p.Name); break;
                 case "showMonolithPanel" when TryBool(p.Value, out var b): _settings.Monoliths.ShowPanel = b; applied.Add(p.Name); break;
                 case "contributeUrl" when TryString(p.Value, out var s): _settings.ContributeUrl = s.Trim(); applied.Add(p.Name); break;
+                // Support — v0.27: supporter code + cosmetic palette + badge toggle.
+                case "supporterCode"      when TryString(p.Value, out var s): _settings.SupporterCode      = s.Trim(); applied.Add(p.Name); break;
+                case "dashboardPalette"   when TryString(p.Value, out var s): _settings.DashboardPalette   = s.Trim(); applied.Add(p.Name); break;
+                case "showSupporterBadge" when TryBool(p.Value, out var b):   _settings.ShowSupporterBadge = b;        applied.Add(p.Name); break;
                 // Auto-update channel + URL override (v0.20.1). Both restart-required — the updater
                 // reads them once during Program startup. Channel is whitelisted to {stable,preview}
                 // so a malformed POST can't wedge the updater on an unknown mode; a blank/whitespace
