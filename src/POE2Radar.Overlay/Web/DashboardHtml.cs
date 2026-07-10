@@ -1013,9 +1013,9 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" id="dpEnabled"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Client ID<small>paste your neutral Discord app&rsquo;s Client ID &mdash; leave blank to keep the current one; toggle Enabled off to disable</small></div>
               <input class="numin" type="text" id="dpClientId" placeholder="Discord application snowflake" style="width:220px"></div>
-            <div class="row"><div class="rl">Details line<small>tokens: {area} {level} {zones} {mapshr} {kills} {xpeff}</small></div>
+            <div class="row"><div class="rl">Details line<small>tokens: {area} {level} {hp} {mana} {es} {zones} {mapshr} {kills} {deaths} {xpeff} {boss}</small></div>
               <input class="numin" type="text" id="dpDetailsTemplate" style="width:220px"></div>
-            <div class="row"><div class="rl">State line<small>tokens: {area} {level} {zones} {mapshr} {kills} {xpeff}</small></div>
+            <div class="row"><div class="rl">State line<small>tokens: {area} {level} {hp} {mana} {es} {zones} {mapshr} {kills} {deaths} {xpeff} {boss}</small></div>
               <input class="numin" type="text" id="dpStateTemplate" style="width:220px"></div>
             <div class="row"><div class="rl">Show elapsed timer</div>
               <label class="sw"><input type="checkbox" id="dpShowTimer"><span class="track"></span><span class="knob"></span></label></div>
@@ -2527,9 +2527,15 @@ function wireDiscordPresence(){
 }
 function updateDiscordPreview(s){
   const prev=document.getElementById('dpPreview'); if(!prev) return;
-  const toks={'area':s.areaName||s.areaCode||'','level':s.charLevel||0,'zones':s.session?.zonesEntered??0,
+  // Groove — v0.24: preview tokens extended to match the server-side dictionary. hp/mana/es are
+  // rounded from RadarState floats; boss lights up when the current entity list carries any Unique.
+  const uniqueCount=(s.entities||[]).filter(e=>e && (e.rarity===3||e.rarity==='Unique')).length;
+  const toks={'area':s.areaName||s.areaCode||'','level':s.charLevel||0,
+    'hp':Math.round(s.hpPct??100),'mana':Math.round(s.manaPct??100),'es':Math.round(s.esPct??100),
+    'zones':s.session?.zonesEntered??0,
     'mapshr':(s.session?.mapsPerHour??0).toFixed(1),'kills':((s.session?.killsNormal??0)+(s.session?.killsMagic??0)+(s.session?.killsRare??0)+(s.session?.killsUnique??0)),
-    'xpeff':(s.session?.xpEfficiency??0)};
+    'deaths':s.session?.deaths??0,'xpeff':(s.session?.xpEfficiency??0),
+    'boss':uniqueCount>0?'in boss arena':''};
   function fmt(t){ return (t||'').replace(/\{(\w+)\}/g,(_,k)=>toks[k]??'{'+k+'}'); }
   const dt=document.getElementById('dpDetailsTemplate');
   const st=document.getElementById('dpStateTemplate');
