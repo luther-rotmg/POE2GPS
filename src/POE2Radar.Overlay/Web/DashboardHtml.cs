@@ -471,6 +471,7 @@ internal static class DashboardHtml
         <button class="tab" data-tab="director">Director</button>
             <button class="tab" data-tab="entatlas">Entity Atlas</button>
             <button class="tab" data-tab="gear">Gear &#9733;</button>
+            <button class="tab" data-tab="bosses">Bosses</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -1160,6 +1161,15 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Target<small>raw weighted total that = a score of 100</small></div><input id="gTarget" class="numin" type="number" style="width:90px"></div>
             <div class="row"><div class="rl">God-roll threshold<small>score (0&ndash;100) at/above which an item gets a &#9733;</small></div><input id="gThreshold" class="numin" type="number" style="width:90px"></div>
             <div id="gWeightList" class="znotes" style="display:block"></div>
+          </div>
+        </section>
+
+        <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
+        <section class="view" data-view="bosses" hidden>
+          <div class="card" style="grid-column:1/-1">
+            <h3>Boss Cheat Sheets <small>&middot; damage-type mix, one-shots to dodge, over-cap thresholds, phase cues</small></h3>
+            <div class="row"><div class="rl hint-row">Hand-authored guides for pinnacle atlas bosses. Cross-checked against public wiki summaries (paraphrased). Damage-type mixes and over-cap thresholds are broad guidelines &mdash; tune to your build.</div></div>
+            <div id="bossList" class="znotes" style="display:block"></div>
           </div>
         </section>
 
@@ -2862,6 +2872,55 @@ $('#kbReset')?.addEventListener('click',async()=>{
   // Also run once immediately in case the settings view is pre-shown or for the initial page load.
   initSettingsCards();
 })();
+
+/* ── Reach — v0.26 (CHOR-42): boss cheat sheet loader ──────────────────────────────────────────
+   Fetches /api/bosses once on first Bosses-tab activation. Renders the shipped catalog as a list
+   of cards showing name, tier, damage-type row (color-coded), one-shots to dodge, overcap
+   thresholds, flask notes, and phase transitions. No search / filter yet — small catalog. */
+let __bossesLoaded = false;
+async function loadBosses(){
+  if (__bossesLoaded) return; __bossesLoaded = true;
+  const list = document.getElementById('bossList');
+  if (!list) return;
+  try {
+    const r = await fetch('/api/bosses');
+    if (!r.ok) { list.textContent = 'Failed to load cheat sheets ('+r.status+').'; return; }
+    const data = await r.json();
+    const entries = data?.entries || [];
+    if (!entries.length) { list.textContent = 'No cheat-sheet entries shipped in this build.'; return; }
+    // Damage-type element → CSS color token.
+    const DMG_COL = {phys:'#e8e0d0', fire:'#ff6b3d', cold:'#4dc4ff', lightning:'#ffdd44', chaos:'#c266ff'};
+    const html = entries.map(e => {
+      const dmg = e.damageTypes || {};
+      const dmgRow = ['phys','fire','cold','lightning','chaos']
+        .filter(k => (dmg[k]||0) >= 0.05)
+        .map(k => `<span style="background:${DMG_COL[k]};color:#000;padding:2px 8px;border-radius:2px;font-size:11px;font-weight:600;margin-right:4px">${k} ${Math.round((dmg[k]||0)*100)}%</span>`)
+        .join('');
+      const shots = (e.oneShots||[]).map(s => `<li>${s}</li>`).join('');
+      const phases = (e.phases||[]).map(p => `<li><b>${p.cue}</b> — ${p.note}</li>`).join('');
+      const overRows = Object.entries(e.overcap||{})
+        .map(([elem, thresh]) => `<span style="background:${DMG_COL[elem]||'#888'};color:#000;padding:2px 6px;border-radius:2px;font-size:10px;font-weight:600;margin-right:3px">${elem} ${thresh}%</span>`)
+        .join('');
+      return `
+        <div style="border:1px solid var(--line);border-radius:3px;padding:14px 16px;margin-bottom:12px;background:var(--bg-alt)">
+          <div style="font-family:'Cinzel','Georgia',serif;font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-bright);margin-bottom:4px">${e.label}</div>
+          <div style="font-size:10px;color:var(--ink-faint);letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px">${e.tier} &middot; ${e.category}</div>
+          <div style="margin-bottom:12px">${dmgRow}</div>
+          <div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin-bottom:4px">One-shots to dodge</div>
+          <ul style="margin:0 0 10px;padding-left:18px;font-size:12px;line-height:1.6">${shots}</ul>
+          ${phases ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin-bottom:4px">Phases</div>
+          <ul style="margin:0 0 10px;padding-left:18px;font-size:12px;line-height:1.6">${phases}</ul>` : ''}
+          ${overRows ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin-bottom:4px">Over-cap thresholds</div>
+          <div style="margin-bottom:10px">${overRows}</div>` : ''}
+          ${e.flaskNotes ? `<div style="font-size:12px;color:var(--ink);border-top:1px solid var(--line-soft);padding-top:8px;margin-top:8px"><b>Flask:</b> ${e.flaskNotes}</div>` : ''}
+        </div>`;
+    }).join('');
+    list.innerHTML = html;
+  } catch (err) {
+    list.textContent = 'Failed to load cheat sheets (network error).';
+  }
+}
+document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventListener('click', loadBosses));
 
 /* ── Groove — v0.24: global save-toast + keyboard shortcuts ────────────────────────────────────
    flashSaved() is available for future callsites (or as a lightweight helper); it does not

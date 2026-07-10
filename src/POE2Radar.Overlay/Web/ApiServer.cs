@@ -1191,6 +1191,33 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/bosses":
+            {
+                // Reach — CHOR-42 (v0.26): serve the shipped BossEncounterCatalog to the dashboard
+                // Bosses tab. No feature gate — cheat-sheet data is user-facing reference material,
+                // always safe to expose. Client renders the entries in-place.
+                var cat = POE2Radar.Core.Game.BossEncounterCatalog.Shared;
+                var bossesJson = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    entries = cat.Entries.Select(e => new
+                    {
+                        key           = e.Key,
+                        label         = e.Label,
+                        matchMetadata = e.MatchMetadata,
+                        zoneCodes     = e.ZoneCodes,
+                        tier          = e.Tier,
+                        category      = e.Category,
+                        damageTypes   = new { phys = e.DamageTypes.Phys, fire = e.DamageTypes.Fire, cold = e.DamageTypes.Cold, lightning = e.DamageTypes.Lightning, chaos = e.DamageTypes.Chaos },
+                        oneShots      = e.OneShots,
+                        overcap       = e.Overcap,
+                        flaskNotes    = e.FlaskNotes,
+                        phases        = e.Phases.Select(p => new { cue = p.Cue, note = p.Note }),
+                    })
+                }, Json);
+                WriteMaybeGzipped(ctx, bossesJson, "application/json; charset=utf-8");
+                break;
+            }
+
             case "/api/map":
             {
                 // v0.20.0 T5: same OR-gate — the shared renderer needs terrain from either entry point.

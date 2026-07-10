@@ -23,6 +23,7 @@
     <EmbeddedResource Include="Game\CustomLandmarks.json" />
     <EmbeddedResource Include="Game\entity_names.json" />
     <EmbeddedResource Include="Game\world_areas.json" />
+    <EmbeddedResource Include="Game\boss_encounters.json" />
     <EmbeddedResource Include="Game\zone_notes.json" />
     <EmbeddedResource Include="Game\poe2_mod_stats.json" />
     <EmbeddedResource Include="Game\poe2_stat_descriptions.json" />
