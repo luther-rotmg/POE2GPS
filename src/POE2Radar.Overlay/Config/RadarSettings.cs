@@ -97,6 +97,21 @@ public sealed class RadarSettings
     // Cosmetic only. Default false — must be opted into.
     public bool ShowSupporterBadge { get; set; } = false;
 
+    // v0.30 Instinct: user's personal waystone mod red-flag list. Mod NAMES (from WaystoneModRisk
+    // catalog) added here get a ★ marker in the WaystoneRiskPanel regardless of the built-in tier —
+    // "I have died to this before, don't miss it again." Populated via clicks on the waystone panel;
+    // NEVER gates any functional feature (dashboard still shows every mod). Cosmetic-only visual nudge.
+    public List<string> WaystoneRedFlags { get; set; } = new();
+
+    // v0.30 Instinct: per-character boss wipe tracker. When TrackBossWipes is true, each death
+    // detected in a matched boss zone increments a persistent counter keyed by <c>{charName → bossKey}</c>
+    // in <c>boss_wipe_log.json</c> under the config directory. Entering that boss again shows a
+    // "🪦 Nx before" badge in the cheat-sheet panel title bar so future-you sees what past-you learned.
+    // Also surfaces on the dashboard as a "Your wipe log" table so users can discover what they
+    // struggle with across sessions. Opt-out by flipping to false — no data ever exfiltrates; the
+    // log file lives alongside settings and can be deleted at any time.
+    public bool TrackBossWipes { get; set; } = true;
+
     /// <summary>Resolve the effective language key against the shipped translation set. When
     /// <see cref="Language"/> is empty, maps the Windows system locale (via
     /// <see cref="System.Globalization.CultureInfo.CurrentCulture"/>) to one of the shipped keys;

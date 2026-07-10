@@ -1214,21 +1214,19 @@ public sealed class OverlayRenderer : IDisposable
 
         const float panelW = 340f;
         const float pad = 6f, titleH = 18f, lineH = 15f;
+        // v0.30 Instinct: damage-type chip strip constants — colored rectangles instead of plain text.
+        const float chipH = 14f, chipPadX = 5f, chipGap = 4f;
         var collapsed = ctx.BossPanelCollapsed;
+        var dmg = entry.DamageTypes;
 
-        // Build body lines only when expanded (height math tracks visible rows exactly).
+        // Body row builder — text lines PLUS a "__DMG_CHIPS__" sentinel for the coloured damage strip
+        // (rendered inline in the draw loop). Height math tracks all rows including the sentinel.
         var lines = new System.Collections.Generic.List<(string text, uint color)>();
         if (!collapsed)
         {
             lines.Add(($"Tier: {entry.Tier}  ·  {entry.Category}", 0xFFFFFFFF));
-            var dmg = entry.DamageTypes;
-            var dmgParts = new System.Collections.Generic.List<string>();
-            if (dmg.Phys      >= 0.05f) dmgParts.Add($"phys {dmg.Phys*100:F0}%");
-            if (dmg.Fire      >= 0.05f) dmgParts.Add($"fire {dmg.Fire*100:F0}%");
-            if (dmg.Cold      >= 0.05f) dmgParts.Add($"cold {dmg.Cold*100:F0}%");
-            if (dmg.Lightning >= 0.05f) dmgParts.Add($"ltng {dmg.Lightning*100:F0}%");
-            if (dmg.Chaos     >= 0.05f) dmgParts.Add($"chaos {dmg.Chaos*100:F0}%");
-            if (dmgParts.Count > 0) lines.Add(($"Damage: {string.Join(" · ", dmgParts)}", 0xFFFFDDDD));
+            bool hasDmg = (dmg.Phys + dmg.Fire + dmg.Cold + dmg.Lightning + dmg.Chaos) >= 0.05f;
+            if (hasDmg) lines.Add(("__DMG_CHIPS__", 0));
             if (entry.OneShots is { Count: > 0 })
             {
                 lines.Add(("One-shots to dodge:", 0xFFFF9080));
@@ -1259,10 +1257,14 @@ public sealed class OverlayRenderer : IDisposable
 
         float cy = top + pad;
         var caret = collapsed ? "▶" : "▼";
-        // Truncate label so the ✕ never gets shoved off the panel.
+        // v0.30 Instinct: prepend a "🪦 Nx before" tag when this character has died to this boss before.
+        // Future-you sees what past-you learned. Never draws for a fresh char.
+        var wipes = ctx.BossPriorWipes;
+        var wipeTag = wipes > 0 ? $"🪦 {wipes}× before  " : "";
         var label = entry.Label ?? "Boss";
-        if (label.Length > 32) label = label.Substring(0, 29) + "…";
-        rt.DrawText($"{caret} ☠ {label}", _tf!,
+        int maxLabelLen = Math.Max(8, 32 - wipeTag.Length);
+        if (label.Length > maxLabelLen) label = label.Substring(0, maxLabelLen - 1) + "…";
+        rt.DrawText($"{caret} ☠ {wipeTag}{label}", _tf!,
             new Rect(left + pad, cy, left + panelW - pad - 20, cy + titleH), _bText!, DrawTextOptions.Clip);
         rt.DrawText("✕", _tf!,
             new Rect(left + panelW - pad - 12, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
@@ -1276,6 +1278,32 @@ public sealed class OverlayRenderer : IDisposable
         if (collapsed) return;
         foreach (var (text, color) in lines)
         {
+            // v0.30 Instinct: sentinel row → colour-coded damage-type chip strip. Skips elements < 5%.
+            if (text == "__DMG_CHIPS__")
+            {
+                float chipCx = left + pad;
+                void Chip(string tag, float share, uint fill)
+                {
+                    if (share < 0.05f) return;
+                    var txt = $"{tag} {share*100:F0}%";
+                    var textW = txt.Length * 7.2f;   // Consolas 12 ≈ 7.2 px per char (stable, fixed-width)
+                    var w = textW + chipPadX * 2f;
+                    if (chipCx + w > left + panelW - pad) return;   // out of room; skip this element
+                    _bStyle!.Color = ColorFromU(fill);
+                    rt.FillRectangle(new Vortice.RawRectF(chipCx, cy + 1, chipCx + w, cy + 1 + chipH), _bStyle);
+                    _bStyle.Color = ColorFromU(0xFF101018);   // dark ink on the coloured chip
+                    rt.DrawText(txt, _tf!, new Rect(chipCx + chipPadX, cy + 1, chipCx + w - chipPadX, cy + 1 + chipH),
+                        _bStyle, DrawTextOptions.Clip);
+                    chipCx += w + chipGap;
+                }
+                Chip("phys",  dmg.Phys,      0xFFDCDCDC);
+                Chip("fire",  dmg.Fire,      0xFFFF7733);
+                Chip("cold",  dmg.Cold,      0xFF66AACC);
+                Chip("ltng",  dmg.Lightning, 0xFFFFCC33);
+                Chip("chaos", dmg.Chaos,     0xFFAA66CC);
+                cy += lineH;
+                continue;
+            }
             _bStyle!.Color = ColorFromU(color);
             rt.DrawText(text, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bStyle, DrawTextOptions.Clip);
             cy += lineH;
@@ -1310,22 +1338,32 @@ public sealed class OverlayRenderer : IDisposable
             _                                                        => 0xFFCCCCCC,
         };
 
-        var lines = new System.Collections.Generic.List<(string text, uint color)>();
+        // v0.30 Instinct: red-flag set — mods whose Name is in the user's personal red-flag list get
+        // a ★ prefix regardless of the parser's tier verdict. Cheap hash lookup at render time.
+        var flags = ctx.WaystoneRedFlags is { Count: > 0 } fl
+            ? new HashSet<string>(fl, StringComparer.OrdinalIgnoreCase)
+            : null;
+
+        // Row shape carries the mod INDEX (-1 for header / combo / skip banner rows) so the click handler
+        // can look up the mod name at click time via ctx.WaystonePanelResult.Mods[index].
+        var lines = new System.Collections.Generic.List<(string text, uint color, int modIndex)>();
         if (!collapsed)
         {
             if (result.ShouldSkip)
-                lines.Add(($"⚠ SKIP  (risk score {result.TotalScore} ≥ {POE2Radar.Core.Game.WaystoneModRisk.SkipThreshold})", 0xFFEE3333));
+                lines.Add(($"⚠ SKIP  (risk score {result.TotalScore} ≥ {POE2Radar.Core.Game.WaystoneModRisk.SkipThreshold})", 0xFFEE3333, -1));
             var header = string.IsNullOrEmpty(result.Rarity)
                 ? $"Tier {result.Tier}  ·  score {result.TotalScore}"
                 : $"{result.Rarity}  ·  Tier {result.Tier}  ·  score {result.TotalScore}";
-            lines.Add((header, 0xFFFFFFFF));
-            foreach (var m in result.Mods)
+            lines.Add((header, 0xFFFFFFFF, -1));
+            for (int i = 0; i < result.Mods.Count; i++)
             {
+                var m = result.Mods[i];
+                var isFlagged = flags != null && !string.IsNullOrEmpty(m.Name) && flags.Contains(m.Name);
                 var label = string.IsNullOrEmpty(m.Name) ? m.Line : $"{m.Name}  (+{m.Weight})";
-                lines.Add(($"  {label}", TierColor(m.Tier)));
+                lines.Add(($"  {(isFlagged ? "★ " : "  ")}{label}", TierColor(m.Tier), i));
             }
             foreach (var c in result.Combos)
-                lines.Add(($"  ⚡ combo  {c.Label}  (+{c.Bonus})", 0xFFEE3333));
+                lines.Add(($"  ⚡ combo  {c.Label}  (+{c.Bonus})", 0xFFEE3333, -1));
         }
         float panelH = pad * 2f + titleH + lineH * lines.Count;
 
@@ -1350,10 +1388,15 @@ public sealed class OverlayRenderer : IDisposable
 
         cy += titleH;
         if (collapsed) return;
-        foreach (var (text, color) in lines)
+        foreach (var (text, color, modIndex) in lines)
         {
             _bStyle!.Color = ColorFromU(color);
             rt.DrawText(text, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bStyle, DrawTextOptions.Clip);
+            // v0.30 Instinct: mod rows are click-to-flag (star toggle). Header / skip / combo rows
+            // carry modIndex = -1 and stay non-interactive.
+            if (modIndex >= 0)
+                _legendRowRects.Add((new Vortice.RawRectF(left, cy, left + panelW, cy + lineH),
+                    $"waystone-flag:{modIndex}"));
             cy += lineH;
         }
     }

@@ -102,6 +102,7 @@ public sealed class ApiServer : IDisposable
     // failed to open at RadarApp construction time (or in tests that don't need probe wiring) —
     // /api/contribute-trace short-circuits to a clean 400 in that case.
     private readonly POE2Radar.Core.Campaign.Probe.EventWriter? _traceWriter;
+    private readonly Func<object>? _wipeLog;   // v0.30 Instinct: /api/wipe-log payload provider
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -138,7 +139,10 @@ public sealed class ApiServer : IDisposable
         int port = 7777,
         SseChannel? sse = null,
         AssetHost? assetHost = null,
-        POE2Radar.Core.Campaign.Probe.EventWriter? traceWriter = null)
+        POE2Radar.Core.Campaign.Probe.EventWriter? traceWriter = null,
+        // v0.30 Instinct: per-character boss wipe log (persistent) — served at /api/wipe-log to
+        // populate the "Your wipes" dashboard card. Null → the endpoint returns an empty payload.
+        Func<object>? wipeLogProvider = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -172,6 +176,7 @@ public sealed class ApiServer : IDisposable
         _sse = sse;
         _assetHost = assetHost;
         _traceWriter = traceWriter;
+        _wipeLog = wipeLogProvider;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1264,6 +1269,18 @@ public sealed class ApiServer : IDisposable
                     })
                 }, Json);
                 WriteMaybeGzipped(ctx, bossesJson, "application/json; charset=utf-8");
+                break;
+            }
+
+            case "/api/wipe-log":
+            {
+                // v0.30 Instinct: per-character boss wipe log. Populated by the render thread every
+                // time a boss cheat-sheet is up AND a fresh death is detected — persistent across
+                // sessions in ConfigDir/boss_wipe_log.json. Payload shape (from RadarApp wipeLogProvider):
+                //   { character: "Name", wipes: { boss_key: count, ... }, total: N, allCharacters: [...] }
+                // Empty envelope when the provider isn't wired (defensive).
+                object payload = _wipeLog?.Invoke() ?? new { character = "", wipes = new Dictionary<string, int>(), total = 0, allCharacters = Array.Empty<string>() };
+                WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(payload, Json), "application/json; charset=utf-8");
                 break;
             }
 
