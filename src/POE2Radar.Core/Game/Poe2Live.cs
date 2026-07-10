@@ -162,7 +162,7 @@ public sealed class Poe2Live
         /// <summary>Monsters are "alive" only with positive HP; non-life entities are always shown.</summary>
         public bool IsAlive => HpMax <= 0 || HpCur > 0;
         public bool HasLife => HpMax > 0;
-        /// <summary>GameHelper2 rule: friendly when (Reaction &amp; 0x7F) == 1.</summary>
+        /// <summary>PoE2 friendly rule: (Reaction &amp; 0x7F) == 1.</summary>
         public bool IsFriendly => (Reaction & 0x7F) == 1;
         public float HpFraction => HpMax > 0 ? Math.Clamp((float)HpCur / HpMax, 0f, 1f) : 1f;
     }
@@ -1240,7 +1240,7 @@ public sealed class Poe2Live
         return (flags & (1u << Poe2.UiElement.FlagVisibleBit)) != 0;
     }
 
-    // ── UiElement screen geometry (GameHelper UiElementBase port; shared with Poe2Runeforge) ──────────
+    // ── UiElement screen geometry (shared with Poe2Runeforge) ──────────
 
     /// <summary>Screen-space rect (pixels) of ANY UiElement, via the GameHelper UiElementBase math:
     /// parent-chain unscaled position × resolution scale. Same geometry as <see cref="Poe2Runeforge"/>

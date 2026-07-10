@@ -440,7 +440,7 @@ public sealed class OverlayRenderer : IDisposable
 
     /// <summary>Lay stroked arrowhead chevrons (a row of "&gt;" pointing a→b) at <paramref name="spacing"/>
     /// intervals along the segment (#4). <paramref name="carry"/> holds the leftover distance into the next
-    /// segment so spacing stays even across a multi-segment route. Ported from the GameHelper2 Atlas plugin's
+    /// segment so spacing stays even across a multi-segment route. Adapted from prior art in an upstream Atlas plugin's
     /// DrawChevrons (filled triangles → stroked chevrons here, cheaper in Direct2D and reads the same).</summary>
     private void DrawAtlasChevrons(ID2D1RenderTarget rt, NumVec2 a, NumVec2 b, Color4 color, float size, float spacing, ref float carry)
     {

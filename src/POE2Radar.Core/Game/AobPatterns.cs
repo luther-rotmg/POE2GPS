@@ -47,7 +47,7 @@ public static class AobPatterns
     ];
 
     /// <summary>
-    /// PoE2 "Game States" pattern (GameHelper2 StaticOffsetsPatterns.cs):
+    /// PoE2 "Game States" pattern (upstream reference):
     ///   <c>48 39 2D ^ ?? ?? ?? ?? 0F 85 16 01 00 00</c>
     /// The instruction is <c>cmp [rip+rel32], rbp</c> (48 39 2D + rel32 = 7 bytes); the rel32
     /// resolves to the GameStates global pointer slot. Deref the slot → GameState root.
@@ -74,7 +74,7 @@ public static class AobPatterns
     /// Instruction: <c>mov rcx, [rip+rel32]</c> (48 8B 0D + rel32 = 7 bytes).
     /// The trailing <c>E8 … E8</c> suffix makes it unique among the many 48 8B 0D hits.
     ///
-    /// Source: GameHelper2 StaticOffsetsPatterns.cs — same upstream this codebase tracks.
+    /// Source: upstream reference — same upstream this codebase tracks.
     ///
     /// IMPORTANT: <c>48 8B 0D</c> is very common in PoE.exe. This pattern will produce
     /// MULTIPLE matches. <see cref="POE2Radar.Research.RunPreload"/> handles all candidates,
@@ -93,7 +93,7 @@ public static class AobPatterns
             },
             DispOffset:  3,   // rel32 starts right after 48 8B 0D
             InstrLen:    7,   // mov rcx,[rip+rel32] — 3-byte opcode + 4-byte displacement
-            Description: "File Root global slot — GameHelper2 AOB (48 8B 0D ^ rel32 E8.. E8)"),
+            Description: "File Root global slot — upstream reference (48 8B 0D ^ rel32 E8.. E8)"),
     ];
 
     /// <summary>

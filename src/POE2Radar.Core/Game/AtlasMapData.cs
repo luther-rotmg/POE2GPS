@@ -5,8 +5,7 @@ namespace POE2Radar.Core.Game;
 
 /// <summary>
 /// Static Atlas reference data — the offline classification + content layer that pairs with the live
-/// node read in <see cref="Poe2Atlas"/>. Two embedded tables (both adopted from the GameHelper2 Atlas
-/// plugin, generated from GGG .dat dumps for PoE2 0.5.x):
+/// node read in <see cref="Poe2Atlas"/>. Two embedded tables (both adopted from an upstream Atlas plugin, generated from GGG .dat dumps for PoE2 0.5.x):
 ///
 /// <para><b>atlas_maps.json</b> — keyed by the internal WorldArea MapId (e.g. <c>MapBurialBog</c>,
 /// exactly the code <see cref="Poe2Atlas.ResolveTags"/> reads): display name + <c>type</c>
@@ -120,7 +119,7 @@ public sealed class AtlasMapData
     }
 
     // Special map-state content with a VisualIdentity icon but no EndgameMapContent row, so it's absent
-    // from atlas_content.json. Ported from the GameHelper2 Atlas plugin (SeedSpecialBadges). The id drifts
+    // from atlas_content.json. Ported from prior art in an upstream Atlas plugin (SeedSpecialBadges). The id drifts
     // ±1 per patch but the NAME is stable, so seeding the name→icon/desc here is patch-durable.
     private void SeedSpecialBadges()
     {

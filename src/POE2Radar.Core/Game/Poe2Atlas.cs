@@ -581,7 +581,7 @@ public sealed class Poe2Atlas
     }
 
     // Per-node content BADGES: node[0][0] children, each child's +0x300 → "[Code|Display]" UTF-16 string.
-    // The GameHelper Atlas-main reference reads this at child+0x290; on OUR build it's child+0x300 (validated
+    // Prior-art reads this at child+0x290; on OUR build it's child+0x300 (validated
     // live 2026-06-20 via the F10 discovery dump: n00[0]+0x300='[DeadlyMapBoss|Deadly Map Boss]'). This badge
     // list carries the boss TIER ("Deadly Map Boss") that the +0x310 headline row collapses to the generic
     // "Powerful Map Boss" — so it's what makes Deadly/Twinned/etc. trackable + navigable.
@@ -635,7 +635,7 @@ public sealed class Poe2Atlas
 
     /// <summary>DIAGNOSTIC: describe a node's child-tree + scan each content-badge child's offset window
     /// (0x280..0x300) for UTF-16 strings, so we can LOCATE where per-node content (incl. the boss-tier
-    /// "Deadly Map Boss" badge) lives on our build — the GameHelper Atlas-main path (node[0][0] children,
+    /// "Deadly Map Boss" badge) lives on our build — prior-art path (node[0][0] children,
     /// +0x290) returned nothing here, so this finds the real layout instead of guessing. Printed by F10.</summary>
     public string DescribeNodeContent(nint el)
     {
