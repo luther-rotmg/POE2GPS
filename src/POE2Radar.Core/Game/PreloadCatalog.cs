@@ -12,7 +12,14 @@ namespace POE2Radar.Core.Game;
 public sealed class PreloadCatalog
 {
     /// <summary>Describes a catalog rule that matched a preloaded entity path.</summary>
-    public sealed record CatalogHit(string Label, string Tier, string Category, string Color, string Match);
+    /// <param name="SpawnEntityMetadata">
+    /// Signal — SIG-PRELOAD-CATALOG (v0.23): substring the spawn-detection scan (in RadarApp.WorldTick)
+    /// looks for on live entity metadata to decide whether the preloaded content has appeared in the
+    /// world. Null = spawn detection disabled for this rule (Shrines, Chests, Rituals — tile-scoped
+    /// content where a spawned entity does not mean "encounter resolved"). Non-null = the preload
+    /// row hides from the panel once any entity carries this substring in its Metadata.
+    /// </param>
+    public sealed record CatalogHit(string Label, string Tier, string Category, string Color, string Match, string? SpawnEntityMetadata);
 
     private static readonly Lazy<PreloadCatalog> _shared =
         new(LoadEmbedded, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -51,7 +58,7 @@ public sealed class PreloadCatalog
         // Rules are pre-sorted pinnacle → high → mechanic → interactable; first substring match wins.
         foreach (var rule in _rules)
             if (lowerPath.Contains(rule.Match, StringComparison.Ordinal))
-                return new CatalogHit(rule.Label, rule.Tier, rule.Category, rule.Color, rule.Match);
+                return new CatalogHit(rule.Label, rule.Tier, rule.Category, rule.Color, rule.Match, rule.SpawnEntityMetadata);
 
         return null;
     }
@@ -71,7 +78,7 @@ public sealed class PreloadCatalog
         _             => (int)Tier.Interactable
     };
 
-    private sealed record CatalogRule(string Match, string Label, string Tier, string Category, string Color);
+    private sealed record CatalogRule(string Match, string Label, string Tier, string Category, string Color, string? SpawnEntityMetadata);
 
     private static PreloadCatalog LoadEmbedded()
     {
@@ -101,8 +108,17 @@ public sealed class PreloadCatalog
                     var tier     = Str(el, "tier");
                     var category = Str(el, "category");
                     var color    = Str(el, "color");
+                    // Signal — SIG-PRELOAD-CATALOG (v0.23): parse the optional spawnEntityMetadata field
+                    // from JSON. When absent for a Boss or Unique rule, default to the Match substring —
+                    // the preloaded entity's live Metadata will contain the same substring once spawned,
+                    // so reusing Match gives Task 5's scan a working default without hand-authoring the
+                    // JSON for every boss. Shrine / Chest / Ritual categories stay null (tile-scoped).
+                    var spawnMeta = Str(el, "spawnEntityMetadata");
+                    string? resolvedSpawn = spawnMeta.Length > 0
+                        ? spawnMeta
+                        : (category is "Boss" or "Unique" ? match : null);
                     if (match.Length > 0)
-                        rules.Add(new CatalogRule(match, label, tier, category, color));
+                        rules.Add(new CatalogRule(match, label, tier, category, color, resolvedSpawn));
                 }
 
             // Sort strongest tier first so first substring-match wins with best tier.

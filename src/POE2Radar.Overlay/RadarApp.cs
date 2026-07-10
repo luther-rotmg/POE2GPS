@@ -937,7 +937,7 @@ public sealed class RadarApp : IDisposable
                 if (!alertSet.Contains(path)) continue;
                 if (TierRank(hit.Tier) < minRank) continue;
                 if (!seen.Add(hit.Label)) continue;   // dedupe by label
-                hits.Add(new PreloadHit(hit.Label, hit.Tier, hit.Category, hit.Color));
+                hits.Add(new PreloadHit(hit.Label, hit.Tier, hit.Category, hit.Color, hit.SpawnEntityMetadata, Spawned: false));
             }
 
             _preloadFrame = hits.Count > 0 ? hits : null;
