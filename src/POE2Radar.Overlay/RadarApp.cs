@@ -1860,6 +1860,29 @@ public sealed class RadarApp : IDisposable
         // Accumulate any newly-seen monster mod ids into the persistent catalog (debounced write)
         // so the dashboard rule editor can offer them and they survive restarts / new content.
         _modCatalog.Observe(_entities);
+
+        // Signal — SIG-PRELOAD-HIDE-ON-SPAWN (v0.23): once a bound entity spawns in the entity list,
+        // mark the preload hit spawned so the renderer skips it. Only hits with a non-null
+        // SpawnEntityMetadata participate; hits without binding stay visible until zone change.
+        // Cost is O(hits × entities) — negligible with hits typically ≤10 and _entities post-cull ≤500.
+        // Runs on the world thread; _preloadFrame is world-thread-owned so the mutation is race-free.
+        if (_preloadFrame is { Count: > 0 } preloadHits)
+        {
+            for (int i = 0; i < preloadHits.Count; i++)
+            {
+                var hit = preloadHits[i];
+                if (hit.Spawned) continue;
+                if (hit.SpawnEntityMetadata is not { Length: > 0 } needle) continue;
+                for (int j = 0; j < _entities.Count; j++)
+                {
+                    if (_entities[j].Metadata.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        preloadHits[i] = hit with { Spawned = true };
+                        break;
+                    }
+                }
+            }
+        }
         // (SeenPoiLog.Observe is called below, AFTER _landmarks is refreshed this tick — see ~the
         //  _live.Landmarks(...) assignment — so it logs THIS tick's landmarks, not last tick's.)
         // If the user edited the custom landmark patterns, drop the cached per-area scan so it
