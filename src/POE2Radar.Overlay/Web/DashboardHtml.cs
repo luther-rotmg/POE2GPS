@@ -233,6 +233,12 @@ internal static class DashboardHtml
   .hint-row{color:var(--ink-faint)!important; font-size:11px!important; font-style:italic}
   .saved{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--good); opacity:0; transition:opacity .3s}
   .saved.show{opacity:1}
+  /* Reach — v0.26 (CHOR-7): Settings tab section-header dividers. Full-width row in the settings
+     panel-grid, so the cards below it flow into the next row with a clear visual break. */
+  .sec-hdr{grid-column:1/-1;border-top:1px solid var(--line-soft);padding:16px 4px 4px;margin-top:4px;
+    font-family:"Cinzel","Georgia",serif;font-size:11px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--gold-bright)}
+  .sec-hdr:first-of-type{border-top:none;margin-top:0;padding-top:6px}
   /* Groove — v0.24: central save-confirmation toast + keyboard-shortcut help modal. */
   #globalSavedMsg{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9998;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--good);opacity:0;transition:opacity .3s;background:rgba(0,0,0,.85);padding:7px 16px;border:1px solid var(--line);border-radius:3px;pointer-events:none;font-family:inherit}
   #globalSavedMsg.show{opacity:1}
@@ -734,6 +740,7 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Contribute URL<small>your Cloudflare Worker endpoint; set this to enable one-click &ldquo;Contribute&rdquo;</small></div>
               <input class="numin" type="text" data-set="contributeUrl" placeholder="https://&hellip;workers.dev" style="width:240px"></div>
           </div>
+          <div class="sec-hdr">HUD panels</div>
           <div class="card" data-card="session">
             <h3>Session HUD</h3>
 
@@ -834,6 +841,7 @@ internal static class DashboardHtml
               <span class="saved" id="savedMsgPr">&#10003; contributed &mdash; thank you!</span>
             </div>
           </div>
+          <div class="sec-hdr">Overlay rendering</div>
           <div class="card" data-card="hpbars">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
             <div class="row"><div class="rl hint-row">Toggle the bar on/off per rarity with the <b>On</b> checkbox &mdash; uncheck all to disable HP bars entirely, or leave only the rarities you want. The rest sets the bar <i>geometry</i> per rarity.</div></div>
@@ -974,6 +982,7 @@ internal static class DashboardHtml
               <span class="chip" data-gicat="Expedition">Expedition</span>
             </div>
           </div>
+          <div class="sec-hdr">Advanced</div>
           <div class="card" id="keybindsCard" data-card="keybinds">
             <h3>Keybinds <small class="tag">&middot; click Rebind then press a key</small></h3>
             <div id="kbRows"></div>
@@ -982,6 +991,7 @@ internal static class DashboardHtml
             </div>
             <div style="height:14px"><span class="saved" id="savedMsgKb">&#10003; saved</span></div>
           </div>
+          <div class="sec-hdr">Integrations</div>
           <div class="card collapsed" data-card="obs-overlay">
             <h3>OBS Overlay <small class="tag">&middot; browser source</small></h3>
             <div class="row"><div class="rl">Browser source URL<small>add this as a Browser Source in OBS (transparent background)</small></div>
