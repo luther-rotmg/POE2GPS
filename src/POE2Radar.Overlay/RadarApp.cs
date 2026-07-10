@@ -224,6 +224,12 @@ public sealed class RadarApp : IDisposable
     private Poe2Live.TerrainData? _terrain;                 // world only
     private int _charLevel;                                 // world only (published in the snapshot)
     private int _levelRefreshTick;                          // SR-6: slow-refresh PlayerLevel counter (world thread)
+    // Threshold — THR-XP-RENDER: gated slow-refresh cumulative XP (world thread). Only written
+    // inside the _levelRefreshTick ~5 s window AND only when SessionHudSettingsExt.ShouldReadXpRate
+    // returns true, so with the row off there is literally zero XP-tracking work per world tick.
+    // Aligned x64 long reads are torn-free, and the render thread pipes this to SessionTracker
+    // through a snapshot-consistent read on its own thread.
+    private long _currentXp;
     private nint _lastAreaInstance;                         // world only: terrain-cache invalidation + atlas anchor
     // E3: cached per-area-instance reads (avoid re-reading unchanged values each tick).
     private uint _cachedAreaHash;    // world thread
@@ -1557,6 +1563,12 @@ public sealed class RadarApp : IDisposable
             foreach (var e in snap.Entities)
                 if (e.Category == Poe2Live.EntityCategory.Monster)
                     _session.ObserveKill(e.Address, e.Rarity, e.HpCur, e.HpMax);
+            // Threshold — THR-XP-RENDER: 9-arg overload from THR-XP-TRACKER. The gate here
+            // passes 0 when the row is off so a stale _currentXp captured from a prior
+            // ShowXpRate=true window can never leak into the ring after the user toggles the
+            // row off. Task 6's overload treats 0 as "skip append, preserve prior rate", so
+            // the tracker's ring + SessionStats.CurrentXp both freeze cleanly.
+            long currentXpForUpdate = _settings.SessionHud.ShouldReadXpRate() ? _currentXp : 0L;
             _sessionSnapshot = _session.Update(
                 snap.AreaHash,
                 snap.AreaCode,
@@ -1565,7 +1577,8 @@ public sealed class RadarApp : IDisposable
                 _hpPct,
                 DateTime.UtcNow.Ticks,
                 _settings.SessionHud.ExcludeTownsFromPace,
-                isTown);
+                isTown,
+                currentXpForUpdate);
         }
 
         var entities = worldFresh ? snap.Entities : Array.Empty<Poe2Live.EntityDot>();
@@ -1767,7 +1780,18 @@ public sealed class RadarApp : IDisposable
         // backs the monster HP reads in Entities()/ReadHp. EnsurePlayerVitalOffsets does this with no
         // VitalStruct reads (no HP/Mana/ES syscalls), saving 3 RPM calls per world tick.
         _live.EnsurePlayerVitalOffsets(localPlayer);
-        if (_levelRefreshTick++ % 150 == 0) _charLevel = _live.PlayerLevel(localPlayer);  // SR-6: ~5 s cadence
+        if (_levelRefreshTick++ % 150 == 0)
+        {
+            _charLevel = _live.PlayerLevel(localPlayer);  // SR-6: ~5 s cadence
+            // Threshold — THR-XP-RENDER: zero-cost-when-off. The XP accessor rides the SAME
+            // slow-refresh cadence as PlayerLevel — no new memory-read tick. The gate
+            // (SessionHudSettingsExt.ShouldReadXpRate: Enabled && ShowXpRate) is the exact
+            // predicate the spy test asserts, so when either master toggle or row toggle is
+            // off, _live.PlayerExperience is NEVER invoked and _currentXp retains its prior
+            // value (which the render-thread gate below zeroes before feeding the tracker).
+            if (_settings.SessionHud.ShouldReadXpRate())
+                _currentXp = _live.PlayerExperience(localPlayer);
+        }
 
         // RPM rate: update the windowed reads/sec once per second (all three reader stacks; _atlas rides _reader).
         var nowTicks = System.Diagnostics.Stopwatch.GetTimestamp();

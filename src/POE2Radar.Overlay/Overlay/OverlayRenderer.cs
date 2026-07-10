@@ -4,6 +4,7 @@ using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Pathfinding;
 using POE2Radar.Overlay.Config;
+using POE2Radar.Overlay.Overlay;   // Threshold — THR-XP-RENDER: SessionHudXpFormatter (sub-namespace).
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.Mathematics;
@@ -81,6 +82,12 @@ public sealed class OverlayRenderer : IDisposable
     private float _hudCacheMapsHr;
     private int _hudCacheXpEff;
     private bool _hudCacheShowKills;
+    // Threshold — THR-XP-RENDER: XP/hour row cache-key comparands. All four SessionStats XP
+    // fields (XpPerHour, CurrentXp, SessionXpDelta, RingFilling) participate so any drift in
+    // the row's rendered content triggers exactly one re-layout (see comparand chain below).
+    private float _hudCacheXpPerHour;
+    private long  _hudCacheCurrentXp, _hudCacheSessionXpDelta;
+    private bool  _hudCacheRingFilling, _hudCacheShowXpRate;
 
     // ── D2: Terrain color cache + per-rule color memo (render-thread-owned). ──
     private string _terrainCacheIntHex = "", _terrainCacheEdgeHex = "";
@@ -927,7 +934,14 @@ public sealed class OverlayRenderer : IDisposable
             || sess.KillsUnique    != _hudCacheKillsU
             || sess.MapsPerHour    != _hudCacheMapsHr
             || sess.XpEfficiency   != _hudCacheXpEff
-            || hud.ShowKills       != _hudCacheShowKills)
+            || hud.ShowKills       != _hudCacheShowKills
+            // Threshold — THR-XP-RENDER: rebuild when the XP rate / cumulative / delta /
+            // ring-filling flag / row toggle moves.
+            || sess.XpPerHour      != _hudCacheXpPerHour
+            || sess.CurrentXp      != _hudCacheCurrentXp
+            || sess.SessionXpDelta != _hudCacheSessionXpDelta
+            || sess.RingFilling    != _hudCacheRingFilling
+            || hud.ShowXpRate      != _hudCacheShowXpRate)
         {
             _hudCacheSessionSec   = sessionSec;
             _hudCacheZoneSec      = zoneSec;
@@ -947,6 +961,11 @@ public sealed class OverlayRenderer : IDisposable
             _hudCacheMapsHr       = sess.MapsPerHour;
             _hudCacheXpEff        = sess.XpEfficiency;
             _hudCacheShowKills    = hud.ShowKills;
+            _hudCacheXpPerHour      = sess.XpPerHour;
+            _hudCacheCurrentXp      = sess.CurrentXp;
+            _hudCacheSessionXpDelta = sess.SessionXpDelta;
+            _hudCacheRingFilling    = sess.RingFilling;
+            _hudCacheShowXpRate     = hud.ShowXpRate;
 
             // Build only the enabled rows (pre-formatted strings). Line count drives the panel height.
             var lines = new List<(string text, bool isDeath)>(6);
@@ -970,6 +989,28 @@ public sealed class OverlayRenderer : IDisposable
                 lines.Add(($"Kills    N{sess.KillsNormal} M{sess.KillsMagic} R{sess.KillsRare} U{sess.KillsUnique}", false));
                 lines.Add(($"Maps/hr  {sess.MapsPerHour:F1}", false));
                 lines.Add(($"XP eff   {sess.XpEfficiency:+#;-#;0}", false));
+            }
+            // Threshold — THR-XP-RENDER: XP/hour + time-to-next-level row. Passing the static
+            // method group PoE2XpCurveLoader.TimeToNextLevel keeps the call site allocation-free
+            // (no captured lambda). Character level is back-derived from sess.CurrentAreaLevel +
+            // sess.XpEfficiency (SessionStats does not carry playerLevel directly). Falls back to
+            // 1 when the derivation would sub-clamp — the row still renders a valid "L{n+1}".
+            // Ring-filling mode surfaces the TTL on a second line (renderer paints two rows);
+            // ring-full collapses to a single line.
+            if (hud.ShowXpRate)
+            {
+                int playerLevel = sess.CurrentAreaLevel + sess.XpEfficiency;
+                if (playerLevel < 1) playerLevel = 1;
+                var xp = SessionHudXpFormatter.FormatXpRow(
+                    xpPerHour:    sess.XpPerHour,
+                    currentLevel: playerLevel,
+                    currentXp:    sess.CurrentXp,
+                    ringFilling:  sess.RingFilling,
+                    timeToNextResolver: POE2Radar.Core.Session.PoE2XpCurveLoader.TimeToNextLevel);
+
+                lines.Add((xp.primary, xp.noData));
+                if (xp.secondary != null)
+                    lines.Add((xp.secondary, xp.noData));
             }
             _hudLines = lines.ToArray();
         }
