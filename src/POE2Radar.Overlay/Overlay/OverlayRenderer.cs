@@ -1065,14 +1065,21 @@ public sealed class OverlayRenderer : IDisposable
         if (ctx.ZoneSummaryHud is not { Enabled: true } hud || ctx.ZoneSummary is not { } z) return;
 
         // Build row strings: fixed rows first, then conditional mechanic rows (only when count > 0).
+        // Chorus — CHOR-23 (v0.25): three new chips.
+        //   - Kills chip is always visible when the Zone Summary is enabled at all.
+        //   - Boss Arena is conditional on any Unique-rarity BossArena entity being in the zone.
+        //   - Nearest mechanic is conditional on any mechanic being present.
         var chestTotal = z.ChestsOpen + z.ChestsClosed;
         var rows = new System.Collections.Generic.List<string>
         {
             $"Rares/Elites  {z.RareEliteAlive}",
             $"Monsters      {z.MonstersAlive}",
+            $"Kills         {z.KillsThisZone}",
             $"Chests        {z.ChestsOpen}/{chestTotal}",
             $"Exits         {z.Transitions}",
         };
+        if (z.HasBossArena)                      rows.Add("★ Boss Arena");
+        if (z.NearestMechanicKind is { } kind)   rows.Add($"Nearest       {kind}  {z.NearestMechanicDist:F0}");
         if (z.ExpeditionCount > 0) rows.Add($"Expedition    {z.ExpeditionCount}");
         if (z.RitualCount     > 0) rows.Add($"Ritual        {z.RitualCount}");
         if (z.BreachCount     > 0) rows.Add($"Breach        {z.BreachCount}");

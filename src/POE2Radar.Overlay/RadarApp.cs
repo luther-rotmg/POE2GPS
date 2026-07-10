@@ -132,12 +132,15 @@ public sealed class RadarApp : IDisposable
     private volatile MonolithRender _monoRender = MonolithRender.Empty;
 
     // ── Zone summary (live counts per zone: monsters/rares/chests/transitions/landmarks + mechanics). ──
+    // Chorus — CHOR-23 (v0.25): NearestMechanicDist + NearestMechanicKind + HasBossArena computed in
+    // the same entity walk that produces the mechanic counts.
     private sealed record ZoneSummaryBundle(uint AreaHash, int MonstersAlive, int RareEliteAlive,
         int ChestsOpen, int ChestsClosed, int Transitions, int Landmarks,
         int ExpeditionCount, int RitualCount, int BreachCount,
-        int StrongboxCount, int EssenceCount, int ShrineCount)
+        int StrongboxCount, int EssenceCount, int ShrineCount,
+        float NearestMechanicDist, string? NearestMechanicKind, bool HasBossArena)
     {
-        public static readonly ZoneSummaryBundle Empty = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        public static readonly ZoneSummaryBundle Empty = new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0f, null, false);
     }
     private volatile ZoneSummaryBundle _zoneSummary = ZoneSummaryBundle.Empty;
 
@@ -1724,7 +1727,11 @@ public sealed class RadarApp : IDisposable
                     _zoneSummary.ChestsOpen, _zoneSummary.ChestsClosed,
                     _zoneSummary.Transitions, _zoneSummary.Landmarks,
                     _zoneSummary.ExpeditionCount, _zoneSummary.RitualCount, _zoneSummary.BreachCount,
-                    _zoneSummary.StrongboxCount, _zoneSummary.EssenceCount, _zoneSummary.ShrineCount)
+                    _zoneSummary.StrongboxCount, _zoneSummary.EssenceCount, _zoneSummary.ShrineCount,
+                    KillsThisZone:       _sessionSnapshot?.KillsThisZone ?? 0,
+                    NearestMechanicDist: _zoneSummary.NearestMechanicDist,
+                    NearestMechanicKind: _zoneSummary.NearestMechanicKind,
+                    HasBossArena:        _zoneSummary.HasBossArena)
                 : null,
             ZoneSummaryHud: _settings.ZoneSummary,
             AffixTargets: _affixFrame,
@@ -1971,6 +1978,14 @@ public sealed class RadarApp : IDisposable
         {
             int monstersAlive = 0, rareEliteAlive = 0, chestsOpen = 0, chestsClosed = 0, transitions = 0;
             int expedition = 0, ritual = 0, breach = 0, strongbox = 0, essence = 0, shrine = 0;
+            // Chorus — CHOR-23 (v0.25): three new Zone Summary chips computed in the same walk.
+            //   - NearestMechanic: min grid-distance from the player to any live mechanic marker,
+            //     tier-ranked so Ritual/Breach beat Expedition/Strongbox when distances tie.
+            //   - HasBossArena: any Unique-rarity monster whose Metadata carries "BossArena".
+            float nearestSq = float.MaxValue;
+            string? nearestKind = null;
+            int nearestTierRank = 0;                  // higher wins on tie; Ritual/Breach = 2, others = 1
+            bool hasBossArena = false;
             foreach (var e in _entities)
             {
                 switch (e.Category)
@@ -1981,6 +1996,11 @@ public sealed class RadarApp : IDisposable
                             monstersAlive++;
                             if (e.Rarity is Poe2Live.Rarity.Rare or Poe2Live.Rarity.Unique) rareEliteAlive++;
                         }
+                        if (!hasBossArena && e.Rarity == Poe2Live.Rarity.Unique
+                            && e.Metadata.Contains("BossArena", System.StringComparison.OrdinalIgnoreCase))
+                        {
+                            hasBossArena = true;
+                        }
                         break;
                     case Poe2Live.EntityCategory.Chest:
                         if (e.Opened) chestsOpen++; else chestsClosed++;
@@ -1989,19 +2009,35 @@ public sealed class RadarApp : IDisposable
                         transitions++;
                         break;
                 }
-                switch (POE2Radar.Core.Game.MechanicPatterns.Classify(e.Metadata))
+                var kind = POE2Radar.Core.Game.MechanicPatterns.Classify(e.Metadata);
+                if (kind != null)
                 {
-                    case "Expedition": expedition++; break;
-                    case "Ritual":     ritual++;     break;
-                    case "Breach":     breach++;     break;
-                    case "Strongbox":  strongbox++;  break;
-                    case "Essence":    essence++;    break;
-                    case "Shrine":     shrine++;     break;
+                    switch (kind)
+                    {
+                        case "Expedition": expedition++; break;
+                        case "Ritual":     ritual++;     break;
+                        case "Breach":     breach++;     break;
+                        case "Strongbox":  strongbox++;  break;
+                        case "Essence":    essence++;    break;
+                        case "Shrine":     shrine++;     break;
+                    }
+                    var dx = e.Grid.X - player.X;
+                    var dy = e.Grid.Y - player.Y;
+                    var distSq = dx * dx + dy * dy;
+                    var tierRank = (kind is "Ritual" or "Breach") ? 2 : 1;
+                    if (tierRank > nearestTierRank || (tierRank == nearestTierRank && distSq < nearestSq))
+                    {
+                        nearestSq = distSq;
+                        nearestKind = kind;
+                        nearestTierRank = tierRank;
+                    }
                 }
             }
+            var nearestDist = nearestKind != null ? (float)System.Math.Sqrt(nearestSq) : 0f;
             _zoneSummary = new ZoneSummaryBundle(areaHash, monstersAlive, rareEliteAlive,
                 chestsOpen, chestsClosed, transitions, _landmarks.Count,
-                expedition, ritual, breach, strongbox, essence, shrine);
+                expedition, ritual, breach, strongbox, essence, shrine,
+                nearestDist, nearestKind, hasBossArena);
         }
 
         // Rebuild the unified navigation-target list (tiles + entity POIs) for this tick.

@@ -25,4 +25,8 @@ public sealed record SessionStats(
     float    XpPerHour,           // rate from ring buffer (or session fallback while filling); 0f when no signal
     long     CurrentXp,           // snapshot at this Update call (0 when player component unresolved / no XP fed yet)
     long     SessionXpDelta,      // cumulative delta since construction / Reset(now) — fallback rate source
-    bool     RingFilling);        // true until ring holds one full window (renderer splits row to 2 lines while true)
+    bool     RingFilling,         // true until ring holds one full window (renderer splits row to 2 lines while true)
+    // Chorus — CHOR-23 (v0.25): sum of observed kills for the current zone only. Resets on zone entry
+    // alongside DeathsThisZone via KillTracker.ClearZone(); increments alongside session counters.
+    // Feeds the Zone Summary HUD's kills-this-zone chip.
+    int      KillsThisZone = 0);
