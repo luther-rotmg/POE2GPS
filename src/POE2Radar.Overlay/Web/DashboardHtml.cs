@@ -1949,11 +1949,22 @@ async function contribGateOrToast(){
   }
   return true;
 }
+/* SIG-CONTRIBUTE-PIGGYBACK (v0.23): fire-and-forget POST to /api/contribute-trace after the primary
+   Contribute succeeds, so users who already contribute atlas / buffs / preload also contribute the
+   campaign probe trace without needing a separate click. Guarded on the enableCampaignProbe checkbox
+   so the network round-trip is skipped entirely when the probe is off. Trace failure MUST NOT affect
+   the primary Contribute UX — .catch(()=>{}) swallows any network / 4xx / 5xx response silently. */
+function piggybackTraceContribute(){
+  const probeOn = document.querySelector('[data-set="enableCampaignProbe"]')?.checked;
+  if(!probeOn) return;
+  fetch('/api/contribute-trace',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
+}
+
 $('#eaContribute')?.addEventListener('click',async()=>{
   if(!await contribGateOrToast()) return;
   if(!window._eaOkOnce){ if(!confirm('Share your discovered entity names + objectives publicly? This contains no character data.')) return; window._eaOkOnce=true; }
   try{ const r=await fetch('/api/contribute',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashEa(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+    if(r.ok){ flashEa(); piggybackTraceContribute(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 /* v0.21 CF-DASH-BUTTONS: buff + preload Contribute buttons + zero-cost-when-off DOM sync */
@@ -1979,14 +1990,14 @@ $('#bnContribute')?.addEventListener('click', async()=>{
   if(!await contribGateOrToast()) return;
   if(!window._bnOkOnce){ if(!confirm('Share your observed buff ids + tiers publicly? This contains no character data.')) return; window._bnOkOnce=true; }
   try{ const r = await fetch('/api/contribute-buffs',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashBn(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+    if(r.ok){ flashBn(); piggybackTraceContribute(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 $('#prContribute')?.addEventListener('click', async()=>{
   if(!await contribGateOrToast()) return;
   if(!window._prOkOnce){ if(!confirm('Share your observed preload path frequencies publicly? This contains no character data.')) return; window._prOkOnce=true; }
   try{ const r = await fetch('/api/contribute-preload',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashPr(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+    if(r.ok){ flashPr(); piggybackTraceContribute(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 /* v0.22 PROBE-UI: Contribute-trace + reset-install-id + one-shot onboarding toast.
