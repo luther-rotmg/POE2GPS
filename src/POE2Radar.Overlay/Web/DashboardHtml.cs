@@ -671,6 +671,39 @@ internal static class DashboardHtml
               </select></div>
             <div class="row"><div class="rl">Show overlay Supporter chip<small>Small &#9749; Supporter chip on the Session HUD when the code validates. Off by default.</small></div>
               <label class="sw"><input type="checkbox" data-set="showSupporterBadge"><span class="track"></span><span class="knob"></span></label></div>
+            <!-- Support automation — v0.27.1 (LO ask): maintainer helper. Hidden by default; add ?admin=1 to
+                 the dashboard URL to unhide. Zero shell required to add a new Ko-fi supporter: type a raw code (or
+                 click Generate for a random one), the SHA-256 auto-computes below with a Copy button, and paste-ready
+                 JSON snippets for supporter_hashes.json + supporters.json + a Ko-fi DM template render as you type. -->
+            <div id="maintainerHelper" style="display:none;margin-top:16px;padding-top:12px;border-top:1px dashed var(--line-soft)">
+              <div style="font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px">🔧 Maintainer — add a supporter code</div>
+              <div class="row"><div class="rl">Raw code<small>Type or generate. Case + whitespace get normalized before hashing.</small></div>
+                <input class="numin" type="text" id="mhRawCode" placeholder="POE2GPS-XXXX-YYYY-ZZZZ" style="width:220px;font-family:monospace">
+                <button class="numin" id="mhGenerate" style="width:auto;padding:6px 12px;margin-left:6px">🎲 Random</button></div>
+              <div class="row"><div class="rl">Supporter name<small>Display name for the roll + SUPPORTERS.md.</small></div>
+                <input class="numin" type="text" id="mhName" placeholder="Donor display name" style="width:220px"></div>
+              <div class="row"><div class="rl">Tier + note<small>Tier drives the pill color; note is the hover-title text.</small></div>
+                <select class="numin" id="mhTier" style="width:120px;margin-right:6px">
+                  <option value="community">community</option>
+                  <option value="bronze">bronze</option>
+                  <option value="silver">silver</option>
+                  <option value="gold">gold</option>
+                </select>
+                <input class="numin" type="text" id="mhNote" placeholder="e.g. sponsored the v0.28 drop" style="width:220px"></div>
+              <div style="font-size:11px;color:var(--gold-bright);margin:12px 0 4px;letter-spacing:.16em;text-transform:uppercase">Outputs — paste into their target files</div>
+              <div class="row" style="align-items:flex-start"><div class="rl">SHA-256<small>Append this line to <code>hashes</code> in <code>supporter_hashes.json</code>.</small></div>
+                <input class="numin" type="text" id="mhHash" readonly style="width:340px;font-family:monospace;background:#0c0a07">
+                <button class="numin" id="mhCopyHash" style="width:auto;padding:6px 12px;margin-left:6px">📋 Copy</button></div>
+              <div class="row" style="align-items:flex-start"><div class="rl">supporters.json entry<small>Append this object to <code>supporters</code> in <code>supporters.json</code>.</small></div>
+                <textarea id="mhJsonEntry" readonly rows="3" style="width:340px;font-family:monospace;font-size:11px;background:#0c0a07;color:var(--ink);border:1px solid var(--line);border-radius:2px;padding:6px"></textarea>
+                <button class="numin" id="mhCopyJson" style="width:auto;padding:6px 12px;margin-left:6px">📋 Copy</button></div>
+              <div class="row" style="align-items:flex-start"><div class="rl">Ko&#8209;fi DM template<small>Copy and paste into your Ko&#8209;fi reply / Discord DM.</small></div>
+                <textarea id="mhDmTemplate" readonly rows="5" style="width:340px;font-size:11px;background:#0c0a07;color:var(--ink);border:1px solid var(--line);border-radius:2px;padding:6px"></textarea>
+                <button class="numin" id="mhCopyDm" style="width:auto;padding:6px 12px;margin-left:6px">📋 Copy</button></div>
+              <div style="font-size:11px;color:var(--ink-faint);margin-top:10px;line-height:1.6">
+                After pasting: commit <code>supporter_hashes.json</code> + <code>supporters.json</code>, ship a release, then send the DM. Old codes stay valid forever — never remove hashes.
+              </div>
+            </div>
           </div>
 
           <div class="card" id="qsCard" style="grid-column:1/-1">
@@ -3065,6 +3098,54 @@ async function applySupporterCosmetics(){
   } catch (err) { /* silent */ }
 }
 applySupporterCosmetics();
+
+/* Support automation — v0.27.1 (LO ask): maintainer helper.
+   Unhides on ?admin=1 URL param. Live-computes SHA-256 (WebCrypto) as LO types.
+   Auto-fills paste-ready snippets for supporter_hashes.json + supporters.json + a Ko-fi DM template. */
+(function(){
+  const helper = document.getElementById('maintainerHelper');
+  if (!helper) return;
+  const params = new URLSearchParams(location.search);
+  if (params.get('admin') !== '1') return;
+  helper.style.display = 'block';
+
+  const $ = id => document.getElementById(id);
+  const raw = $('mhRawCode'), name = $('mhName'), tier = $('mhTier'), note = $('mhNote');
+  const hashOut = $('mhHash'), jsonOut = $('mhJsonEntry'), dmOut = $('mhDmTemplate');
+
+  async function sha256Hex(s){
+    const bytes = new TextEncoder().encode(s.trim().toLowerCase());
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+  function randomCode(){
+    // Human-readable random code — 3 blocks of 4 uppercase alphanumeric, no ambiguous glyphs.
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const block = () => Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+    return `POE2GPS-${block()}-${block()}-${block()}`;
+  }
+  async function recompute(){
+    const codeStr = raw.value.trim();
+    hashOut.value = codeStr ? (await sha256Hex(codeStr)) : '';
+    const nameStr = name.value.trim() || 'DonorName';
+    const noteStr = note.value.trim();
+    const tierStr = tier.value;
+    jsonOut.value = `{ "name": "${nameStr.replace(/"/g,'\\"')}", "tier": "${tierStr}", "note": "${noteStr.replace(/"/g,'\\"')}" }`;
+    dmOut.value = `Hey — huge thanks for the coffee! 🙏\n\nYour POE2GPS supporter code:\n${codeStr || '(paste a code above)'}\n\nOpen the dashboard → Settings → Supporter code, paste it in, and you'll unlock the Kalguuran Gold + Wraeclast Terminal palettes plus the optional ☕ Supporter chip on the Session HUD. Your name (${nameStr}) is going on the roll same-release.\n\n— LO`;
+  }
+  raw.addEventListener('input', recompute);
+  name.addEventListener('input', recompute);
+  note.addEventListener('input', recompute);
+  tier.addEventListener('change', recompute);
+  $('mhGenerate').addEventListener('click', async () => { raw.value = randomCode(); await recompute(); });
+  async function copyToClip(el, btn){
+    try { await navigator.clipboard.writeText(el.value); btn.textContent = '✓ Copied'; setTimeout(()=>btn.textContent = '📋 Copy', 1400); } catch {}
+  }
+  $('mhCopyHash').addEventListener('click', () => copyToClip(hashOut, $('mhCopyHash')));
+  $('mhCopyJson').addEventListener('click', () => copyToClip(jsonOut, $('mhCopyJson')));
+  $('mhCopyDm').addEventListener('click',   () => copyToClip(dmOut,   $('mhCopyDm')));
+  recompute();
+})();
 // Re-check on every settings save so the palette applies live when the code turns green.
 document.addEventListener('change', e => {
   if (e.target?.matches?.('[data-set="supporterCode"], [data-set="dashboardPalette"], [data-set="showSupporterBadge"]')) {

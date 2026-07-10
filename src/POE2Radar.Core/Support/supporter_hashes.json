@@ -1,0 +1,7 @@
+{
+  "_note": "Support — v0.27.1: SHA-256 hex digests of valid Ko-fi supporter codes. Each digest = SHA256(UTF-8 of the raw code, trimmed + lowercased). Add new codes via the dashboard's Support → Maintainer helper card (Settings tab, ?admin=1 URL param). LO ships raw codes to donors via Ko-fi email / Discord DM. NEVER remove entries — old codes stay valid forever.",
+  "hashes": [
+    "6907df53b1befd9201144033e7d9ce41eab06aaa582eec2b7bbb5217a58ef43a"
+  ],
+  "_seed_note": "The seed hash above validates the raw code 'POE2GPS-FIRST-COFFEE-2026'. Rotate this code out (or leave it — free promo) as you like."
+}
