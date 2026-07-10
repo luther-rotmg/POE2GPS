@@ -1666,6 +1666,7 @@ public sealed class RadarApp : IDisposable
             // Runeshape monoliths: value-coloured map markers + nearby reward panel (world-space).
             Monoliths: monoliths,
             ShowMonolithPanel: _settings.Monoliths.ShowPanel,
+            MonolithPanelCollapsed: _settings.MonolithPanelCollapsed,
             MonolithsTop: worldFresh && mr.AreaHash == _areaHash ? mr.Top : (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>(),
             DisplayRulesGen: _displayRules.Generation,
             Session: _sessionSnapshot,
@@ -2038,6 +2039,11 @@ public sealed class RadarApp : IDisposable
         if (action == "menu-toggle")
         {
             _navMenuExpanded = !_navMenuExpanded;
+        }
+        else if (action == "mono-collapse")
+        {
+            _settings.MonolithPanelCollapsed = !_settings.MonolithPanelCollapsed;
+            _settings.Save();
         }
         else if (action.StartsWith("corner:", StringComparison.Ordinal))
         {

@@ -857,18 +857,32 @@ public sealed class OverlayRenderer : IDisposable
         var list = ctx.MonolithsTop ?? (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>();
         const float w = 248f, pad = 6f, lineH = 15f, headH = 17f, titleH = 18f;
 
+        var collapsed = ctx.MonolithPanelCollapsed;
+
+        // Height math: title row always drawn; reward rows only when expanded.
         float h = pad * 2f + titleH;
-        foreach (var m in list)
+        if (!collapsed)
         {
-            var rows = 0; foreach (var r in m.Rewards) if (r.Ex > 0 && rows < 3) rows++;
-            h += headH + lineH * rows;
+            foreach (var m in list)
+            {
+                var rows = 0; foreach (var r in m.Rewards) if (r.Ex > 0 && rows < 3) rows++;
+                h += headH + lineH * rows;
+            }
         }
         float x = ctx.WindowWidth - w - 10f, y = 90f;
         rt.FillRectangle(new Vortice.RawRectF(x, y, x + w, y + h), _bPanel!);
 
         float cy = y + pad;
-        rt.DrawText($"Monoliths ({monos.Count})", _tf!, new Rect(x + pad, cy, x + w - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        var caret = collapsed ? "▶" : "▼"; // ▶ collapsed / ▼ expanded
+        rt.DrawText($"{caret} Monoliths ({monos.Count})", _tf!,
+            new Rect(x + pad, cy, x + w - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+
+        // Title-bar hit-rect — routed by RadarApp.HitTestWidget / OnOverlayClick under action "mono-collapse".
+        _legendRowRects.Add((new Vortice.RawRectF(x, y, x + w, y + pad + titleH), "mono-collapse"));
+
         cy += titleH;
+        if (collapsed) return; // title-only panel; reward rows suppressed.
+
         foreach (var m in list)
         {
             _bStyle!.Color = ColorFromU(m.Color);

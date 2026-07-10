@@ -273,6 +273,12 @@ public sealed class RadarSettings
     // ── Runeshape-monolith reward overlay: value-coloured map icon + N badge + nearby reward panel. ──
     public MonolithSettings Monoliths { get; set; } = new();
 
+    // Click-to-collapse state for the in-overlay nearby-monolith reward panel: when the panel is showing,
+    // clicking the title-bar caret toggles between "title + caret only" (collapsed) and the full reward-row
+    // list (expanded). Persisted so the choice survives restarts. Default true = start collapsed so first-run
+    // real estate is minimal until the user opts into the row list.
+    public bool MonolithPanelCollapsed { get; set; } = true;
+
     // ── Session HUD: elapsed time, zone pace, death counter overlay. Off by default. ──
     public SessionHudSettings SessionHud { get; set; } = new();
 
