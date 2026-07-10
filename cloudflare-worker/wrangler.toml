@@ -4,10 +4,9 @@ compatibility_date = "2026-06-01"
 
 # Rate-limit counter store (5 requests / 60s per CF-Connecting-IP).
 # Deliberately NOT using unsafe.bindings native Ratelimit — experimental, defer to v0.22.
-# Namespace ID is created by the maintainer during PMS-13:
-#   wrangler kv:namespace create RATE_KV
-# then paste the returned id below, replacing the sentinel. Wrangler will refuse to deploy
-# while the sentinel is present (invalid id) — intentional gate on the branch.
+# PMS-13 + PMS-15 (v0.23 Signal deploy, 2026-07-10): RATE_KV namespace created and worker.js v3
+# deployed. Both /submit-atlas and /submit-trace routes are live on
+# poe2gps-contribute.luther-rotmg.workers.dev.
 [[kv_namespaces]]
 binding = "RATE_KV"
-id = "TODO(pms-13-kv-id)"
+id = "93976850edea44768f286a5b9911b716"
