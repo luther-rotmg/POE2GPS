@@ -86,6 +86,12 @@ public sealed class RadarApp : IDisposable
     private volatile bool _waystoneDismissed;
     private volatile bool _waystoneCollapsed;
     private DateTime _nextWaystoneAt = DateTime.MinValue;   // Ctrl+Alt+W hotkey debounce
+    // v0.30 Instinct: persistent per-character boss-wipe log (config/boss_wipe_log.json). Records
+    // every death detected inside a matched boss cheat-sheet zone against {charName, bossKey}; the
+    // boss panel title bar surfaces the prior count as "🪦 Nx before". _lastDeathsThisZone is the
+    // delta anchor for edge detection (see RenderTick post-session-update block).
+    private POE2Radar.Overlay.Overlay.BossWipeLog _wipeLog = null!;   // set in ctor after ConfigDir resolved
+    private int _lastDeathsThisZone;                                   // render thread only
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -280,14 +286,18 @@ public sealed class RadarApp : IDisposable
         IReadOnlyList<EntityArrowSpec>? EntityArrowSpecs = null,
         // Buff nameplates: per-elite specs built at world rate (Render addr + filtered buff lines);
         // the render thread converts each to a live world position via TryLiveBarAt every frame.
-        IReadOnlyList<BuffNameplateSpec>? BuffSpecs = null)
+        IReadOnlyList<BuffNameplateSpec>? BuffSpecs = null,
+        // v0.30 Instinct: character name (self-caches on Poe2Live per localPlayer address). Used as
+        // the per-character key for BossWipeLog. Empty when not yet read / not in game.
+        string PlayerName = "")
     {
         public static readonly WorldSnapshot Empty = new(
             false, 0, 0, "", 0, Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), null,
             Array.Empty<HpBarSpec>(), Array.Empty<ItemLabelSpec>(), Array.Empty<AffixNameplateSpec>(), Array.Empty<SelectedPath>(),
             Array.Empty<LegendEntry>(), Array.Empty<string>(),
             PreloadHits: null, EntityArrowSpecs: Array.Empty<EntityArrowSpec>(),
-            BuffSpecs: Array.Empty<BuffNameplateSpec>());
+            BuffSpecs: Array.Empty<BuffNameplateSpec>(),
+            PlayerName: "");
     }
     private volatile WorldSnapshot _world = WorldSnapshot.Empty;
     private NumVec2 _worldPlayer;          // the world tick's current player grid (for off-thread replans)
@@ -510,6 +520,8 @@ public sealed class RadarApp : IDisposable
         _watched = new WatchedEntities(Path.Combine(ConfigDir, "watched_entities.json"));
         _campaign = new CampaignObjectives(Path.Combine(ConfigDir, "campaign_objectives.json"));
         _landmarkPatterns = new LandmarkPatterns(Path.Combine(ConfigDir, "landmark_patterns.json"));
+        // v0.30 Instinct: persistent per-character boss-wipe log (survives across sessions).
+        _wipeLog = new POE2Radar.Overlay.Overlay.BossWipeLog(Path.Combine(ConfigDir, "boss_wipe_log.json"));
         _live.CustomLandmarkMatch = TileLandmarkMatch; // surface tiles via landmark patterns + Tile rules
         _landmarkGen = _landmarkPatterns.Generation;
         _live.LandmarkClusterGap = _settings.LandmarkClusterGap;
@@ -818,7 +830,19 @@ public sealed class RadarApp : IDisposable
                              port: _settings.ApiPort,
                              sse: _sse,
                              assetHost: _assetHost,
-                             traceWriter: _campaignProbeWriter);
+                             traceWriter: _campaignProbeWriter,
+                             // v0.30 Instinct: expose the persistent per-character wipe log to the dashboard.
+                             wipeLogProvider: () =>
+                             {
+                                 var name = _world.PlayerName ?? "";
+                                 return new
+                                 {
+                                     character     = name,
+                                     wipes         = _wipeLog.ForCharacter(name),
+                                     total         = _wipeLog.TotalFor(name),
+                                     allCharacters = _wipeLog.Characters(),
+                                 };
+                             });
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
@@ -1613,6 +1637,26 @@ public sealed class RadarApp : IDisposable
                 _settings.SessionHud.ExcludeTownsFromPace,
                 isTown,
                 currentXpForUpdate);
+            // v0.30 Instinct: boss-wipe edge detection. SessionStats.DeathsThisZone increments once
+            // per Alive→Dead transition; when we see an increment WITHIN a matched boss cheat-sheet
+            // zone AND the char name is readable, log a wipe against {charName, bossKey}. Non-boss
+            // deaths (regular maps) are intentionally NOT recorded — the log is specifically for the
+            // "what am I struggling with" boss-focused surface. Reset on zone change happens via the
+            // fact that DeathsThisZone drops back to 0; my > check handles that no-op.
+            if (_settings.TrackBossWipes && _sessionSnapshot is { } ss)
+            {
+                if (ss.DeathsThisZone > _lastDeathsThisZone)
+                {
+                    var entry = _bossPanelEntry;
+                    var chn = snap.PlayerName;
+                    if (entry is not null && !string.IsNullOrEmpty(chn))
+                    {
+                        var newCount = _wipeLog.RecordDeath(chn, entry.Key);
+                        Console.WriteLine($"\n🪦 Wipe logged: {chn} × {entry.Label} — {newCount} total.");
+                    }
+                }
+                _lastDeathsThisZone = ss.DeathsThisZone;
+            }
         }
 
         var entities = worldFresh ? snap.Entities : Array.Empty<Poe2Live.EntityDot>();
@@ -1779,7 +1823,11 @@ public sealed class RadarApp : IDisposable
             BossPanelCollapsed: _bossPanelCollapsed,
             WaystonePanelResult: _waystonePanelResult,
             WaystoneDismissed: _waystoneDismissed,
-            WaystoneCollapsed: _waystoneCollapsed);
+            WaystoneCollapsed: _waystoneCollapsed,
+            // v0.30 Instinct: prior-wipe count for this boss × this character, and the personal red-flag list.
+            BossPriorWipes: (_bossPanelEntry is { } bpe && _settings.TrackBossWipes)
+                ? _wipeLog.Count(snap.PlayerName, bpe.Key) : 0,
+            WaystoneRedFlags: _settings.WaystoneRedFlags);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
@@ -2133,7 +2181,8 @@ public sealed class RadarApp : IDisposable
             _entities, _landmarks, _terrain, hpSpecs, itemLabels, affixSpecs, _selectedPaths, _legend, _selectedSnapshot,
             PreloadHits: _preloadFrame,
             EntityArrowSpecs: entityArrowSpecs,
-            BuffSpecs: buffSpecs);
+            BuffSpecs: buffSpecs,
+            PlayerName: _live.PlayerName(localPlayer));  // v0.30 Instinct: char-name key for BossWipeLog
     }
 
     /// <summary>
@@ -2207,6 +2256,27 @@ public sealed class RadarApp : IDisposable
         else if (action == "boss-collapse")   { _bossPanelCollapsed = !_bossPanelCollapsed; }
         else if (action == "waystone-close")   { _waystoneDismissed = true; _waystonePanelResult = null; }
         else if (action == "waystone-collapse"){ _waystoneCollapsed = !_waystoneCollapsed; }
+        // v0.30 Instinct: click a waystone mod row to toggle it in the personal red-flag list. The
+        // action string is "waystone-flag:{modIndex}"; look up the mod's Name from the current
+        // parsed result and add/remove it from settings. Cosmetic-only (adds a ★ prefix next paint);
+        // NEVER changes what the parser reports as Safe/Notable/Deadly.
+        else if (action.StartsWith("waystone-flag:", StringComparison.Ordinal))
+        {
+            var idxStr = action.Substring("waystone-flag:".Length);
+            if (int.TryParse(idxStr, out var idx)
+                && _waystonePanelResult is { } res
+                && idx >= 0 && idx < res.Mods.Count)
+            {
+                var name = res.Mods[idx].Name;
+                if (!string.IsNullOrEmpty(name))
+                {
+                    var list = _settings.WaystoneRedFlags ??= new List<string>();
+                    if (list.Contains(name)) list.Remove(name);
+                    else list.Add(name);
+                    _settings.Save();
+                }
+            }
+        }
         else if (action.StartsWith("corner:", StringComparison.Ordinal))
         {
             _settings.NavMenuCorner = action.Substring("corner:".Length);

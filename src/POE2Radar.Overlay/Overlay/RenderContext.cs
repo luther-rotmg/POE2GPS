@@ -314,4 +314,12 @@ public sealed record RenderContext(
     bool                                                       BossPanelCollapsed = false,
     POE2Radar.Core.Game.WaystoneModRisk.WaystoneRiskResult?    WaystonePanelResult = null,
     bool                                                       WaystoneDismissed = false,
-    bool                                                       WaystoneCollapsed = false);
+    bool                                                       WaystoneCollapsed = false,
+    // v0.30 Instinct: prior-wipe count for the CURRENT character × current boss (from BossWipeLog).
+    // 0 when unknown / no matching boss / char name unreadable. DrawBossPanel prepends "🪦 Nx before"
+    // to the title bar when > 0.
+    int                                                        BossPriorWipes = 0,
+    // v0.30 Instinct: user's personal waystone red-flag list (from RadarSettings.WaystoneRedFlags),
+    // mirrored so the render thread doesn't need a settings reference. Mods whose Name matches an
+    // entry get a ★ prefix in DrawWaystonePanel regardless of the parser's tier verdict.
+    IReadOnlyList<string>?                                     WaystoneRedFlags = null);

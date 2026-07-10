@@ -1263,6 +1263,12 @@ internal static class DashboardHtml
 
         <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
         <section class="view" data-view="bosses" hidden>
+          <!-- v0.30 Instinct: per-character wipe log — what am I struggling with long term? -->
+          <div class="card" style="grid-column:1/-1">
+            <h3>🪦 Your wipe log <small>&middot; per-character boss deaths (persistent across sessions)</small></h3>
+            <div class="row"><div class="rl hint-row">Every death in a matched boss zone is logged against your character name in <code>boss_wipe_log.json</code>. When you next enter that boss, the overlay panel shows a "🪦 Nx before" tag so future-you sees what past-you learned. Turn off in Settings &rarr; TrackBossWipes.</div></div>
+            <div id="wipeLogBody"></div>
+          </div>
           <div class="card" style="grid-column:1/-1">
             <h3>Boss Cheat Sheets <small>&middot; damage-type mix, one-shots to dodge, over-cap thresholds, phase cues</small></h3>
             <div class="row"><div class="rl hint-row">Hand-authored guides for pinnacle atlas bosses. Cross-checked against public wiki summaries (paraphrased). Damage-type mixes and over-cap thresholds are broad guidelines &mdash; tune to your build.</div></div>
@@ -2979,6 +2985,43 @@ $('#kbReset')?.addEventListener('click',async()=>{
    of cards showing name, tier, damage-type row (color-coded), one-shots to dodge, overcap
    thresholds, flask notes, and phase transitions. No search / filter yet — small catalog. */
 let __bossesLoaded = false;
+/* v0.30 Instinct: per-character wipe log. Fetches /api/wipe-log alongside the boss cheat sheets so
+   the "Your wipes" card shows a table for the current character. Endpoint payload:
+   { character, wipes: {bossKey: count}, total, allCharacters: [...] }. Auto-maps bossKey → label
+   using the /api/bosses catalog. Silent-empty when the character has no wipes yet. */
+async function loadWipeLog(bossEntries){
+  const body = document.getElementById('wipeLogBody');
+  if (!body) return;
+  try {
+    const r = await fetch('/api/wipe-log');
+    if (!r.ok) { body.innerHTML = '<div class="hint-row" style="opacity:.6">Wipe log unavailable.</div>'; return; }
+    const data = await r.json();
+    const wipes = data?.wipes || {};
+    const keys = Object.keys(wipes);
+    const labelFor = {}; (bossEntries||[]).forEach(e => labelFor[e.key] = e.label || e.key);
+    if (!data.character) {
+      body.innerHTML = '<div class="hint-row" style="opacity:.7">Waiting for character name from game &mdash; log in-game and re-open this tab.</div>';
+      return;
+    }
+    if (!keys.length) {
+      body.innerHTML = `<div class="hint-row" style="opacity:.7">No wipes yet for <b>${data.character}</b>. May the RNG smile on you.</div>`;
+      return;
+    }
+    const rows = keys.sort((a,b)=>wipes[b]-wipes[a]).map(k =>
+      `<tr><td style="padding:4px 12px 4px 0"><b>${labelFor[k] || k}</b></td>` +
+      `<td style="padding:4px 0;font-family:Consolas,monospace">${wipes[k]}×</td></tr>`).join('');
+    const others = (data.allCharacters||[]).filter(c => c !== data.character);
+    const othersLine = others.length
+      ? `<div style="font-size:11px;color:var(--ink-faint);margin-top:8px">Also on record: ${others.map(o=>`<code>${o}</code>`).join(', ')}</div>`
+      : '';
+    body.innerHTML =
+      `<div style="font-size:12px;margin-bottom:6px">Character: <b>${data.character}</b> &middot; ${data.total} total wipes</div>` +
+      `<table style="font-size:12px;line-height:1.5;border-collapse:collapse"><tbody>${rows}</tbody></table>` +
+      othersLine;
+  } catch (err) {
+    body.innerHTML = '<div class="hint-row" style="opacity:.6">Wipe log unavailable (network).</div>';
+  }
+}
 async function loadBosses(){
   if (__bossesLoaded) return; __bossesLoaded = true;
   const list = document.getElementById('bossList');
@@ -3017,6 +3060,8 @@ async function loadBosses(){
         </div>`;
     }).join('');
     list.innerHTML = html;
+    // v0.30 Instinct: hydrate the wipe-log card using the same boss catalog for bossKey → label.
+    loadWipeLog(entries);
   } catch (err) {
     list.textContent = 'Failed to load cheat sheets (network error).';
   }
