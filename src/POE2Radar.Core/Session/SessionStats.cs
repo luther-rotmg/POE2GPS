@@ -20,4 +20,9 @@ public sealed record SessionStats(
     int      KillsUnique,
     float    MapsPerHour,         // non-town map zone entries / session hours (0 when < 1 min elapsed)
     int      MapZonesEntered,     // count of non-town zone entries
-    int      XpEfficiency);       // playerLevel − areaLevel (positive = over-levelled, negative = under)
+    int      XpEfficiency,        // playerLevel − areaLevel (positive = over-levelled, negative = under)
+    // Threshold — THR-XP-TRACKER: XP-ring chip. Renderer reads all four idempotently.
+    float    XpPerHour,           // rate from ring buffer (or session fallback while filling); 0f when no signal
+    long     CurrentXp,           // snapshot at this Update call (0 when player component unresolved / no XP fed yet)
+    long     SessionXpDelta,      // cumulative delta since construction / Reset(now) — fallback rate source
+    bool     RingFilling);        // true until ring holds one full window (renderer splits row to 2 lines while true)

@@ -233,6 +233,10 @@ public sealed record RenderContext(
     // list in the nearby-monolith panel. World-space (grid). Null/empty → none.
     IReadOnlyList<MonolithMarker>? Monoliths = null,
     bool ShowMonolithPanel = true,
+    // Persisted click-to-collapse state for the nearby-monolith reward panel. Collapsed hides all reward
+    // rows; only the title row (with caret) renders and the title-bar hit-rect toggles this flag via
+    // OnOverlayClick. Mirrored from RadarSettings.MonolithPanelCollapsed at ctx assembly time.
+    bool MonolithPanelCollapsed = false,
     // Pre-sorted (desc BestEx), capped-to-6 slice of Monoliths for the panel rows — avoids per-frame
     // OrderByDescending(...).Take(6).ToList() in the renderer. Null/empty → none.
     IReadOnlyList<MonolithMarker>? MonolithsTop = null,

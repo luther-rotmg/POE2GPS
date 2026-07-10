@@ -267,6 +267,61 @@ public sealed class DisplayRules
         return rules;
     }
 
+    /// <summary>
+    /// Built-in Tile display rules seeded exactly once via the <c>built_in_tile_rules_v1</c>
+    /// migration key in <see cref="RadarSettings.AppliedMigrations"/>. Kept intentionally tiny:
+    /// one rule per game-object entity that ships as a first-class navigation target regardless
+    /// of the user's <see cref="BuildDefault"/> seed. Currently just <c>WaygateDevice</c> so
+    /// end-game waygates render as a distinct <see cref="DisplayRule.Navigable"/> Eye marker.
+    /// <para/>
+    /// Additive-only: the caller must UNION this list into the existing ruleset (de-duping on
+    /// <see cref="DisplayRule.Name"/>) and Replace — never wipe user rules. Idempotent by
+    /// construction: the migration-key guard via <see cref="SeedBuiltInTileRulesIfNeeded"/>
+    /// ensures the seed runs at most once per install. Match term is the exact substring
+    /// <c>WaygateDevice</c> (no glob, no path prefix) so a future atlas-landmark port can
+    /// short-circuit the same entity at source without ambiguity — preventing the double-marker
+    /// regression documented in the Threshold spec.
+    /// </summary>
+    public static List<DisplayRule> BuiltInTileRules() => new()
+    {
+        new DisplayRule
+        {
+            Enabled = true,
+            Name = "Waygate",
+            Categories = new() { "Tile" },
+            Match = new() { "WaygateDevice" },
+            Shape = "Eye",
+            Color = "#00E5FF",
+            Opacity = 1f,
+            Size = 5f,
+            Navigable = true,
+        },
+    };
+
+    /// <summary>
+    /// Migration key stamped into <see cref="RadarSettings.AppliedMigrations"/> when
+    /// <see cref="BuiltInTileRules"/> has been folded into the persisted display ruleset.
+    /// </summary>
+    public const string BuiltInTileRulesMigrationKey = "built_in_tile_rules_v1";
+
+    /// <summary>
+    /// Idempotent migration gate for the <see cref="BuiltInTileRules"/> seed. If
+    /// <see cref="RadarSettings.AppliedMigrations"/> already contains
+    /// <see cref="BuiltInTileRulesMigrationKey"/>, this is a NO-OP; otherwise the key is
+    /// appended so the caller (typically the display-rules load path) knows to Replace the
+    /// current ruleset with a de-duplicated union of the built-in seed. Re-runs never
+    /// double-mark: the guard reads the current key set, not a bool field, so a second call
+    /// on the same settings instance and a fresh load of a settings file that already carries
+    /// the key both short-circuit at the same guard.
+    /// </summary>
+    public static void SeedBuiltInTileRulesIfNeeded(RadarSettings settings)
+    {
+        if (settings is null) return;
+        settings.AppliedMigrations ??= new List<string>();
+        if (settings.AppliedMigrations.Contains(BuiltInTileRulesMigrationKey)) return;
+        settings.AppliedMigrations.Add(BuiltInTileRulesMigrationKey);
+    }
+
     // ── internals ───────────────────────────────────────────────────────────
 
     /// <summary>Rebuild the immutable precompiled snapshot + bump generation. Call under <see cref="_gate"/>.</summary>

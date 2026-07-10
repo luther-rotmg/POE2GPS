@@ -273,6 +273,12 @@ public sealed class RadarSettings
     // ── Runeshape-monolith reward overlay: value-coloured map icon + N badge + nearby reward panel. ──
     public MonolithSettings Monoliths { get; set; } = new();
 
+    // Click-to-collapse state for the in-overlay nearby-monolith reward panel: when the panel is showing,
+    // clicking the title-bar caret toggles between "title + caret only" (collapsed) and the full reward-row
+    // list (expanded). Persisted so the choice survives restarts. Default true = start collapsed so first-run
+    // real estate is minimal until the user opts into the row list.
+    public bool MonolithPanelCollapsed { get; set; } = true;
+
     // ── Session HUD: elapsed time, zone pace, death counter overlay. Off by default. ──
     public SessionHudSettings SessionHud { get; set; } = new();
 
@@ -620,6 +626,20 @@ public sealed class SessionHudSettings
     public bool   ShowZoneContext       { get; set; } = false;
     public bool   ShowDeaths            { get; set; } = false;
     public bool   ShowKills             { get; set; } = false;
+    // XP-rate row. Opt-in OFF per PMS-6 policy — gates the per-tick XP read
+    // in RadarApp.WorldTick, so with this false there is literally zero
+    // XP-tracking work per tick.
+    public bool   ShowXpRate            { get; set; } = false;
+    // Rolling window over which XP/hr is averaged. 5-min is default; 30-min
+    // is a real preference split among grinders. Clamped 1..60 in setter so
+    // the downstream ring-buffer sizing (slots = max(12, minutes * 12))
+    // cannot go zero/negative from a hand-edited radar_settings.json.
+    private int _xpWindowMinutes = 5;
+    public int    XpWindowMinutes
+    {
+        get => _xpWindowMinutes;
+        set => _xpWindowMinutes = value < 1 ? 1 : (value > 60 ? 60 : value);
+    }
     public string Anchor                { get; set; } = "TopLeft";
     // Legal values: "TopLeft", "TopRight", "BottomLeft", "BottomRight"
     // Mirrors NavMenuCorner (RadarSettings.cs line 55) — plain string, no C# enum.

@@ -4,6 +4,7 @@ using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Pathfinding;
 using POE2Radar.Overlay.Config;
+using POE2Radar.Overlay.Overlay;   // Threshold — THR-XP-RENDER: SessionHudXpFormatter (sub-namespace).
 using Vortice.Direct2D1;
 using Vortice.DirectWrite;
 using Vortice.Mathematics;
@@ -81,6 +82,12 @@ public sealed class OverlayRenderer : IDisposable
     private float _hudCacheMapsHr;
     private int _hudCacheXpEff;
     private bool _hudCacheShowKills;
+    // Threshold — THR-XP-RENDER: XP/hour row cache-key comparands. All four SessionStats XP
+    // fields (XpPerHour, CurrentXp, SessionXpDelta, RingFilling) participate so any drift in
+    // the row's rendered content triggers exactly one re-layout (see comparand chain below).
+    private float _hudCacheXpPerHour;
+    private long  _hudCacheCurrentXp, _hudCacheSessionXpDelta;
+    private bool  _hudCacheRingFilling, _hudCacheShowXpRate;
 
     // ── D2: Terrain color cache + per-rule color memo (render-thread-owned). ──
     private string _terrainCacheIntHex = "", _terrainCacheEdgeHex = "";
@@ -413,10 +420,23 @@ public sealed class OverlayRenderer : IDisposable
         {
             var bmp = _atlasIcons!.Get(rt, bn);
             if (bmp == null) continue;
-            rt.DrawBitmap(bmp, 1f, BitmapInterpolationMode.Linear, new Rect(ix, iy, ix + iconH, iy + iconH));
+            rt.DrawBitmap(bmp, 1f, BitmapInterpolationMode.Linear, ComputeAtlasContentIconDestRect(ix, iy, iconH));
             ix += iconH + gap;
         }
     }
+
+    /// <summary>
+    /// Destination rect for a single atlas content-icon cell. Square
+    /// (width == height == <paramref name="iconH"/>), origin-aligned to
+    /// (<paramref name="ix"/>, <paramref name="iy"/>).
+    /// <see cref="Vortice.Mathematics.Rect"/>'s four-arg constructor is
+    /// (X, Y, Width, Height) — so passing <c>ix + iconH</c> as the third arg
+    /// (as if the constructor were LTRB) blows the width up with the icon's
+    /// screen-space X and silently mis-places icons at high atlas zoom.
+    /// Extracted from <c>DrawAtlasContentIcons</c> so the row math is unit-lockable.
+    /// </summary>
+    internal static Rect ComputeAtlasContentIconDestRect(float ix, float iy, float iconH)
+        => new Rect(ix, iy, iconH, iconH);
 
     /// <summary>Lay stroked arrowhead chevrons (a row of "&gt;" pointing a→b) at <paramref name="spacing"/>
     /// intervals along the segment (#4). <paramref name="carry"/> holds the leftover distance into the next
@@ -844,18 +864,32 @@ public sealed class OverlayRenderer : IDisposable
         var list = ctx.MonolithsTop ?? (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>();
         const float w = 248f, pad = 6f, lineH = 15f, headH = 17f, titleH = 18f;
 
+        var collapsed = ctx.MonolithPanelCollapsed;
+
+        // Height math: title row always drawn; reward rows only when expanded.
         float h = pad * 2f + titleH;
-        foreach (var m in list)
+        if (!collapsed)
         {
-            var rows = 0; foreach (var r in m.Rewards) if (r.Ex > 0 && rows < 3) rows++;
-            h += headH + lineH * rows;
+            foreach (var m in list)
+            {
+                var rows = 0; foreach (var r in m.Rewards) if (r.Ex > 0 && rows < 3) rows++;
+                h += headH + lineH * rows;
+            }
         }
         float x = ctx.WindowWidth - w - 10f, y = 90f;
         rt.FillRectangle(new Vortice.RawRectF(x, y, x + w, y + h), _bPanel!);
 
         float cy = y + pad;
-        rt.DrawText($"Monoliths ({monos.Count})", _tf!, new Rect(x + pad, cy, x + w - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        var caret = collapsed ? "▶" : "▼"; // ▶ collapsed / ▼ expanded
+        rt.DrawText($"{caret} Monoliths ({monos.Count})", _tf!,
+            new Rect(x + pad, cy, x + w - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+
+        // Title-bar hit-rect — routed by RadarApp.HitTestWidget / OnOverlayClick under action "mono-collapse".
+        _legendRowRects.Add((new Vortice.RawRectF(x, y, x + w, y + pad + titleH), "mono-collapse"));
+
         cy += titleH;
+        if (collapsed) return; // title-only panel; reward rows suppressed.
+
         foreach (var m in list)
         {
             _bStyle!.Color = ColorFromU(m.Color);
@@ -900,7 +934,14 @@ public sealed class OverlayRenderer : IDisposable
             || sess.KillsUnique    != _hudCacheKillsU
             || sess.MapsPerHour    != _hudCacheMapsHr
             || sess.XpEfficiency   != _hudCacheXpEff
-            || hud.ShowKills       != _hudCacheShowKills)
+            || hud.ShowKills       != _hudCacheShowKills
+            // Threshold — THR-XP-RENDER: rebuild when the XP rate / cumulative / delta /
+            // ring-filling flag / row toggle moves.
+            || sess.XpPerHour      != _hudCacheXpPerHour
+            || sess.CurrentXp      != _hudCacheCurrentXp
+            || sess.SessionXpDelta != _hudCacheSessionXpDelta
+            || sess.RingFilling    != _hudCacheRingFilling
+            || hud.ShowXpRate      != _hudCacheShowXpRate)
         {
             _hudCacheSessionSec   = sessionSec;
             _hudCacheZoneSec      = zoneSec;
@@ -920,6 +961,11 @@ public sealed class OverlayRenderer : IDisposable
             _hudCacheMapsHr       = sess.MapsPerHour;
             _hudCacheXpEff        = sess.XpEfficiency;
             _hudCacheShowKills    = hud.ShowKills;
+            _hudCacheXpPerHour      = sess.XpPerHour;
+            _hudCacheCurrentXp      = sess.CurrentXp;
+            _hudCacheSessionXpDelta = sess.SessionXpDelta;
+            _hudCacheRingFilling    = sess.RingFilling;
+            _hudCacheShowXpRate     = hud.ShowXpRate;
 
             // Build only the enabled rows (pre-formatted strings). Line count drives the panel height.
             var lines = new List<(string text, bool isDeath)>(6);
@@ -943,6 +989,28 @@ public sealed class OverlayRenderer : IDisposable
                 lines.Add(($"Kills    N{sess.KillsNormal} M{sess.KillsMagic} R{sess.KillsRare} U{sess.KillsUnique}", false));
                 lines.Add(($"Maps/hr  {sess.MapsPerHour:F1}", false));
                 lines.Add(($"XP eff   {sess.XpEfficiency:+#;-#;0}", false));
+            }
+            // Threshold — THR-XP-RENDER: XP/hour + time-to-next-level row. Passing the static
+            // method group PoE2XpCurveLoader.TimeToNextLevel keeps the call site allocation-free
+            // (no captured lambda). Character level is back-derived from sess.CurrentAreaLevel +
+            // sess.XpEfficiency (SessionStats does not carry playerLevel directly). Falls back to
+            // 1 when the derivation would sub-clamp — the row still renders a valid "L{n+1}".
+            // Ring-filling mode surfaces the TTL on a second line (renderer paints two rows);
+            // ring-full collapses to a single line.
+            if (hud.ShowXpRate)
+            {
+                int playerLevel = sess.CurrentAreaLevel + sess.XpEfficiency;
+                if (playerLevel < 1) playerLevel = 1;
+                var xp = SessionHudXpFormatter.FormatXpRow(
+                    xpPerHour:    sess.XpPerHour,
+                    currentLevel: playerLevel,
+                    currentXp:    sess.CurrentXp,
+                    ringFilling:  sess.RingFilling,
+                    timeToNextResolver: POE2Radar.Core.Session.PoE2XpCurveLoader.TimeToNextLevel);
+
+                lines.Add((xp.primary, xp.noData));
+                if (xp.secondary != null)
+                    lines.Add((xp.secondary, xp.noData));
             }
             _hudLines = lines.ToArray();
         }

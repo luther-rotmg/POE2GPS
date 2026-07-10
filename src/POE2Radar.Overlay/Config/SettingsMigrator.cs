@@ -43,6 +43,7 @@ public static class SettingsMigrator
         ("GroundDefaultsV2",       "seed:ground-defaults-v2"),
         ("IconSizesV1",            "seed:icon-sizes-v1"),
         ("EntityArrowsSeeded",     "seed:entity-arrows"),
+        ("BuiltInTileRulesSeeded", "built_in_tile_rules_v1"),
     };
 
     // The production settings serializer writes camelCase; a user-hand-edited file might use the

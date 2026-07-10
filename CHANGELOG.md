@@ -3,6 +3,23 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.22.0] — 2026-07-09 "Threshold"
+
+### Added — 🚪 **Threshold** *(waygates render as waygates · XP/hour lands on the Session HUD · monolith panel collapses when you're done reading it · atlas content icons snap back to true)*
+
+- 📈 **XP/hour on the Session HUD.** *(opt-in, off by default)* A new **XP/hr** row lives inside the existing Session HUD panel — no new panel, no new hotkey. Enable in ⚙️ Settings → Session HUD → **Show XP rate**. Rolling window is user-tunable from **1 to 60 minutes** (default 5), mirrored on `/api/settings` as `sessionHudShowXpRate` + `sessionHudXpWindowMinutes`. The ring survives zone crossings (it's a grind metric, not a zone metric); town frames don't append so hideout time doesn't drag the rate — reuses the existing **Exclude Towns From Pace** toggle. **Ctrl+Alt+R** resets it alongside the rest of the HUD. While the window is still filling (roughly the first 5 minutes) the row prints a **session-average fallback rate** so you see a live number immediately; once the ring is full it switches to the true windowed rate. When there are enough samples, the row also prints a `(Nm to L##)` **time-to-next-level** estimate off the built-in level curve. **Zero-cost when off:** with the row disabled, the fallback character-XP read is skipped entirely — a spy test locks the guarantee for 1000 disabled ticks. Closes **PMS-6** (Long List #34, XP/hour Session HUD chip).
+- 🚪 **Waygates render as tracked landmarks.** Built-in Tile display rule ships for the end-game `WaygateDevice` entity — Navigable, Eye-shape marker, distinct cyan — so waygates surface on the radar the moment they enter range. Idempotent one-shot migration (`built_in_tile_rules_v1`) folded into the `AppliedMigrations` list; upgrading from v0.21 seeds the rule once, additive-only, no state loss. An explicit **exactly-one-marker** test guards the row against a future atlas-landmark port silently double-stamping the same entity.
+- 🩹 **Atlas content-icon draw fix.** Content-icons stamped on fogged atlas nodes (Breach / Boss / Essence / Expedition / …) were mis-rendering their destination rect at high zoom levels — one axis of the square was pulling the wrong dimension. Pattern-matched port straightens the rect so icons stay pixel-aligned to their node at every zoom, and the math is extracted behind a pure helper so a regression trips at unit-test time.
+- 🗂️ **Click-to-collapse nearby-monolith reward panel.** New caret on the panel's title row toggles a persisted collapsed state — the reward rows hide, the title stays. `MonolithsTop` pre-sort/cap-to-6 semantics preserved: POE2GPS's monolith prioritization is untouched by the collapse toggle.
+
+### Fixed
+
+- Nothing user-visible beyond the atlas content-icon rect above.
+
+### Compliance
+
+- 🛡️ **100% read-only.** Zero new memory writes. Zero new offset writes. Zero new input paths. Every new setting respects zero-cost-when-off. v0.20 wire format additive-only — no SSE key removals, no rename.
+
 ## [Unreleased] — v0.21 "Guided Campaign"
 
 ### Special thanks
