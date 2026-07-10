@@ -13,6 +13,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Companion — v0.28 (LO ask): Ed25519 signature verify for Ko-fi supporter signed codes. Pure
+         managed .NET package, no native deps. Verify-only surface — the Cloudflare Worker holds the
+         private key; POE2GPS ships only the public key + verify path. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Game\campaign_route.json" />
     <EmbeddedResource Include="Campaign\Guide\Data\poe2\route.json" />
     <EmbeddedResource Include="Campaign\Guide\Data\poe2\overrides.json" />
@@ -26,6 +33,7 @@
     <EmbeddedResource Include="Game\boss_encounters.json" />
     <EmbeddedResource Include="Game\poe2_waystone_mod_risk.json" />
     <EmbeddedResource Include="Support\supporter_hashes.json" />
+    <EmbeddedResource Include="Support\supporter_public_key.txt" />
     <EmbeddedResource Include="Game\zone_notes.json" />
     <EmbeddedResource Include="Game\poe2_mod_stats.json" />
     <EmbeddedResource Include="Game\poe2_stat_descriptions.json" />

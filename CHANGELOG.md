@@ -3,6 +3,34 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.28.0] — 2026-07-10 "Companion"
+
+### Added — 🌐 **Companion** *(the eloquent supporter flow: Ed25519 signed codes end-to-end · Ko-fi → email → Discord role · no per-donor releases · no shipped hash list)*
+
+- 🔐 **Ed25519 signed supporter codes.** New `SupporterSignedCode` verifier (in `Core/Support/`) uses BouncyCastle's Ed25519 primitives against a shipped `supporter_public_key.txt` embedded resource. Codes are formatted `poe2gps.<base64-payload>.<base64-signature>` — the payload carries the donor's email, tier, and issued timestamp; the signature is Ed25519 over the payload bytes. The private key never touches POE2GPS — it lives only on the Cloudflare Worker. Anyone extracting the exe gets the public key (useless for minting) instead of a hash list. Backwards-compatible: the v0.27.1 hash-based codes still validate through the same `IsSupporter` gate, so nobody's code stops working.
+- 🌐 **Cloudflare Worker** at `cloudflare-worker/supporters-worker/` that receives Ko-fi webhooks, mints signed codes with the private key, emails the code to the donor (via Resend by default; drop in any provider), assigns the `☕ Supporter` Discord role via the bot API when the donor pastes their Discord handle in the Ko-fi donation message, and posts a `🎉 New supporter!` announcement to a Discord channel webhook (optional). Full deploy guide in `cloudflare-worker/supporters-worker/README.md`.
+- 🤖 **Discord auto-role**. Ko-fi → Worker → Discord API. Donors add `discord: theirhandle` to the Ko-fi donation message and get the `☕ Supporter` role automatically (bot needs `Manage Roles` + role position above Supporter). Silent no-op when the handle is missing — donation still processes, code still emails.
+
+### Changed
+
+- `SupporterCodeValidator.IsSupporter` tries the Ed25519 signed-code path first, then falls back to the legacy hash-list check for v0.27-era codes. Full end-to-end backwards compatibility.
+- Added `BouncyCastle.Cryptography` (~4 MB pure managed, no native deps) as the only new NuGet dep in `POE2Radar.Core` since the atlas port. Keeps the project's read-only compliance envelope intact.
+
+### Manual (LO — see PMS-16)
+
+- Regenerate the Ed25519 keypair before production use (the current shipped keypair was generated in-session with the sample code live in a test file — fine for dev, not for prod). Deploy the Worker with the new private hex secret; update the public hex in the app + regenerate the sample code test. Details in `cloudflare-worker/supporters-worker/README.md`.
+
+### Deferred to v0.29
+
+- Language wire-in for atlas display sites.
+- Boss cheat-sheet overlay panel.
+- Waystone Ctrl+Alt+W hotkey.
+- Long List #39 Full-page browser views.
+- Supporter-only preset packs.
+- Roadmap voting card.
+
+---
+
 ## [0.27.1] — 2026-07-10 (support automation)
 
 ### Added
