@@ -1583,6 +1583,7 @@ function flashF(){ const m=$('#savedMsgF'); if(!m) return; m.classList.add('show
 async function postHidden(body){ try{ await fetch('/api/hidden',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); flashF(); }catch(e){} }
 async function loadFilters(){
   await loadModVocab();   // populate the mods autocomplete BEFORE rendering rule rows reference it
+  await loadLabelVocab(); // populate the match-field autocomplete so 'Breach', 'Ritual', 'Boss'… suggest as-you-type
   await loadDrules();
   try{ const h=await getJSON('/api/hidden'); hidden=h.patterns||[]; }catch(e){ hidden=[]; }
   renderHidden();
@@ -1628,7 +1629,7 @@ function drRow(r,i){
     +(r.navigable?'<span class="drbadge">path</span>':'');
   const body=open?`<div class="drbody">
       <div class="top"><input class="mname dr-name" value="${esc(r.name)}" placeholder="rule name"></div>
-      <input class="matchin dr-match" placeholder="match: metadata terms, comma-separated (blank = any)" value="${esc((r.match||[]).join(', '))}">
+      <input class="matchin dr-match" list="labelVocab" placeholder="match: metadata terms, comma-separated (blank = any) — try Breach, Expedition, Ritual, Boss…" value="${esc((r.match||[]).join(', '))}">
       <input class="matchin dr-mods" list="modVocab" placeholder="monster mods: aura/buff terms, comma-separated (e.g. Aura, ManaSiphon) — blank = any" value="${esc((r.mods||[]).join(', '))}">
       <div class="mcats"><span class="mcats-lbl">Type</span>${DR_CATS.map(c=>
         `<label class="catchip${cats.includes(c)?' on':''}"><input type="checkbox" class="dr-cat" data-cat="${c}"${cats.includes(c)?' checked':''}>${c}</label>`).join('')}</div>
