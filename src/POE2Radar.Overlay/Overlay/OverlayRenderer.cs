@@ -1137,7 +1137,12 @@ public sealed class OverlayRenderer : IDisposable
 
         const float panelW = 220f;
         const float pad = 6f, titleH = 16f, lineH = 15f;
-        float panelH = titleH + sorted.Count * lineH + pad * 2;
+
+        var collapsed = ctx.PreloadPanelCollapsed;
+
+        // Height math: title row always drawn; hit rows only when expanded.
+        float panelH = titleH + pad * 2;
+        if (!collapsed) panelH += sorted.Count * lineH;
 
         // Corner anchoring — same math as DrawZoneSummary / DrawSessionHud.
         // PreloadAnchor uses lowercase-hyphenated format: "top-right", "bottom-left", etc.
@@ -1158,9 +1163,16 @@ public sealed class OverlayRenderer : IDisposable
         rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
 
         float cy = top + pad;
-        // Header line.
-        rt.DrawText("PRELOAD", _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        // Header line with caret glyph — ▶ collapsed / ▼ expanded — mirrors the DrawMonolithPanel pattern.
+        var caret = collapsed ? "▶" : "▼";
+        rt.DrawText($"{caret} PRELOAD", _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+
+        // Title-bar hit-rect — routed by RadarApp.HitTestWidget / OnOverlayClick under action "preload-collapse".
+        _legendRowRects.Add((new Vortice.RawRectF(left, top, left + panelW, top + pad + titleH), "preload-collapse"));
+
         cy += titleH;
+        if (collapsed) return; // title-only panel; hit rows suppressed.
+
         // Per-hit lines, each coloured by the hit's Color field.
         foreach (var hit in sorted)
         {

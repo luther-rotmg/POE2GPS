@@ -237,6 +237,11 @@ public sealed record RenderContext(
     // rows; only the title row (with caret) renders and the title-bar hit-rect toggles this flag via
     // OnOverlayClick. Mirrored from RadarSettings.MonolithPanelCollapsed at ctx assembly time.
     bool MonolithPanelCollapsed = false,
+    // Persisted click-to-collapse state for the preload panel. Collapsed hides all hit rows; only the
+    // title row (with caret) renders and the title-bar hit-rect toggles this flag via OnOverlayClick.
+    // Mirrored from RadarSettings.PreloadPanelCollapsed at ctx assembly time. Default false because
+    // the preload panel is a "look at this" surface — users should see it on first launch.
+    bool PreloadPanelCollapsed = false,
     // Pre-sorted (desc BestEx), capped-to-6 slice of Monoliths for the panel rows — avoids per-frame
     // OrderByDescending(...).Take(6).ToList() in the renderer. Null/empty → none.
     IReadOnlyList<MonolithMarker>? MonolithsTop = null,

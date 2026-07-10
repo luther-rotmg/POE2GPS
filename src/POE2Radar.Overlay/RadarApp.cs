@@ -1698,6 +1698,7 @@ public sealed class RadarApp : IDisposable
             Monoliths: monoliths,
             ShowMonolithPanel: _settings.Monoliths.ShowPanel,
             MonolithPanelCollapsed: _settings.MonolithPanelCollapsed,
+            PreloadPanelCollapsed: _settings.PreloadPanelCollapsed,
             MonolithsTop: worldFresh && mr.AreaHash == _areaHash ? mr.Top : (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>(),
             DisplayRulesGen: _displayRules.Generation,
             Session: _sessionSnapshot,
@@ -2085,6 +2086,11 @@ public sealed class RadarApp : IDisposable
         else if (action == "mono-collapse")
         {
             _settings.MonolithPanelCollapsed = !_settings.MonolithPanelCollapsed;
+            _settings.Save();
+        }
+        else if (action == "preload-collapse")
+        {
+            _settings.PreloadPanelCollapsed = !_settings.PreloadPanelCollapsed;
             _settings.Save();
         }
         else if (action.StartsWith("corner:", StringComparison.Ordinal))
