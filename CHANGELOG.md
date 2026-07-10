@@ -3,6 +3,16 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.28.1] — 2026-07-10 (rule suggestions)
+
+### Fixed — 💡 **Rules tab match-field autocomplete + friendlier hint**
+
+- 💡 The Rules tab match input now suggests common mechanic / entity names (**Breach**, **Ritual**, **Expedition**, **Essence**, **Strongbox**, **Shrine**, **Boss**, **Chest**, **NPC**, and more) as you type — pulled from the same curated `labels.json` vocabulary the Director + Entity Atlas tabs already use. Community-reported: a supporter wanted to add Breach to their rules and had no way to discover the term without reading the source. The label refactor in v0.24 renamed the seeded default rule to "Breach (Rift)" for clarity, but the underlying match term (`Breach`) is unchanged — this hotfix just makes that discoverable at the point of use.
+- 💡 Placeholder updated: `match: metadata terms, comma-separated (blank = any) — try Breach, Expedition, Ritual, Boss…` so first-time visitors see valid examples inline.
+- Nothing else changed. No new deps, no schema change, no migration, no backend touched — just three lines of dashboard HTML/JS.
+
+---
+
 ## [0.28.0] — 2026-07-10 "Companion"
 
 ### Added — 🌐 **Companion** *(the eloquent supporter flow: Ed25519 signed codes end-to-end · Ko-fi → email → Discord role · no per-donor releases · no shipped hash list)*
