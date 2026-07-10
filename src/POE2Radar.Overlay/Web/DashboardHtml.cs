@@ -1752,12 +1752,15 @@ function pickItems(){
 }
 function renderPick(){
   const items=pickItems(), list=$('#pickList');
+  const empty = _pickEnts.length+_pickTiles.length===0;
   list.innerHTML = items.length ? items.slice(0,600).map((it,i)=>
     `<div class="pickrow" data-i="${i}"><span class="pickbadge ${it.kind}">${it.kind==='tile'?'TILE':it.kind==='mod'?'MOD':esc(it.cat)}</span>`
     +`<span class="picknm">${esc(it.name)}</span><span class="picksub">${esc(it.sub)}</span>`
     +(it.kind==='mod'?`<span class="pickcount">×${it.count}</span>`:'')
     +(it.rarity&&it.rarity!=='NonMonster'?`<span class="pickrar">${esc(it.rarity)}</span>`:'')+`</div>`).join('')
-    : `<div class="pickempty">No matches${(_pickEnts.length+_pickTiles.length===0)?' — are you in game?':''}.</div>`;
+    : (empty
+        ? `<div class="pickempty">Nothing to pick — the picker only shows entities/tiles from your <b>current zone</b>. To add e.g. <b>Breach</b>, either <i>enter a Breach zone first</i> (then the picker will list the objects) or close this and click <b>+ Add blank rule</b> — the match field now suggests <b>Breach, Ritual, Expedition, Boss…</b> as you type.</div>`
+        : `<div class="pickempty">No matches for the current filter.</div>`);
   $$('#pickList .pickrow').forEach(row=>row.onclick=()=>pickItem(items[+row.dataset.i]));
 }
 function pickItem(it){

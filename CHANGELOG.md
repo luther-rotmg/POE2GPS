@@ -3,6 +3,44 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.29.0] — 2026-07-10 "Panels"
+
+### Added — 📋 **Panels** *(two new in-game overlay panels that pop when you need them and disappear when you don't · closable · collapsable · auto-dismissed on next zone entry)*
+
+- ☠ **Boss cheat-sheet panel** *(top-left, auto-opens on boss zone entry)*
+  - When the player enters a zone whose code matches a [`BossEncounterCatalog`](src/POE2Radar.Core/Game/BossEncounterCatalog.cs) entry (the same catalog that already ships in v0.25 Chorus + backs the Bosses dashboard tab), a translucent overlay panel pops up at top-left showing: **tier · category**, **damage-type mix** (phys / fire / cold / lightning / chaos shares, ≥ 5% only), **one-shots to dodge**, **phase cues** (HP threshold → note), **over-cap resist targets**, and **flask notes**. All from the catalog — no new data authoring; every existing pinnacle entry already reads.
+  - **Closable (✕)** — dismiss the panel entirely until the next zone entry.
+  - **Collapsable (▶/▼ caret)** — collapse to just the title bar to keep it in view but out of the way.
+  - **Auto-dismissed** on next zone change — walk into a new zone and the panel is gone (or replaced, if the new zone is ALSO a boss arena).
+- ◈ **Waystone risk panel** *(top-right, opens on `Ctrl+Alt+W` hotkey)*
+  - Press `Ctrl+Alt+W` with a waystone copied to clipboard → the overlay parses it via [`WaystoneModRisk`](src/POE2Radar.Core/Game/WaystoneModRisk.cs) (the same parser the Waystone dashboard tab uses) and pops a panel showing: 🚨 **SKIP** banner when total risk ≥ 60, **rarity · tier · score**, **per-tier colored mod rows** (Deadly red, Notable orange, Safe green, LethalCombo dark red), and **triggered combos** with their bonus scores.
+  - **Same close (✕) / collapse (▶/▼) / auto-dismiss** as the boss panel — dismiss OR walk into the next zone, whichever comes first.
+  - Clipboard read is retry-safe (a Ko-fi tab / Discord / another app can briefly hold the clipboard without breaking the hotkey).
+
+### Changed — 🌍 **Atlas display sites now speak your language**
+
+- The `Language` setting shipped in v0.26 Reach now actually reaches the atlas display surfaces: 5 call sites in `RadarApp.cs` (dashboard `allMaps` filter list, dashboard `nodeList` per-node card, F10 atlas-tile inspector console output, and the **in-game atlas overlay label** — the highest-visibility one, drawn every frame on tracked atlas tiles) route through a new `LocalizedMapName(mapCode, fallback)` helper that reads `MapMeta.LocalizedName(_settings.Language)` and falls back to English if the key is missing or the setting is empty. Backwards-compatible: existing English users see identical strings.
+- **Not** changed: the seed sites at `RadarApp.cs:3412-3413` (byCode dict) + `:3537-3538` (Citadel filter) + `:3636` (group color lookup) intentionally stay English — they're the match KEYS the rule system uses to identify tracked maps. Localizing them would break every existing user's atlas rules.
+
+### Fixed — 💡 **Rules tab picker empty-state hint**
+
+- When you open the Add-from-game-data picker in a zone that has none of the entities/tiles you're looking for (e.g. sitting in town when you want to add a Breach rule), the empty-state message now explains the workaround: *"Enter a Breach zone first, or close this and click Add blank rule — the match field now suggests Breach, Ritual, Expedition, Boss… as you type."* Closes gap B from the v0.28.1 audit.
+
+### Under the hood
+
+- New `Overlay/Native/ClipboardText.cs` — a tiny Win32 P/Invoke helper (OpenClipboard → GetClipboardData(CF_UNICODETEXT) → GlobalLock → PtrToStringUni) with a 4-attempt retry loop that survives another app briefly holding the clipboard. Read-only; the overlay never WRITES to the clipboard.
+- New `Keybinds.WaystoneRisk` VK code (default `0x57` = W) added to `KeybindsSettings` alongside the existing rebindable keys. Persisted like all other keybinds.
+- Two new panels share the existing overlay click-through / hit-rect infrastructure — no new input plumbing. Each panel's ✕ and caret each register their own `_legendRowRects` entry with distinct actions (`boss-close`, `boss-collapse`, `waystone-close`, `waystone-collapse`) that route through `OnOverlayClick`.
+- Zone-change edge wired inside the existing `WorldTick` areaInstance-diff block — the same edge that clears the preload dedup sets and resets per-zone counters. One place, all reset.
+
+### Deferred to v0.30
+
+- Boss panel content-icons (currently text-only; would benefit from the Direct2D atlas-icon rendering path).
+- Waystone panel: click a Deadly mod row to seed a Hidden-cull rule for that mod key.
+- Panel position customization (currently boss = top-left, waystone = top-right; hardcoded).
+
+---
+
 ## [0.28.1] — 2026-07-10 (rule suggestions)
 
 ### Fixed — 💡 **Rules tab match-field autocomplete + friendlier hint**

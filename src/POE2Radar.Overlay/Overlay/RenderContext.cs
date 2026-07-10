@@ -304,4 +304,14 @@ public sealed record RenderContext(
     float                                 EntityArrowSize = 11f,
     bool                                  EntityArrowShowLabel = true,
     int                                   EntityArrowMax = 12,
-    int                                   EntityArrowMinEdgePx = 24);
+    int                                   EntityArrowMinEdgePx = 24,
+    // ── v0.29 Panels: session-transient overlay panels (boss cheat-sheet on zone entry, waystone risk on
+    // Ctrl+Alt+W hotkey). Both close on user X-click OR next zone change. Mirrored from RadarApp fields
+    // at snapshot-assembly time — never persisted. Null Entry/Result → panel not currently displayed;
+    // Dismissed = user clicked [X]; Collapsed = user clicked caret (title bar stays, body hidden). ──
+    POE2Radar.Core.Game.BossEncounterCatalog.EncounterEntry?  BossPanelEntry = null,
+    bool                                                       BossPanelDismissed = false,
+    bool                                                       BossPanelCollapsed = false,
+    POE2Radar.Core.Game.WaystoneModRisk.WaystoneRiskResult?    WaystonePanelResult = null,
+    bool                                                       WaystoneDismissed = false,
+    bool                                                       WaystoneCollapsed = false);

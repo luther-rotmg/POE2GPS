@@ -740,6 +740,7 @@ public sealed class KeybindsSettings
     public int CyclePrev     { get; set; } = 0xDB; // [   — cycle prev target  (Ctrl+Alt+[, hold-to-fast)
     public int NavMenuToggle { get; set; } = 0x4D; // M   — toggle nav menu    (Ctrl+Alt+M, foreground-gated)
     public int SessionReset  { get; set; } = 0x52; // R   — reset session HUD  (Ctrl+Alt+R, foreground-gated)
+    public int WaystoneRisk  { get; set; } = 0x57; // W   — parse waystone from clipboard into panel (Ctrl+Alt+W, foreground-gated)
 }
 
 /// <summary>
