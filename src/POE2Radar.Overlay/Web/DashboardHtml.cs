@@ -233,6 +233,24 @@ internal static class DashboardHtml
   .hint-row{color:var(--ink-faint)!important; font-size:11px!important; font-style:italic}
   .saved{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--good); opacity:0; transition:opacity .3s}
   .saved.show{opacity:1}
+  /* Support — v0.27 (LO ask): cosmetic dashboard palettes for Ko-fi supporters. Applied by setting
+     data-palette on the <body>. Two supporter-only palettes ship: 'kalguuran' (warm gold on deep
+     amber, callback to the Kalguuran act aesthetic) and 'terminal' (green-phosphor CRT). Default
+     empty renders the shipped palette everyone sees. */
+  body[data-palette="kalguuran"]{
+    --gold: #f5c94f; --gold-bright: #ffdb6a; --gold-deep: #b98a1e;
+    --ink: #f0e6cf; --ink-dim: #c9b995; --ink-faint: #8c7d5b;
+    --panel: #241708; --panel2: #1c1207; --bg: #150c05; --bg-alt: #2c1e0e;
+    --line: #4a3319; --line-soft: #38260f;
+    --good: #ffd66a;
+  }
+  body[data-palette="terminal"]{
+    --gold: #66ff66; --gold-bright: #99ff99; --gold-deep: #339933;
+    --ink: #b0ffb0; --ink-dim: #7fc17f; --ink-faint: #4d724d;
+    --panel: #061006; --panel2: #050c05; --bg: #030803; --bg-alt: #0a1a0a;
+    --line: #206620; --line-soft: #144614;
+    --good: #99ff99;
+  }
   /* Reach — v0.26 (CHOR-7): Settings tab section-header dividers. Full-width row in the settings
      panel-grid, so the cards below it flow into the next row with a clear visual break. */
   .sec-hdr{grid-column:1/-1;border-top:1px solid var(--line-soft);padding:16px 4px 4px;margin-top:4px;
@@ -640,6 +658,19 @@ internal static class DashboardHtml
               </div>
             </div>
             <div id="supportersList" style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 4px"></div>
+            <hr style="border:none;border-top:1px dashed var(--line-soft);margin:14px 0 10px">
+            <div style="font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-faint);margin-bottom:8px">Ko&#8209;fi supporter perks</div>
+            <div class="row"><div class="rl">Supporter code<small>Paste the code emailed after your Ko&#8209;fi donation. Cosmetic-only unlock &mdash; base tool is identical for everyone. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">Ko&#8209;fi &rarr;</a></small></div>
+              <input class="numin" type="text" data-set="supporterCode" placeholder="paste code here" style="width:180px;font-family:monospace">
+              <span id="supporterCodeState" style="font-size:11px;color:var(--ink-faint);letter-spacing:.14em;text-transform:uppercase;margin-left:8px"></span></div>
+            <div class="row"><div class="rl">Dashboard palette<small>Supporter-only; falls back to Default when the code is missing.</small></div>
+              <select class="numin" data-set="dashboardPalette" style="width:180px">
+                <option value="">Default</option>
+                <option value="kalguuran">Kalguuran Gold</option>
+                <option value="terminal">Wraeclast Terminal</option>
+              </select></div>
+            <div class="row"><div class="rl">Show overlay Supporter chip<small>Small &#9749; Supporter chip on the Session HUD when the code validates. Off by default.</small></div>
+              <label class="sw"><input type="checkbox" data-set="showSupporterBadge"><span class="track"></span><span class="knob"></span></label></div>
           </div>
 
           <div class="card" id="qsCard" style="grid-column:1/-1">
@@ -3006,6 +3037,40 @@ async function loadSupporters(){
 document.querySelectorAll('.tab[data-tab="settings"]').forEach(t => t.addEventListener('click', loadSupporters));
 // Also try to load immediately in case Settings is the initial view.
 loadSupporters();
+
+/* Support — v0.27 (LO ask): apply the supporter cosmetic palette and reveal chip state.
+   Reads /api/settings (whole payload) to grab the isSupporter flag + palette + code state, applies
+   the data-palette attribute on <body>, and lights the "VALID" chip next to the code input. Silently
+   falls back to Default palette when the code is missing or invalid so users can't render the app
+   broken by pasting garbage. */
+async function applySupporterCosmetics(){
+  try {
+    const r = await fetch('/api/settings');
+    if (!r.ok) return;
+    const s = await r.json();
+    const chip = document.getElementById('supporterCodeState');
+    const codeIn = document.querySelector('[data-set="supporterCode"]');
+    const paletteSel = document.querySelector('[data-set="dashboardPalette"]');
+    if (codeIn && !document.activeElement?.matches?.('[data-set="supporterCode"]')) codeIn.value = s.supporterCode || '';
+    if (paletteSel && !document.activeElement?.matches?.('[data-set="dashboardPalette"]')) paletteSel.value = s.dashboardPalette || '';
+    if (chip) {
+      if (!s.supporterCode) { chip.textContent = ''; chip.style.color = 'var(--ink-faint)'; }
+      else if (s.isSupporter) { chip.textContent = '✓ Valid'; chip.style.color = 'var(--good)'; }
+      else { chip.textContent = '✗ Unrecognized'; chip.style.color = '#e88'; }
+    }
+    // Apply the palette only when the code validates — non-supporters see the default palette
+    // even if they somehow POSTed a palette value.
+    const effectivePalette = s.isSupporter ? (s.dashboardPalette || '') : '';
+    document.body.setAttribute('data-palette', effectivePalette);
+  } catch (err) { /* silent */ }
+}
+applySupporterCosmetics();
+// Re-check on every settings save so the palette applies live when the code turns green.
+document.addEventListener('change', e => {
+  if (e.target?.matches?.('[data-set="supporterCode"], [data-set="dashboardPalette"], [data-set="showSupporterBadge"]')) {
+    setTimeout(applySupporterCosmetics, 200);
+  }
+});
 
 /* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
    The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered
