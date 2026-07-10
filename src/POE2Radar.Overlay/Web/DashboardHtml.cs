@@ -622,12 +622,24 @@ internal static class DashboardHtml
         </div>
         <input type="search" id="settingsSearch" placeholder="Search settings&hellip;">
         <div class="panel-grid">
-          <!-- Reach — v0.26 (LO ask): supporters roll. Subtle-but-visible card at the top of Settings.
-               Reads /api/supporters (embedded supporters.json) and renders name pills. -->
+          <!-- Support — v0.27 (LO ask, expanded): supporters roll v2. Total count, latest supporter,
+               rotating community pitch quote. Reads /api/supporters. -->
           <div class="card" id="supportersCard" style="grid-column:1/-1">
-            <h3>Supporters <span class="tag">&middot; running on curiosity and coffee</span></h3>
-            <div class="row" style="align-items:flex-start"><div class="rl hint-row" style="flex:1">POE2GPS is a free tool that reads memory legally, feeds a community pool, and ships open source. If it saved you time in a map, consider chipping in &mdash; every drop is one person's work against a game that changes its offsets every patch. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">&#9749; Ko&#8209;fi</a></div></div>
-            <div id="supportersList" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 4px"></div>
+            <h3>🤝 Supporters <span class="tag">&middot; running on curiosity and coffee</span></h3>
+            <div class="row" style="align-items:flex-start;gap:20px;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px">
+                <div id="supportersQuote" style="font-size:12px;color:var(--ink);line-height:1.55;font-style:italic;padding:4px 0 8px">POE2GPS runs on curiosity and coffee. Every drop is one person's work against a game that changes its offsets every patch. If it saved you time in a map, consider chipping in &mdash; it directly buys the hours that ship the next drop.</div>
+                <div style="font-size:11px;color:var(--ink-faint);margin-top:6px">
+                  <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none;font-weight:600">&#9749; Buy the next coffee on Ko&#8209;fi &rarr;</a>
+                </div>
+              </div>
+              <div style="min-width:150px;text-align:right">
+                <div style="font-family:'Cinzel',Georgia,serif;font-size:28px;color:var(--gold-bright);letter-spacing:.05em"><span id="supportersCount">&mdash;</span></div>
+                <div style="font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--ink-faint)">community backers</div>
+                <div id="supportersLatest" style="font-size:11px;color:var(--ink);margin-top:8px"></div>
+              </div>
+            </div>
+            <div id="supportersList" style="display:flex;flex-wrap:wrap;gap:6px;padding:12px 0 4px"></div>
           </div>
 
           <div class="card" id="qsCard" style="grid-column:1/-1">
@@ -2943,21 +2955,46 @@ async function loadBosses(){
 }
 document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventListener('click', loadBosses));
 
-/* ── Reach — v0.26 (LO ask): supporters roll ───────────────────────────────────────────────────
-   Loaded once on first Settings-tab activation. Reads /api/supporters and renders pill chips
-   with a tier color. Missing / empty response leaves the section blank rather than showing
-   an error — supporters are optional recognition, not a required feature. */
+/* ── Support — v0.27 (LO ask, expanded): supporters roll v2 ────────────────────────────────────
+   Reads /api/supporters. Renders:
+   - large total-count number + label
+   - "Latest supporter: @name" line (last entry in the JSON — LO manages authoring order)
+   - rotating pitch quote from a small pool (cycles roughly every minute)
+   - pill chips with tier color for every supporter (hover a pill to see their role) */
+const SUPPORTER_QUOTES = [
+  "POE2GPS runs on curiosity and coffee. Every drop is one person's work against a game that changes its offsets every patch. If it saved you time in a map, consider chipping in — it directly buys the hours that ship the next drop.",
+  "This tool is free, open source, and read-only by policy. If it stayed out of your way and gave you a working GPS, one coffee funds the next round of patch-drift-chasing.",
+  "Every atlas node icon, every waygate marker, every session HUD chip — that's community feedback plus a lot of memory-reading late-night hours. Coffee helps.",
+  "POE2GPS ships against a moving target — GGG's offsets change every patch, and so does the workload. A tip on Ko-fi keeps the lights on for the maintainer.",
+  "The Waystone risk parser, the boss cheat sheets, the /map layer, the campaign probe — all shipped on the free tier. Chip in if it earned it.",
+];
 let __supportersLoaded = false;
 async function loadSupporters(){
-  if (__supportersLoaded) return; __supportersLoaded = true;
   const list = document.getElementById('supportersList');
+  const countEl = document.getElementById('supportersCount');
+  const latestEl = document.getElementById('supportersLatest');
+  const quoteEl = document.getElementById('supportersQuote');
+  // Rotate the pitch quote on every Settings-tab activation (idx changes per minute).
+  if (quoteEl && SUPPORTER_QUOTES.length) {
+    const idx = Math.floor((Date.now() / 60000) % SUPPORTER_QUOTES.length);
+    quoteEl.textContent = SUPPORTER_QUOTES[idx];
+  }
+  if (__supportersLoaded) return; __supportersLoaded = true;
   if (!list) return;
   try {
     const r = await fetch('/api/supporters');
     if (!r.ok) return;
     const data = await r.json();
     const sups = data?.supporters || [];
-    if (!sups.length) { list.innerHTML = '<span style="color:var(--ink-faint);font-size:11px">Be the first to join the roll &mdash; <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright)">chip in on Ko&#8209;fi</a></span>'; return; }
+    if (countEl) countEl.textContent = String(sups.length);
+    if (!sups.length) {
+      list.innerHTML = '<span style="color:var(--ink-faint);font-size:11px">Be the first to join the roll &mdash; <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright)">chip in on Ko&#8209;fi</a></span>';
+      return;
+    }
+    // Latest = last entry in the JSON (LO manages authoring order for "latest" semantics).
+    const latest = sups[sups.length - 1];
+    if (latestEl && latest) latestEl.innerHTML = `Latest: <b style="color:var(--gold-bright)">${latest.name}</b>`;
+
     const TIER_COL = { gold:'#f5c94f', silver:'#c8c8c8', bronze:'#c78d5a', community:'#8090a0' };
     list.innerHTML = sups.map(s => {
       const col = TIER_COL[s.tier] || TIER_COL.community;
