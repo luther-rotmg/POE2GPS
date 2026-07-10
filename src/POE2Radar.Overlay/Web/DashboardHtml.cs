@@ -233,6 +233,17 @@ internal static class DashboardHtml
   .hint-row{color:var(--ink-faint)!important; font-size:11px!important; font-style:italic}
   .saved{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--good); opacity:0; transition:opacity .3s}
   .saved.show{opacity:1}
+  /* Groove — v0.24: central save-confirmation toast + keyboard-shortcut help modal. */
+  #globalSavedMsg{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9998;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--good);opacity:0;transition:opacity .3s;background:rgba(0,0,0,.85);padding:7px 16px;border:1px solid var(--line);border-radius:3px;pointer-events:none;font-family:inherit}
+  #globalSavedMsg.show{opacity:1}
+  #helpModal{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:none;align-items:center;justify-content:center}
+  #helpModal.open{display:flex}
+  #helpModal .modal-box{background:var(--bg-alt);border:1px solid var(--line);border-radius:4px;padding:20px 24px;min-width:340px;max-width:520px;color:var(--ink);font-family:inherit}
+  #helpModal h3{margin:0 0 14px;color:var(--gold-bright);font-family:"Cinzel","Georgia",serif;letter-spacing:.28em;text-transform:uppercase;font-size:12px}
+  #helpModal .kbd{display:inline-block;padding:2px 7px;background:#0c0a07;border:1px solid var(--line);border-radius:2px;font-family:monospace;font-size:11px;color:var(--gold-bright);margin-right:6px;min-width:24px;text-align:center}
+  #helpModal .row{display:flex;align-items:center;gap:6px;padding:6px 0;font-size:12px}
+  #helpModal .close-btn{float:right;background:none;border:none;color:var(--ink-dim);cursor:pointer;font-size:18px;line-height:1;padding:0 4px}
+  #helpModal .close-btn:hover{color:var(--gold-bright)}
 
   /* ── icon / mechanic style editors ── */
   .stylerow{display:flex; align-items:center; gap:9px; padding:9px 0; border-bottom:1px dotted var(--line-soft); flex-wrap:wrap}
@@ -1013,9 +1024,9 @@ internal static class DashboardHtml
               <label class="sw"><input type="checkbox" id="dpEnabled"><span class="track"></span><span class="knob"></span></label></div>
             <div class="row"><div class="rl">Client ID<small>paste your neutral Discord app&rsquo;s Client ID &mdash; leave blank to keep the current one; toggle Enabled off to disable</small></div>
               <input class="numin" type="text" id="dpClientId" placeholder="Discord application snowflake" style="width:220px"></div>
-            <div class="row"><div class="rl">Details line<small>tokens: {area} {level} {zones} {mapshr} {kills} {xpeff}</small></div>
+            <div class="row"><div class="rl">Details line<small>tokens: {area} {level} {hp} {mana} {es} {zones} {mapshr} {kills} {deaths} {xpeff} {boss}</small></div>
               <input class="numin" type="text" id="dpDetailsTemplate" style="width:220px"></div>
-            <div class="row"><div class="rl">State line<small>tokens: {area} {level} {zones} {mapshr} {kills} {xpeff}</small></div>
+            <div class="row"><div class="rl">State line<small>tokens: {area} {level} {hp} {mana} {es} {zones} {mapshr} {kills} {deaths} {xpeff} {boss}</small></div>
               <input class="numin" type="text" id="dpStateTemplate" style="width:220px"></div>
             <div class="row"><div class="rl">Show elapsed timer</div>
               <label class="sw"><input type="checkbox" id="dpShowTimer"><span class="track"></span><span class="knob"></span></label></div>
@@ -2527,9 +2538,15 @@ function wireDiscordPresence(){
 }
 function updateDiscordPreview(s){
   const prev=document.getElementById('dpPreview'); if(!prev) return;
-  const toks={'area':s.areaName||s.areaCode||'','level':s.charLevel||0,'zones':s.session?.zonesEntered??0,
+  // Groove — v0.24: preview tokens extended to match the server-side dictionary. hp/mana/es are
+  // rounded from RadarState floats; boss lights up when the current entity list carries any Unique.
+  const uniqueCount=(s.entities||[]).filter(e=>e && (e.rarity===3||e.rarity==='Unique')).length;
+  const toks={'area':s.areaName||s.areaCode||'','level':s.charLevel||0,
+    'hp':Math.round(s.hpPct??100),'mana':Math.round(s.manaPct??100),'es':Math.round(s.esPct??100),
+    'zones':s.session?.zonesEntered??0,
     'mapshr':(s.session?.mapsPerHour??0).toFixed(1),'kills':((s.session?.killsNormal??0)+(s.session?.killsMagic??0)+(s.session?.killsRare??0)+(s.session?.killsUnique??0)),
-    'xpeff':(s.session?.xpEfficiency??0)};
+    'deaths':s.session?.deaths??0,'xpeff':(s.session?.xpEfficiency??0),
+    'boss':uniqueCount>0?'in boss arena':''};
   function fmt(t){ return (t||'').replace(/\{(\w+)\}/g,(_,k)=>toks[k]??'{'+k+'}'); }
   const dt=document.getElementById('dpDetailsTemplate');
   const st=document.getElementById('dpStateTemplate');
@@ -2835,7 +2852,73 @@ $('#kbReset')?.addEventListener('click',async()=>{
   // Also run once immediately in case the settings view is pre-shown or for the initial page load.
   initSettingsCards();
 })();
+
+/* ── Groove — v0.24: global save-toast + keyboard shortcuts ────────────────────────────────────
+   flashSaved() is available for future callsites (or as a lightweight helper); it does not
+   replace the existing per-card savedMsg* spans this drop (kept intact for stability).
+   Global keydown listener adds "/" (focus search), "1"–"7" (switch tab), "?" (toggle help),
+   and "Esc" (close open modals + cancel keybind capture). Handler ignores keys while typing
+   in an input, textarea, or contenteditable region, so search boxes still consume text keys. */
+function flashSaved(msg, ms){
+  const m = document.getElementById('globalSavedMsg'); if(!m) return;
+  m.textContent = msg || '✓ saved';
+  m.classList.add('show');
+  clearTimeout(m._t); m._t = setTimeout(()=>m.classList.remove('show'), ms || 1400);
+}
+(function(){
+  const SEARCH_BY_TAB = {
+    filters:   '#hidePattern',
+    landmarks: '#lmSearch',
+    atlas:     null,
+    settings:  '#settingsSearch',
+    director:  '#dirSearch',
+    entatlas:  '#eaSearch',
+    gear:      null,
+  };
+  const TABS = ['filters','landmarks','atlas','settings','director','entatlas','gear'];
+  function isTyping(t){ return t && (t.tagName==='INPUT' || t.tagName==='TEXTAREA' || t.isContentEditable); }
+  function closeAllModals(){
+    document.getElementById('pickPop')?.classList.remove('open');
+    document.getElementById('iconPop')?.classList.remove('open');
+    document.getElementById('helpModal')?.classList.remove('open');
+    if (typeof window.kbCancelCapture === 'function') window.kbCancelCapture();
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closeAllModals(); return; }
+    if (isTyping(e.target)) return;
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.key === '/') {
+      e.preventDefault();
+      const active = document.querySelector('.tab.active')?.dataset?.tab || 'settings';
+      const sel = SEARCH_BY_TAB[active] || '#settingsSearch';
+      document.querySelector(sel)?.focus();
+      return;
+    }
+    if (e.key === '?') {
+      e.preventDefault();
+      document.getElementById('helpModal')?.classList.toggle('open');
+      return;
+    }
+    if (/^[1-7]$/.test(e.key)) {
+      const idx = +e.key - 1;
+      document.querySelector(`.tab[data-tab="${TABS[idx]}"]`)?.click();
+    }
+  });
+})();
 </script>
+
+<div id="globalSavedMsg" aria-live="polite"></div>
+<div id="helpModal" role="dialog" aria-labelledby="helpModalTitle">
+  <div class="modal-box">
+    <button class="close-btn" type="button" onclick="document.getElementById('helpModal').classList.remove('open')" aria-label="Close">&times;</button>
+    <h3 id="helpModalTitle">Keyboard shortcuts</h3>
+    <div class="row"><span class="kbd">/</span> focus the search box on the current tab</div>
+    <div class="row"><span class="kbd">1</span>&ndash;<span class="kbd">7</span> switch tab (Rules, Landmarks, Atlas, Settings, Director, Entity Atlas, Gear)</div>
+    <div class="row"><span class="kbd">?</span> toggle this help</div>
+    <div class="row"><span class="kbd">Esc</span> close modals + cancel keybind capture</div>
+    <div class="row" style="margin-top:10px;color:var(--ink-faint);font-size:11px">Shortcuts don't fire while you're typing in a text input.</div>
+  </div>
+</div>
 </body>
 </html>
 """;

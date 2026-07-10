@@ -14,11 +14,11 @@
     "poi":           { "shape": "MapPin", "color": "#66AAFF", "opacity": 1.0, "size": 5.0 },
     "landmark":      { "shape": "Diamond","color": "#FF44FF", "opacity": 1.0, "size": 7.0 },
     "mechanics": [
-      { "name": "Expedition", "match": ["Expedition2/Expedition2Encounter"], "categories": ["Other"], "shape": "Flag",   "color": "#00FFE6", "opacity": 1.0, "size": 9.8 },
-      { "name": "Ritual",     "match": ["Ritual"],    "categories": ["Object","Other"], "shape": "Star",   "color": "#FF1144", "opacity": 1.0, "size": 9.8 },
-      { "name": "Breach",     "match": ["Breach"],    "categories": ["Object","Other"], "shape": "Portal", "color": "#AA00FF", "opacity": 1.0, "size": 9.8 },
+      { "name": "Runestone (League Event)", "match": ["Expedition2/Expedition2Encounter"], "categories": ["Other"], "shape": "Flag",   "color": "#00FFE6", "opacity": 1.0, "size": 9.8 },
+      { "name": "Ritual Altar", "match": ["Ritual"],    "categories": ["Object","Other"], "shape": "Star",   "color": "#FF1144", "opacity": 1.0, "size": 9.8 },
+      { "name": "Breach (Rift)", "match": ["Breach"],    "categories": ["Object","Other"], "shape": "Portal", "color": "#AA00FF", "opacity": 1.0, "size": 9.8 },
       { "name": "Strongbox",  "match": ["StrongBoxes"], "categories": ["Chest"],        "shape": "Chest",  "color": "#FFAA00", "opacity": 1.0, "size": 8.4 },
-      { "name": "Essence",    "match": ["Essence"],   "categories": ["Object","Other"], "shape": "Flask",  "color": "#00DDFF", "opacity": 1.0, "size": 9.8 },
+      { "name": "Essence Monolith", "match": ["Essence"],   "categories": ["Object","Other"], "shape": "Flask",  "color": "#00DDFF", "opacity": 1.0, "size": 9.8 },
       { "name": "Shrine",     "match": ["Metadata/Shrines/"],                           "shape": "Star",   "color": "#44FF44", "opacity": 1.0, "size": 8.4 }
     ]
   },

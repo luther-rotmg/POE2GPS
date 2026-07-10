@@ -6,9 +6,25 @@ body:
   - type: markdown
     attributes:
       value: |
-        Feature ideas welcome. If this is a data contribution (atlas names, buffs, preload)
-        please use the Contribute buttons in the overlay's Entity Atlas / Buffs / Preload
-        tabs instead — those flow into the community pipeline directly.
+        Feature ideas welcome. Before you file, please:
+
+        - Skim the [Roadmap](../../README.md#-roadmap) — your idea may already be planned.
+        - Search [existing feature requests](https://github.com/luther-rotmg/POE2GPS/issues?q=is%3Aissue+label%3Aenhancement) — an upvote on a matching issue helps prioritize.
+        - Open-ended discussions live in [Discussions](https://github.com/luther-rotmg/POE2GPS/discussions) — this template is for concrete proposals.
+
+        If this is a data contribution (atlas names, buffs, preload) please use the Contribute
+        buttons in the overlay's Entity Atlas / Buffs / Preload tabs instead — those flow into
+        the community pipeline directly.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: "Preflight"
+      description: "Please confirm before submitting."
+      options:
+        - label: "I've checked the roadmap and this isn't already planned."
+          required: true
+        - label: "I've searched existing feature requests and this isn't a duplicate."
+          required: true
   - type: textarea
     id: problem
     attributes:

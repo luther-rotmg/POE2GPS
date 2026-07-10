@@ -1183,6 +1183,12 @@ public sealed class RadarApp : IDisposable
 
         var st = _state;   // volatile read — safe; RadarState is immutable
         var sess = st.Session;
+        // Groove — v0.24: cheap "boss present" signal for Rich Presence. Runs at 15 s cadence in the
+        // presence thread, not per world tick. Any Unique-rarity entity in the current zone lights up
+        // {boss}. Cheap O(entities) scan bounded by the entity cap. Does not require any new memory read.
+        var uniqueCount = 0;
+        for (int i = 0; i < st.Entities.Count; i++)
+            if (st.Entities[i].Rarity == Poe2Live.Rarity.Unique) uniqueCount++;
         var toks = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["area"]   = ZoneGuide.Shared.FriendlyName(st.AreaCode),
@@ -1191,6 +1197,13 @@ public sealed class RadarApp : IDisposable
             ["mapshr"] = (sess?.MapsPerHour  ?? 0).ToString("F1"),
             ["kills"]  = ((sess?.KillsNormal ?? 0) + (sess?.KillsMagic ?? 0) + (sess?.KillsRare ?? 0) + (sess?.KillsUnique ?? 0)).ToString(),
             ["xpeff"]  = (sess?.XpEfficiency ?? 0).ToString("+#;-#;0"),
+            // Groove — v0.24: extra tokens for richer Rich Presence templates. All zero-cost — pulled
+            // from RadarState fields already populated by the world/render loop.
+            ["hp"]     = ((int)st.HpPct).ToString(),
+            ["mana"]   = ((int)st.ManaPct).ToString(),
+            ["es"]     = ((int)st.EsPct).ToString(),
+            ["deaths"] = (sess?.Deaths ?? 0).ToString(),
+            ["boss"]   = uniqueCount > 0 ? "in boss arena" : "",
         };
         var details = POE2Radar.Core.Presence.PresenceTemplate.Format(cfg.DetailsTemplate, toks);
         var state   = POE2Radar.Core.Presence.PresenceTemplate.Format(cfg.StateTemplate,   toks);

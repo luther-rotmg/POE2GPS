@@ -792,18 +792,18 @@ public sealed class RadarStyles
         // dir-qualified key hits only "Expedition2/Expedition2Encounter" (NOT the "/Objects/...Crack"
         // path), and the Other gate keeps it off the monsters. ("ExpeditionEncounter" was also dead —
         // the real path is "Expedition2Encounter" with a digit, so that key matched nothing.)
-        new() { Name = "Expedition", Match = new() { "Expedition2/Expedition2Encounter" }, Categories = new() { "Other" }, Shape = "Flag", Color = "#26E6D9", Opacity = 1f, Size = 7f },
+        new() { Name = "Runestone (League Event)", Match = new() { "Expedition2/Expedition2Encounter" }, Categories = new() { "Other" }, Shape = "Flag", Color = "#26E6D9", Opacity = 1f, Size = 7f },
         // Ritual/Breach/Essence are gated to the mechanic MARKER (Object/Other) so the bare substring can't
         // hijack the league's combat monsters (e.g. "Metadata/Monsters/LeagueRitual/…", "…LeagueBreach/…").
-        new() { Name = "Ritual",     Match = new() { "Ritual" }, Categories = new() { "Object", "Other" },  Shape = "Star",     Color = "#FF3355", Opacity = 1f, Size = 7f },
-        new() { Name = "Breach",     Match = new() { "Breach" }, Categories = new() { "Object", "Other" },  Shape = "Portal",   Color = "#A64DFF", Opacity = 1f, Size = 7f },
+        new() { Name = "Ritual Altar", Match = new() { "Ritual" }, Categories = new() { "Object", "Other" },  Shape = "Star",     Color = "#FF3355", Opacity = 1f, Size = 7f },
+        new() { Name = "Breach (Rift)", Match = new() { "Breach" }, Categories = new() { "Object", "Other" },  Shape = "Portal",   Color = "#A64DFF", Opacity = 1f, Size = 7f },
         // Match the league-strongbox DIRECTORY only ("Metadata/Chests/StrongBoxes/…") and gate to
         // Chest. The bare "Strongbox" term was too broad twice over: it tagged the box's spawned Vaal
         // guards (…Strongbox monsters — now excluded by the Chest gate) AND ordinary area chests that
         // merely carry "Strongbox" in their name (e.g. Chests/KedgeBayChests/KedgeBayChestStrongbox).
         // "StrongBoxes" hits the real boxes (BasicStrongboxLow lives under it) but not those.
         new() { Name = "Strongbox",  Match = new() { "StrongBoxes" }, Categories = new() { "Chest" }, Shape = "Chest", Color = "#FFB300", Opacity = 1f, Size = 6f },
-        new() { Name = "Essence",    Match = new() { "Essence" }, Categories = new() { "Object", "Other" }, Shape = "Flask",    Color = "#33E0FF", Opacity = 1f, Size = 7f },
+        new() { Name = "Essence Monolith", Match = new() { "Essence" }, Categories = new() { "Object", "Other" }, Shape = "Flask",    Color = "#33E0FF", Opacity = 1f, Size = 7f },
         // Match the real shrine namespace ONLY (Metadata/Shrines/Shrine_Trigger). A bare "Shrine" substring
         // false-positives on terrain cosmetics/spawners (GoblinShrineCosmetic, GoblinShrineSpawnerLeap) and
         // the ShrineFireDaemon effect carrier — none of which are the clickable shrine mechanic.
