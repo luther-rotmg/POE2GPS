@@ -1,5 +1,7 @@
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 
 namespace POE2Radar.Core.Support;
 
@@ -10,26 +12,19 @@ namespace POE2Radar.Core.Support;
 /// palettes + optional overlay badge). Any determined user can crack a SHA-256 with a wordlist; the
 /// gate exists as a lightweight social honor system, not a security boundary.
 ///
-/// To add a new code: compute its SHA-256 (lowercase hex, no dashes) and append it to <see cref="Hashes"/>
-/// below. Old codes stay valid — never remove entries.
+/// Support automation — v0.27.1 (LO ask): the hash list migrated OUT of C# and INTO an embedded
+/// <c>supporter_hashes.json</c> resource so LO edits ONE JSON file to add a code (no C# recompile,
+/// no `openssl` shell round-trip). Add new codes via the dashboard's Support → Maintainer helper card
+/// (Settings tab, <c>?admin=1</c> URL param): paste raw code, get the SHA-256, click Copy, drop into
+/// <c>supporter_hashes.json</c>.
 /// </summary>
 public static class SupporterCodeValidator
 {
-    // SHA-256 hex digests of shipped codes. Each digest = SHA256(UTF-8 encoding of the raw code text
-    // with no whitespace, lowercase, hex-encoded, no dashes). Compute a new one with e.g.:
-    //   echo -n "POE2GPS-COFFEE-2026" | openssl dgst -sha256 -hex
-    // …then append below. The RAW code stays private (only shared via Ko-fi DM); this list ships in
-    // every release.
-    //
-    // Seed codes (LO's initial batch, 2026-07-10):
-    //   POE2GPS-COFFEE-2026 → 4c8c6bc5c96a5e4a3ed4c00a4f2f4b1a6a1a6b6d2a1e5a5b4a5b7e5f5b7a3e5b7
-    //     (that hash is a PLACEHOLDER — LO must regenerate for the actual code before shipping)
-    private static readonly HashSet<string> Hashes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        // Placeholder — real hashes go here. Ship-time invariant is that at least one valid code
-        // exists so the feature is discoverable via the Ko-fi email flow.
-        "9d3b8e57e9b3c9d8e4f5c1a2b0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9",
-    };
+    private static readonly Lazy<HashSet<string>> _hashes =
+        new(LoadHashes, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    /// <summary>Number of shipped hashes — useful for maintainer-helper "known code count" display.</summary>
+    public static int HashCount => _hashes.Value.Count;
 
     /// <summary>Returns true when the trimmed code matches any shipped hash. Empty / null → false.
     /// Trims whitespace and folds to invariant lowercase before hashing so users pasting from an
@@ -39,7 +34,31 @@ public static class SupporterCodeValidator
         if (string.IsNullOrWhiteSpace(code)) return false;
         var normalized = code.Trim().ToLowerInvariant();
         var digest = Sha256Hex(normalized);
-        return Hashes.Contains(digest);
+        return _hashes.Value.Contains(digest);
+    }
+
+    /// <summary>Load the shipped SHA-256 digests from the embedded supporter_hashes.json resource.
+    /// Missing / malformed → empty set (fail closed; no code validates). Tolerant of the maintainer
+    /// note key so an editor comment can't break parsing.</summary>
+    private static HashSet<string> LoadHashes()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            var asm = Assembly.GetExecutingAssembly();
+            var name = asm.GetManifestResourceNames().FirstOrDefault(n => n.Contains("supporter_hashes"));
+            if (name == null) return set;
+            using var stream = asm.GetManifestResourceStream(name);
+            if (stream == null) return set;
+            using var doc = JsonDocument.Parse(stream);
+            if (!doc.RootElement.TryGetProperty("hashes", out var arr) || arr.ValueKind != JsonValueKind.Array)
+                return set;
+            foreach (var el in arr.EnumerateArray())
+                if (el.ValueKind == JsonValueKind.String && el.GetString() is { Length: 64 } hex)
+                    set.Add(hex.ToLowerInvariant());
+        }
+        catch { /* fail closed — an unparseable resource means no code validates. */ }
+        return set;
     }
 
     /// <summary>Public helper so LO can regenerate a hash from a raw code without going to the shell.
