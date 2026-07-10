@@ -22,11 +22,24 @@ namespace POE2Radar.Core.Game;
 /// </summary>
 public sealed class AtlasMapData
 {
-    /// <summary>One map archetype's offline metadata. <see cref="Tags"/> is never null.</summary>
-    public readonly record struct MapMeta(string Name, string Type, string Group, IReadOnlyList<string> Tags)
+    /// <summary>One map archetype's offline metadata. <see cref="Tags"/> is never null.
+    /// <see cref="Translates"/> is the shipped-with-JSON per-language name table (10 languages
+    /// including English) — null when the source entry didn't carry a translates block.</summary>
+    public readonly record struct MapMeta(string Name, string Type, string Group, IReadOnlyList<string> Tags,
+        IReadOnlyDictionary<string, string>? Translates = null)
     {
         public bool HasTag(string tag) =>
             Tags != null && Tags.Any(t => string.Equals(t, tag, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>Reach — v0.26 (Long #38): returns the localized display name for the requested
+        /// language key (e.g. "french", "german", "traditional chinese"). Falls back to <see cref="Name"/>
+        /// when the entry has no translates block, when the language key is unknown, or when the language
+        /// entry is empty.</summary>
+        public string LocalizedName(string? language)
+        {
+            if (Translates is null || string.IsNullOrEmpty(language)) return Name;
+            return Translates.TryGetValue(language, out var s) && !string.IsNullOrEmpty(s) ? s : Name;
+        }
     }
 
     private readonly Dictionary<string, MapMeta> _maps = new(StringComparer.OrdinalIgnoreCase);    // MapId → meta
@@ -84,11 +97,24 @@ public sealed class AtlasMapData
                                 if (t.ValueKind == JsonValueKind.String && t.GetString() is { Length: > 0 } ts) list.Add(ts);
                             if (list.Count > 0) tags = list;
                         }
+                        // Reach — v0.26 (Long #38): pull the shipped translates block if present.
+                        // Shape is flat { language → name } — atlas_maps.json carries these for 10 langs.
+                        // Absent block → Translates stays null and LocalizedName falls back to the top-level name.
+                        Dictionary<string, string>? translates = null;
+                        if (v.TryGetProperty("translates", out var trObj) && trObj.ValueKind == JsonValueKind.Object)
+                        {
+                            translates = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                            foreach (var tp in trObj.EnumerateObject())
+                                if (tp.Value.ValueKind == JsonValueKind.String && tp.Value.GetString() is { Length: > 0 } locStr)
+                                    translates[tp.Name] = locStr;
+                            if (translates.Count == 0) translates = null;
+                        }
                         data._maps[prop.Name] = new MapMeta(
                             Name: Str(v, "name"),
                             Type: Str(v, "type"),
                             Group: Str(v, "group"),
-                            Tags: tags);
+                            Tags: tags,
+                            Translates: translates);
                     }
                 }
 
