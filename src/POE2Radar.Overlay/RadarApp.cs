@@ -725,6 +725,24 @@ public sealed class RadarApp : IDisposable
             _settings.AppliedMigrations.Add("seed:entity-arrows"); _settings.Save();
             Console.WriteLine($"Display rules: seeded OffScreenArrow on {n} Unique/Boss/Citadel rule(s).");
         }
+        // Threshold — one-shot: fold the built-in Tile display rules (currently one WaygateDevice
+        // rule) into the persisted ruleset so end-game waygates render as a distinct navigable
+        // Eye marker. Additive by rule Name so a user-renamed or user-deleted shipped rule survives
+        // the second boot untouched (name collision → skip; the persisted user copy wins). Guarded
+        // by the built_in_tile_rules_v1 key stamped via SeedBuiltInTileRulesIfNeeded, so a second
+        // launch short-circuits at the outer Contains(...) gate.
+        if (!_settings.AppliedMigrations.Contains(DisplayRules.BuiltInTileRulesMigrationKey))
+        {
+            var rules = _displayRules.All.ToList();
+            var byName = new HashSet<string>(rules.Select(r => r.Name), StringComparer.Ordinal);
+            var added = 0;
+            foreach (var seed in DisplayRules.BuiltInTileRules())
+                if (byName.Add(seed.Name)) { rules.Add(seed); added++; }
+            if (added > 0) _displayRules.Replace(rules);
+            DisplayRules.SeedBuiltInTileRulesIfNeeded(_settings);
+            _settings.Save();
+            Console.WriteLine($"Display rules: seeded {added} built-in tile rule(s).");
+        }
         _displayRulesGen = _displayRules.Generation;
         // User-editable overlay on the baked curated landmark table (the "Landmarks" tab). Inject its
         // lookup so the landmark scan honors user edits on top of the shipped community data.
