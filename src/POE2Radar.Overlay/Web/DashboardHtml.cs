@@ -1275,7 +1275,11 @@ function wireSettings(){
     const k=el.dataset.set;
     if(el.type==='checkbox') el.onchange=()=>saveSetting(k,el.checked);
     else if(el.tagName==='SELECT') el.onchange=()=>saveSetting(k,el.value);
-    else if(el.type==='number'){ el.onchange=()=>{const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v);}; } else { el.onchange=()=>saveSetting(k, el.value); }
+    // SIG-VOLUME-FIX (v0.23): type='range' inputs (e.g. the audio-alert volume slider) also
+    // need parseFloat coercion so the server-side TryInt guard in /api/settings does not silently
+    // drop the value as a JSON string. Without this, the slider looked like it worked but
+    // AudioAlertVolume was never updated and the audio-cue rebuild never fired.
+    else if(el.type==='number' || el.type==='range'){ el.onchange=()=>{const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v);}; } else { el.onchange=()=>saveSetting(k, el.value); }
   });
 }
 /* ── icon / HP-bar / mechanics editors (nested objects: POST the whole {styles}/{hpBars}) ── */
