@@ -1,0 +1,11 @@
+{
+  "_note": "Reach — v0.26 (LO ask, 2026-07-10): the supporters roll served to the dashboard's Supporters card. Edit this file to add / remove / re-tier community backers, then ship a release — the card picks it up automatically. Tier keys are display-only; supported values are 'gold', 'silver', 'bronze', 'community' (default). 'name' is required; 'note' is optional and shown as a subtitle chip.",
+  "supporters": [
+    { "name": "LO",       "tier": "gold",      "note": "maintainer + first coffee" },
+    { "name": "torx",     "tier": "silver",    "note": "Expedition rumours research" },
+    { "name": "Kaonashi", "tier": "silver",    "note": "Memory-capture legwork" },
+    { "name": "Diamondsr","tier": "bronze",    "note": "Atlas + vitals diagnostics" },
+    { "name": "Sidefx",   "tier": "community", "note": "Community feedback" },
+    { "name": "Verahsa",  "tier": "community", "note": "Community testing" }
+  ]
+}

@@ -3,6 +3,25 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.26.0] — 2026-07-10 "Reach"
+
+### Added — 🌏 **Reach** *(boss cheat sheets · waystone mod-risk warnings · localized atlas names · dashboard groupings · a supporters roll · issue templates get a lane for post-patch drift)*
+
+- 📚 **Boss encounter cheat sheets.** New `Bosses` tab in the dashboard reads a shipped `BossEncounterCatalog` (5 pinnacle entries seeded — Arbiter of Ash, Xesht, Kosis, The Maven, The Bodach — hand-authored, paraphrased from public wiki summaries). Each card shows the boss's damage-type mix (color-coded pills), the top one-shots to dodge, over-cap thresholds by element, flask notes, and phase cues. `BossEncounterCatalog.ByBossKey` / `ByZoneCode(MapUberBoss_*)` / `ByMetadata(...)` surfaces are already wired for an overlay panel in a follow-up drop.
+- ⚠️ **Waystone mod-risk parser.** New `Waystone` tab: paste a Ctrl+C'd waystone item text and get a tiered mod list (Safe / Notable / Deadly), triggered danger combos (reflect+crit, no-leech+no-regen, etc), a total risk score, and a red **SKIP RECOMMENDED** banner when the score ≥ 60. Rules and combo table live in embedded JSON (`poe2_waystone_mod_risk.json`) so future mod additions don't need a code release. Server-side `/api/waystone/parse` is loopback-gated; the tab renders results in-place.
+- 🌐 **Localized atlas map names.** `AtlasMapData.MapMeta` now exposes `Translates` (10 languages: english, french, german, japanese, korean, portuguese, russian, spanish, thai, traditional chinese) and a `LocalizedName(language)` helper. `RadarSettings.Language` defaults to Windows system locale on first launch (via `CultureInfo.CurrentCulture.TwoLetterISOLanguageName` mapped to the shipped keys); English fallback for everything else. Wiring the language into the display paths (Poe2Atlas emission + dashboard picker) is scheduled for a follow-up so the setting has an effect out of the box.
+- 🗂️ **Settings tab section-header dividers.** The 22-card Settings tab now shows section dividers between the natural card groups: `HUD panels`, `Overlay rendering`, `Advanced`, `Integrations`. Full-width grid rows with a Cinzel-styled label — cards flow into the next section on the same panel-grid. Zero JS refactor: `wireSettings()` uses document-wide `[data-set]` selectors that survive the DOM reshape.
+- ☕ **Supporters card on the dashboard.** New `Supporters` card at the top of Settings shows a name-pill roll seeded with the existing contributors (LO, torx, Kaonashi, Diamondsr, Sidefx, Verahsa). Tier keys (`gold` / `silver` / `bronze` / `community`) drive the pill color; each pill's `title` attribute shows the contributor's role on hover. Card also carries the Ko-fi call-out. Backers get added by editing the embedded `supporters.json` and shipping a release — no CI schema, no server-side auth.
+- 🙏 **Two more names in the Special thanks section of the README** — `Sidefx` and `Verahsa` for continued community feedback and testing help.
+
+### Deferred to v0.27 "Companion"
+- Localization: wire the `RadarSettings.Language` into the atlas display path (currently the setting reads but no display site consumes it yet).
+- Overlay boss cheat-sheet panel that surfaces the current-zone entry on arena entry (dashboard tab is the browsable surface).
+- Waystone card global hotkey (Ctrl+Alt+W) that grabs clipboard + opens the tab.
+- Long List #39 Full-page browser views (Rules / Landmarks / Nameplates).
+
+---
+
 ## [0.25.1] — 2026-07-10 (hotfix)
 
 ### Fixed

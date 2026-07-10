@@ -232,6 +232,8 @@ Huge thanks to **torx** and **Kaonashi** for their reverse-engineering legwork, 
 
 And thanks to **Diamondsr** for sharp bug reports, in-game testing, and running the diagnostics that pinpointed the Atlas and vitals issues. 🐛🔍
 
+Thanks also to **Sidefx** and **Verahsa** for community feedback and continued testing help. 🙏
+
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE).

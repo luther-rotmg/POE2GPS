@@ -1,0 +1,107 @@
+{
+  "_note": "Reach — CHOR-42 (v0.26): Boss encounter cheat sheet catalog. Entries are hand-authored in-house; damage-type mixes and one-shot bullets paraphrased from public wiki summaries (poewiki.net + poe2db.tw), never copied verbatim. Overcap thresholds are broad guidelines — build-specific tuning is on the user. Extend this file to add new bosses; the C# loader is tolerant of missing optional fields.",
+  "entries": [
+    {
+      "key": "arbiter_of_ash",
+      "label": "The Arbiter of Ash",
+      "matchMetadata": "Metadata/Monsters/AtlasBosses/DemonClawBoss",
+      "zoneCodes": ["MapUberBoss_CopperCitadel", "MapUberBoss_CopperCitadel_Quest"],
+      "tier": "pinnacle",
+      "category": "AtlasBoss",
+      "damageTypes": { "phys": 0.2, "fire": 0.7, "cold": 0.0, "lightning": 0.0, "chaos": 0.1 },
+      "oneShots": [
+        "Volcanic Slam — sidestep the red cone before it lands",
+        "Meteor call — do not stand under the shadow marker",
+        "Phase 2 arena ignite — walk clockwise around the burning ring"
+      ],
+      "overcap": { "fire": 90, "cold": 75, "lightning": 75, "chaos": 30 },
+      "flaskNotes": "Prioritize fire-resist flask uptime; ignite pulses in phase 2 will chunk uncapped builds.",
+      "phases": [
+        { "cue": "50% HP", "note": "Enrage — meteor barrage frequency doubles" },
+        { "cue": "25% HP", "note": "Arena floor ignites in rotating rings — keep moving" }
+      ]
+    },
+    {
+      "key": "xesht",
+      "label": "Xesht, We That Are One (Breachlord)",
+      "matchMetadata": "Metadata/Monsters/AtlasBosses/BreachBoss",
+      "zoneCodes": ["MapUberBoss_Breach"],
+      "tier": "pinnacle",
+      "category": "AtlasBoss",
+      "damageTypes": { "phys": 0.4, "fire": 0.0, "cold": 0.2, "lightning": 0.0, "chaos": 0.4 },
+      "oneShots": [
+        "Hand-of-Xesht ground slam — do not stand between the fingers",
+        "Chaos rift pulses — leave the marked circle before it detonates",
+        "Grab attack telegraph — dash out before the arm closes"
+      ],
+      "overcap": { "fire": 75, "cold": 80, "lightning": 75, "chaos": 85 },
+      "flaskNotes": "Chaos resist matters — Xesht deals more chaos than most atlas bosses. Bring at least one chaos-flask or chaos-res on gear.",
+      "phases": [
+        { "cue": "66% HP", "note": "Summons Hands — kill the leftmost first to unlock the boss's ground slam pattern" },
+        { "cue": "33% HP", "note": "Breach walls close in — arena shrinks; movement skill up" }
+      ]
+    },
+    {
+      "key": "kosis",
+      "label": "Kosis, the Revelation (Delirium)",
+      "matchMetadata": "Metadata/Monsters/AtlasBosses/DeliriumBoss",
+      "zoneCodes": ["MapUberBoss_Delirium"],
+      "tier": "pinnacle",
+      "category": "AtlasBoss",
+      "damageTypes": { "phys": 0.3, "fire": 0.0, "cold": 0.5, "lightning": 0.0, "chaos": 0.2 },
+      "oneShots": [
+        "Freezing pulse cone — do not stand in the frost trail",
+        "Mirror-image summons — kill the correct copy (unshielded one) or take a chaos backfire",
+        "Sanity-drain aura — stack away when the screen desaturates"
+      ],
+      "overcap": { "fire": 75, "cold": 90, "lightning": 75, "chaos": 40 },
+      "flaskNotes": "Freeze immunity is worth slotting. Cold-resist over-cap is the difference between a chip and a chunk.",
+      "phases": [
+        { "cue": "50% HP", "note": "Mirror-images spawn each 10 s — focus real one (no gold shimmer)" },
+        { "cue": "25% HP", "note": "Sanity-drain aura permanent — keep chaos-recovery uptime" }
+      ]
+    },
+    {
+      "key": "the_maven",
+      "label": "The Maven (Pinnacle Cast)",
+      "matchMetadata": "Metadata/Monsters/AtlasBosses/Maven",
+      "zoneCodes": ["MapUberBoss_JadeCitadel", "MapUberBoss_JadeCitadel_Quest"],
+      "tier": "pinnacle",
+      "category": "AtlasBoss",
+      "damageTypes": { "phys": 0.2, "fire": 0.2, "cold": 0.2, "lightning": 0.2, "chaos": 0.2 },
+      "oneShots": [
+        "Memory-game phase — repeat the flashed pattern or take a phase-transition hit",
+        "Ball-lightning line — leap sideways before the ring closes",
+        "Meteor circle summon — the safe zone is the smallest circle"
+      ],
+      "overcap": { "fire": 85, "cold": 85, "lightning": 85, "chaos": 30 },
+      "flaskNotes": "Balanced-elemental profile — over-cap all three elements. Movement flask crucial for the ball-lightning phase.",
+      "phases": [
+        { "cue": "75% HP", "note": "Memory phase — one flash sequence" },
+        { "cue": "50% HP", "note": "Memory phase — three flashes; add-summons overlap" },
+        { "cue": "25% HP", "note": "Memory phase — five flashes; miss any and lose ~25% HP" }
+      ]
+    },
+    {
+      "key": "the_bodach",
+      "label": "The Bodach (Pinnacle Cast)",
+      "matchMetadata": "Metadata/Monsters/AtlasBosses/BodachBoss",
+      "zoneCodes": ["MapUberBoss_Divinity", "MapUberBoss_Divinity_Quest"],
+      "tier": "pinnacle",
+      "category": "AtlasBoss",
+      "damageTypes": { "phys": 0.5, "fire": 0.0, "cold": 0.2, "lightning": 0.2, "chaos": 0.1 },
+      "oneShots": [
+        "Overhead crush — dash out of the ground shadow before it lands",
+        "Cold-lightning storm — stand in the safe corridor between arcs",
+        "Grab-throw combo — cannot be blocked; movement skill only"
+      ],
+      "overcap": { "fire": 75, "cold": 85, "lightning": 85, "chaos": 40 },
+      "flaskNotes": "Physical damage reduction (armour or evasion) matters more than element resist here.",
+      "phases": [
+        { "cue": "50% HP", "note": "Adds spawn — kill blockers first" },
+        { "cue": "25% HP", "note": "Berserk — attack speed +30%, ignore usual telegraphs and pre-emptively dash" }
+      ]
+    }
+  ],
+  "_attribution": "Boss telegraphs cross-checked against public wiki summaries (paraphrased). Damage-type mixes are broad, build-agnostic guidelines."
+}

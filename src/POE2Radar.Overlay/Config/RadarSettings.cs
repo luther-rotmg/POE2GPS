@@ -76,6 +76,35 @@ public sealed class RadarSettings
     public const string DefaultContributeUrl = "https://poe2gps-contribute.luther-rotmg.workers.dev";
     public string ContributeUrl { get; set; } = DefaultContributeUrl;
 
+    // Reach — v0.26 (Long #38): display language for shipped atlas map names. Empty defaults to the
+    // Windows system locale on first launch (mapped by ResolveDefaultLanguage). Currently only the
+    // atlas map names carry a per-language table; landmark / preload / entity name catalogs stay
+    // English until they ship their own translates blocks.
+    public string Language { get; set; } = "";
+
+    /// <summary>Resolve the effective language key against the shipped translation set. When
+    /// <see cref="Language"/> is empty, maps the Windows system locale (via
+    /// <see cref="System.Globalization.CultureInfo.CurrentCulture"/>) to one of the shipped keys;
+    /// falls back to <c>english</c> for anything else.</summary>
+    public static string ResolveDefaultLanguage(string? explicitPreference = null)
+    {
+        if (!string.IsNullOrEmpty(explicitPreference)) return explicitPreference!;
+        var iso = System.Globalization.CultureInfo.CurrentCulture.TwoLetterISOLanguageName?.ToLowerInvariant() ?? "en";
+        return iso switch
+        {
+            "fr" => "french",
+            "de" => "german",
+            "ja" => "japanese",
+            "ko" => "korean",
+            "pt" => "portuguese",
+            "ru" => "russian",
+            "es" => "spanish",
+            "th" => "thai",
+            "zh" => "traditional chinese",
+            _    => "english",
+        };
+    }
+
     // ── Persistent auto-nav: substrings matched (case-insensitive Contains) against a navigation
     //    target's MatchKey (tile path / entity metadata). On every zone change, every target whose
     //    MatchKey matches ANY pattern is auto-selected (up to the 8-color cap), so entering a new

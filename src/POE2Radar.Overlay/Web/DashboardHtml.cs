@@ -233,6 +233,12 @@ internal static class DashboardHtml
   .hint-row{color:var(--ink-faint)!important; font-size:11px!important; font-style:italic}
   .saved{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--good); opacity:0; transition:opacity .3s}
   .saved.show{opacity:1}
+  /* Reach — v0.26 (CHOR-7): Settings tab section-header dividers. Full-width row in the settings
+     panel-grid, so the cards below it flow into the next row with a clear visual break. */
+  .sec-hdr{grid-column:1/-1;border-top:1px solid var(--line-soft);padding:16px 4px 4px;margin-top:4px;
+    font-family:"Cinzel","Georgia",serif;font-size:11px;letter-spacing:.28em;text-transform:uppercase;
+    color:var(--gold-bright)}
+  .sec-hdr:first-of-type{border-top:none;margin-top:0;padding-top:6px}
   /* Groove — v0.24: central save-confirmation toast + keyboard-shortcut help modal. */
   #globalSavedMsg{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:9998;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--good);opacity:0;transition:opacity .3s;background:rgba(0,0,0,.85);padding:7px 16px;border:1px solid var(--line);border-radius:3px;pointer-events:none;font-family:inherit}
   #globalSavedMsg.show{opacity:1}
@@ -465,6 +471,8 @@ internal static class DashboardHtml
         <button class="tab" data-tab="director">Director</button>
             <button class="tab" data-tab="entatlas">Entity Atlas</button>
             <button class="tab" data-tab="gear">Gear &#9733;</button>
+            <button class="tab" data-tab="bosses">Bosses</button>
+            <button class="tab" data-tab="waystone">Waystone</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -614,6 +622,14 @@ internal static class DashboardHtml
         </div>
         <input type="search" id="settingsSearch" placeholder="Search settings&hellip;">
         <div class="panel-grid">
+          <!-- Reach — v0.26 (LO ask): supporters roll. Subtle-but-visible card at the top of Settings.
+               Reads /api/supporters (embedded supporters.json) and renders name pills. -->
+          <div class="card" id="supportersCard" style="grid-column:1/-1">
+            <h3>Supporters <span class="tag">&middot; running on curiosity and coffee</span></h3>
+            <div class="row" style="align-items:flex-start"><div class="rl hint-row" style="flex:1">POE2GPS is a free tool that reads memory legally, feeds a community pool, and ships open source. If it saved you time in a map, consider chipping in &mdash; every drop is one person's work against a game that changes its offsets every patch. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">&#9749; Ko&#8209;fi</a></div></div>
+            <div id="supportersList" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 4px"></div>
+          </div>
+
           <div class="card" id="qsCard" style="grid-column:1/-1">
             <h3>Quick Start <span class="tag">&middot; getting up and running</span></h3>
             <div class="row"><div class="rl hint-row" style="line-height:1.7">
@@ -734,6 +750,7 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Contribute URL<small>your Cloudflare Worker endpoint; set this to enable one-click &ldquo;Contribute&rdquo;</small></div>
               <input class="numin" type="text" data-set="contributeUrl" placeholder="https://&hellip;workers.dev" style="width:240px"></div>
           </div>
+          <div class="sec-hdr">HUD panels</div>
           <div class="card" data-card="session">
             <h3>Session HUD</h3>
 
@@ -834,6 +851,7 @@ internal static class DashboardHtml
               <span class="saved" id="savedMsgPr">&#10003; contributed &mdash; thank you!</span>
             </div>
           </div>
+          <div class="sec-hdr">Overlay rendering</div>
           <div class="card" data-card="hpbars">
             <h3>Monster HP Bars <span class="tag">&middot; by rarity</span></h3>
             <div class="row"><div class="rl hint-row">Toggle the bar on/off per rarity with the <b>On</b> checkbox &mdash; uncheck all to disable HP bars entirely, or leave only the rarities you want. The rest sets the bar <i>geometry</i> per rarity.</div></div>
@@ -974,6 +992,7 @@ internal static class DashboardHtml
               <span class="chip" data-gicat="Expedition">Expedition</span>
             </div>
           </div>
+          <div class="sec-hdr">Advanced</div>
           <div class="card" id="keybindsCard" data-card="keybinds">
             <h3>Keybinds <small class="tag">&middot; click Rebind then press a key</small></h3>
             <div id="kbRows"></div>
@@ -982,6 +1001,7 @@ internal static class DashboardHtml
             </div>
             <div style="height:14px"><span class="saved" id="savedMsgKb">&#10003; saved</span></div>
           </div>
+          <div class="sec-hdr">Integrations</div>
           <div class="card collapsed" data-card="obs-overlay">
             <h3>OBS Overlay <small class="tag">&middot; browser source</small></h3>
             <div class="row"><div class="rl">Browser source URL<small>add this as a Browser Source in OBS (transparent background)</small></div>
@@ -1150,6 +1170,27 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Target<small>raw weighted total that = a score of 100</small></div><input id="gTarget" class="numin" type="number" style="width:90px"></div>
             <div class="row"><div class="rl">God-roll threshold<small>score (0&ndash;100) at/above which an item gets a &#9733;</small></div><input id="gThreshold" class="numin" type="number" style="width:90px"></div>
             <div id="gWeightList" class="znotes" style="display:block"></div>
+          </div>
+        </section>
+
+        <!-- Reach — CHOR-41 (v0.26): waystone mod-risk parser. Paste Ctrl+C waystone text into
+             the textarea and get a tiered mod list + combo warnings + a Should-Skip banner. -->
+        <section class="view" data-view="waystone" hidden>
+          <div class="card" style="grid-column:1/-1">
+            <h3>Waystone Mod-Risk <small>&middot; paste a Ctrl+C'd waystone to see its risk breakdown</small></h3>
+            <div class="row"><div class="rl hint-row">In-game: Ctrl+C on the waystone in your inventory, then paste here. Nothing is sent to the community pool. Risk weights + combo bonuses are tuned to broad PoE2 danger patterns &mdash; your build tuning always wins.</div></div>
+            <textarea id="wsInput" placeholder="Paste waystone text here…" style="width:100%;min-height:180px;font-family:Consolas,monospace;font-size:12px;background:#0c0a07;color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:10px;box-sizing:border-box"></textarea>
+            <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="numin" id="wsParse" style="width:auto;padding:8px 16px">Parse</button></div>
+            <div id="wsResult" style="margin-top:12px"></div>
+          </div>
+        </section>
+
+        <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
+        <section class="view" data-view="bosses" hidden>
+          <div class="card" style="grid-column:1/-1">
+            <h3>Boss Cheat Sheets <small>&middot; damage-type mix, one-shots to dodge, over-cap thresholds, phase cues</small></h3>
+            <div class="row"><div class="rl hint-row">Hand-authored guides for pinnacle atlas bosses. Cross-checked against public wiki summaries (paraphrased). Damage-type mixes and over-cap thresholds are broad guidelines &mdash; tune to your build.</div></div>
+            <div id="bossList" class="znotes" style="display:block"></div>
           </div>
         </section>
 
@@ -2852,6 +2893,122 @@ $('#kbReset')?.addEventListener('click',async()=>{
   // Also run once immediately in case the settings view is pre-shown or for the initial page load.
   initSettingsCards();
 })();
+
+/* ── Reach — v0.26 (CHOR-42): boss cheat sheet loader ──────────────────────────────────────────
+   Fetches /api/bosses once on first Bosses-tab activation. Renders the shipped catalog as a list
+   of cards showing name, tier, damage-type row (color-coded), one-shots to dodge, overcap
+   thresholds, flask notes, and phase transitions. No search / filter yet — small catalog. */
+let __bossesLoaded = false;
+async function loadBosses(){
+  if (__bossesLoaded) return; __bossesLoaded = true;
+  const list = document.getElementById('bossList');
+  if (!list) return;
+  try {
+    const r = await fetch('/api/bosses');
+    if (!r.ok) { list.textContent = 'Failed to load cheat sheets ('+r.status+').'; return; }
+    const data = await r.json();
+    const entries = data?.entries || [];
+    if (!entries.length) { list.textContent = 'No cheat-sheet entries shipped in this build.'; return; }
+    // Damage-type element → CSS color token.
+    const DMG_COL = {phys:'#e8e0d0', fire:'#ff6b3d', cold:'#4dc4ff', lightning:'#ffdd44', chaos:'#c266ff'};
+    const html = entries.map(e => {
+      const dmg = e.damageTypes || {};
+      const dmgRow = ['phys','fire','cold','lightning','chaos']
+        .filter(k => (dmg[k]||0) >= 0.05)
+        .map(k => `<span style="background:${DMG_COL[k]};color:#000;padding:2px 8px;border-radius:2px;font-size:11px;font-weight:600;margin-right:4px">${k} ${Math.round((dmg[k]||0)*100)}%</span>`)
+        .join('');
+      const shots = (e.oneShots||[]).map(s => `<li>${s}</li>`).join('');
+      const phases = (e.phases||[]).map(p => `<li><b>${p.cue}</b> — ${p.note}</li>`).join('');
+      const overRows = Object.entries(e.overcap||{})
+        .map(([elem, thresh]) => `<span style="background:${DMG_COL[elem]||'#888'};color:#000;padding:2px 6px;border-radius:2px;font-size:10px;font-weight:600;margin-right:3px">${elem} ${thresh}%</span>`)
+        .join('');
+      return `
+        <div style="border:1px solid var(--line);border-radius:3px;padding:14px 16px;margin-bottom:12px;background:var(--bg-alt)">
+          <div style="font-family:'Cinzel','Georgia',serif;font-size:14px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-bright);margin-bottom:4px">${e.label}</div>
+          <div style="font-size:10px;color:var(--ink-faint);letter-spacing:.18em;text-transform:uppercase;margin-bottom:10px">${e.tier} &middot; ${e.category}</div>
+          <div style="margin-bottom:12px">${dmgRow}</div>
+          <div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin-bottom:4px">One-shots to dodge</div>
+          <ul style="margin:0 0 10px;padding-left:18px;font-size:12px;line-height:1.6">${shots}</ul>
+          ${phases ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin-bottom:4px">Phases</div>
+          <ul style="margin:0 0 10px;padding-left:18px;font-size:12px;line-height:1.6">${phases}</ul>` : ''}
+          ${overRows ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin-bottom:4px">Over-cap thresholds</div>
+          <div style="margin-bottom:10px">${overRows}</div>` : ''}
+          ${e.flaskNotes ? `<div style="font-size:12px;color:var(--ink);border-top:1px solid var(--line-soft);padding-top:8px;margin-top:8px"><b>Flask:</b> ${e.flaskNotes}</div>` : ''}
+        </div>`;
+    }).join('');
+    list.innerHTML = html;
+  } catch (err) {
+    list.textContent = 'Failed to load cheat sheets (network error).';
+  }
+}
+document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventListener('click', loadBosses));
+
+/* ── Reach — v0.26 (LO ask): supporters roll ───────────────────────────────────────────────────
+   Loaded once on first Settings-tab activation. Reads /api/supporters and renders pill chips
+   with a tier color. Missing / empty response leaves the section blank rather than showing
+   an error — supporters are optional recognition, not a required feature. */
+let __supportersLoaded = false;
+async function loadSupporters(){
+  if (__supportersLoaded) return; __supportersLoaded = true;
+  const list = document.getElementById('supportersList');
+  if (!list) return;
+  try {
+    const r = await fetch('/api/supporters');
+    if (!r.ok) return;
+    const data = await r.json();
+    const sups = data?.supporters || [];
+    if (!sups.length) { list.innerHTML = '<span style="color:var(--ink-faint);font-size:11px">Be the first to join the roll &mdash; <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright)">chip in on Ko&#8209;fi</a></span>'; return; }
+    const TIER_COL = { gold:'#f5c94f', silver:'#c8c8c8', bronze:'#c78d5a', community:'#8090a0' };
+    list.innerHTML = sups.map(s => {
+      const col = TIER_COL[s.tier] || TIER_COL.community;
+      const title = s.note ? ` title="${(s.note+'').replace(/"/g,'&quot;')}"` : '';
+      return `<span${title} style="background:${col};color:#000;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600;letter-spacing:.02em">${s.name}</span>`;
+    }).join('');
+  } catch (err) { /* silent — the section can be empty */ }
+}
+document.querySelectorAll('.tab[data-tab="settings"]').forEach(t => t.addEventListener('click', loadSupporters));
+// Also try to load immediately in case Settings is the initial view.
+loadSupporters();
+
+/* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
+   The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered
+   mod list, combo hits, total score, and skip recommendation. */
+async function parseWaystone(){
+  const inp = document.getElementById('wsInput');
+  const out = document.getElementById('wsResult');
+  if (!inp || !out) return;
+  const text = inp.value || '';
+  if (!text.trim()) { out.innerHTML = '<div style="color:var(--ink-faint);font-size:12px">Paste waystone text above first.</div>'; return; }
+  try {
+    const r = await fetch('/api/waystone/parse', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text}) });
+    if (!r.ok) { out.innerHTML = '<div style="color:var(--danger,#e88)">Parse failed (HTTP '+r.status+').</div>'; return; }
+    const d = await r.json();
+    if (!d.isWaystone) { out.innerHTML = '<div style="color:var(--ink-faint);font-size:12px">Not recognized as a waystone (need <code>Item Class: Waystones</code> header).</div>'; return; }
+    const skipBanner = d.shouldSkip
+      ? `<div style="background:#c93030;color:#fff;padding:10px 14px;border-radius:3px;margin-bottom:12px;font-family:'Cinzel',Georgia,serif;letter-spacing:.2em;text-transform:uppercase;font-size:12px">⚠ Skip recommended &middot; score ${d.totalScore} / threshold ${d.skipThreshold}</div>`
+      : `<div style="background:var(--bg-alt);color:var(--ink);padding:10px 14px;border-radius:3px;margin-bottom:12px;border:1px solid var(--line-soft);font-size:12px">Score ${d.totalScore} &middot; below skip threshold ${d.skipThreshold}</div>`;
+    const tierCol = t => t==='Deadly' ? '#e33' : t==='Notable' ? '#e88500' : t==='LethalCombo' ? '#c93030' : '#6a6';
+    const modRows = (d.mods||[]).map(m => `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dotted var(--line-soft)">
+        <span style="background:${tierCol(m.tier)};color:#fff;padding:2px 8px;border-radius:2px;font-size:10px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;min-width:60px;text-align:center">${m.tier}</span>
+        <span style="flex:1;font-size:12px">${m.name}</span>
+        <span style="color:var(--ink-faint);font-size:11px">+${m.weight}</span>
+      </div>`).join('');
+    const comboRows = (d.combos||[]).map(c => `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dotted var(--line-soft)">
+        <span style="background:#c93030;color:#fff;padding:2px 8px;border-radius:2px;font-size:10px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;min-width:60px;text-align:center">Combo</span>
+        <span style="flex:1;font-size:12px">${c.label}</span>
+        <span style="color:var(--ink-faint);font-size:11px">+${c.bonus}</span>
+      </div>`).join('');
+    out.innerHTML = `${skipBanner}
+      ${(d.rarity||d.tier) ? `<div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px">${d.rarity ? d.rarity + ' &middot; ' : ''}Tier ${d.tier}</div>` : ''}
+      ${modRows ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin:8px 0 4px">Mods matched</div>${modRows}` : '<div style="color:var(--ink-faint);font-size:12px">No risky mods matched.</div>'}
+      ${comboRows ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin:16px 0 4px">Combos triggered</div>${comboRows}` : ''}`;
+  } catch (err) {
+    out.innerHTML = '<div style="color:var(--danger,#e88)">Parse failed (network error).</div>';
+  }
+}
+document.getElementById('wsParse')?.addEventListener('click', parseWaystone);
 
 /* ── Groove — v0.24: global save-toast + keyboard shortcuts ────────────────────────────────────
    flashSaved() is available for future callsites (or as a lightweight helper); it does not
