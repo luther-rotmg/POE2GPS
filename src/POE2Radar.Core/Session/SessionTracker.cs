@@ -110,6 +110,15 @@ public sealed class SessionTracker
         if (currentXp <= 0)         return;
         if (excludeTowns && isTown) return;
 
+        // Threshold — THR-XP-DEDUP: the caller feeds this method every render frame (~60Hz) but
+        // the underlying accessor is only refreshed on a ~5 s cadence, so the same currentXp value
+        // arrives ~300 times between fresh reads. Without dedup, the ring fills with duplicate
+        // values inside one second, collapsing the effective smoothing span from XpWindowMinutes
+        // to sub-second and driving the reported rate to zero during any inter-refresh gap.
+        // Skipping identical consecutive samples keeps the ring cadence honest at ~5 s per slot
+        // (matching the _xpSlots = XpWindowMinutes * 12 sizing formula).
+        if (currentXp == _lastCurrentXp) return;
+
         // Lazy-allocate the ring on first real sample or after XpWindowMinutes changed.
         if (_xpTicks is null || _xpValues is null || _xpSlots == 0)
         {

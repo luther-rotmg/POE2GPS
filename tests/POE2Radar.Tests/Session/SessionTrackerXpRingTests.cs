@@ -156,4 +156,40 @@ public class SessionTrackerXpRingTests
         Assert.Equal(0L,   stats.SessionXpDelta);
         Assert.True(stats.RingFilling); // no XP samples yet -> ring not full
     }
+
+    // Threshold — THR-XP-DEDUP regression guard.
+    // The renderer feeds Update ~60 Hz but the world-thread accessor for cumulativeXp only
+    // refreshes every ~5 s, so between refreshes the same currentXp value arrives ~300 times.
+    // If the ring appended each duplicate, all 60 slots at the default XpWindowMinutes=5 (60
+    // slots) would fill with identical values inside a second, the effective smoothing window
+    // would collapse from 5 minutes to <1 s, and any second frame with an unchanged value
+    // would compute delta=0 → rate=0.  Feed 100 identical samples after seeding a real delta
+    // and assert the rate does NOT drop to zero: the dedup guard must skip identical samples
+    // so the first real (t=0, xp=X0) sample survives as the ring's "oldest" comparand.
+    [Fact]
+    public void XpRing_DuplicateSamples_DoNotCollapseRate()
+    {
+        var t = new SessionTracker { XpWindowMinutes = 5 };  // slots = 60
+        Feed(t, currentXp: 1_000_000, nowTicks: T(0));       // seeds baseline
+        var afterFresh = Feed(t, currentXp: 1_100_000, nowTicks: T(60));  // real delta over 60s
+        var rateAfterFresh = afterFresh.XpPerHour;
+        Assert.True(rateAfterFresh > 0f);
+
+        // Flood the tracker with 200 duplicates of the last value across a 3s span (mimics
+        // ~60 Hz calls between two 5-second world-thread refreshes).
+        SessionStats last = afterFresh;
+        for (int i = 1; i <= 200; i++)
+        {
+            long tick = T(60) + (long)(i * TimeSpan.TicksPerMillisecond * 15); // 15 ms apart
+            last = Feed(t, currentXp: 1_100_000, nowTicks: tick);
+        }
+
+        // Rate must NOT have collapsed to zero — the dedup guard skipped every duplicate,
+        // so the ring's oldest comparand is still the seeded (t=0, 1_000_000) sample.
+        Assert.True(last.XpPerHour > 0f,
+            $"Rate collapsed to {last.XpPerHour}f — dedup guard failed to skip duplicate samples.");
+        // CurrentXp / SessionXpDelta must still reflect the last good reading.
+        Assert.Equal(1_100_000L, last.CurrentXp);
+        Assert.Equal(100_000L,   last.SessionXpDelta);
+    }
 }
