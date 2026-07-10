@@ -1,0 +1,19 @@
+name = "poe2gps-supporters"
+main = "worker.js"
+compatibility_date = "2026-06-01"
+
+# Secrets set via `wrangler secret put NAME` — never checked into git.
+# Required:
+#   KO_FI_VERIFICATION_TOKEN
+#   SIGNING_PRIVATE_KEY_HEX
+# Recommended (email delivery):
+#   RESEND_API_KEY
+#   RESEND_FROM
+# Recommended (Discord auto-role):
+#   DISCORD_BOT_TOKEN
+#   DISCORD_GUILD_ID
+#   DISCORD_SUPPORTER_ROLE_ID
+# Optional (Discord announce channel):
+#   DISCORD_ANNOUNCE_WEBHOOK
+# Optional (admin bearer):
+#   ADMIN_TOKEN

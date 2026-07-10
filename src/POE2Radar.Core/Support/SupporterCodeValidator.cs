@@ -32,6 +32,10 @@ public static class SupporterCodeValidator
     public static bool IsSupporter(string? code)
     {
         if (string.IsNullOrWhiteSpace(code)) return false;
+        // Companion — v0.28: try the Ed25519 signed-code path first (new codes minted by the Worker
+        // on every Ko-fi donation). Falls through to the legacy hash-list check for the v0.27 seed
+        // codes so no old code stops validating.
+        if (SupporterSignedCode.IsValid(code)) return true;
         var normalized = code.Trim().ToLowerInvariant();
         var digest = Sha256Hex(normalized);
         return _hashes.Value.Contains(digest);
