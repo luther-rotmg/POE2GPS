@@ -3,6 +3,21 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.24.0] — 2026-07-10 "Groove"
+
+### Added — 🎧 **Groove** *(dashboard shortcuts land · Discord Rich Presence gets 5 new tokens · confusing radar labels rewritten · issue templates get a patch-drift lane and the healer log gets its due)*
+
+- ⌨️ **Dashboard keyboard shortcuts + help modal.** Press <kbd>/</kbd> to focus the search box on the current tab, <kbd>1</kbd>–<kbd>7</kbd> to jump between tabs (Rules / Landmarks / Atlas / Settings / Director / Entity Atlas / Gear), <kbd>?</kbd> to toggle a shortcut cheat sheet, <kbd>Esc</kbd> to close any open modal and cancel keybind capture. Shortcuts sit out while you're typing in a text input. Also lays the plumbing for a central save-toast (`flashSaved()`) that new callsites can adopt without touching the 10 per-card `savedMsg*` spans in flight today.
+- 🎮 **Discord Rich Presence: 5 new tokens.** Templates can now use `{hp}`, `{mana}`, `{es}`, `{deaths}`, and `{boss}` in addition to the existing `{area}`, `{level}`, `{zones}`, `{mapshr}`, `{kills}`, `{xpeff}`. `{boss}` lights up as "in boss arena" when the current zone contains any Unique-rarity entity — cheap O(entities) scan on the 15 s presence cadence, no new memory reads. Dashboard preview mirrors the same token set.
+- 🏷️ **Radar label pass.** "Expedition" now renders as "Runestone (League Event)" — one user report we sat on for too long. Also: "Ritual" → "Ritual Altar (League Event)", "Breach" → "Breach (Rift)", "Essence" → "Essence Monolith", "Abyss Crack" → "Abyss Pit (League Event)", "Quest Object" → "Quest Item", `EinharQuestMarker` → "Einhar (Bestiary NPC)". All 3 shipped presets (boss_hunter, high_contrast, minimal) get the same rewrites. No behavior change — the metadata match patterns stay identical, only the display label softens.
+- 🐛 **Patch-drift issue template + CONTRIBUTING.md expansion.** New `.github/ISSUE_TEMPLATE/patch-drift.yml` collects the fields the maintainer actually needs after a game patch shifts memory offsets: your POE2GPS version, the PoE2 patch, the subsystem that broke, the healer-log lines (POE2GPS auto-heals vitals offsets on startup and prints `auto-relocated 0x{old}→0x{new}` — that line goes in the report). CONTRIBUTING.md now covers the four data streams (atlas / buffs / preload / **trace**), points at the roadmap for feature requests, and links Discord + Discussions from the top. Feature-request template asks users to check the roadmap first.
+- 🔗 **Stale Discord URL fixed.** `config.yml` was pointing at `discord.gg/poe2gps` (never existed); now points at the canonical `discord.gg/32qdzWRja3` matching README.
+
+### Deferred to v0.25 "Chorus"
+- Settings tab five-group section headers (roadmap Short List #7) — the DOM restructure earned its own reviewed drop.
+
+---
+
 ## [0.23.0] — 2026-07-10 "Signal"
 
 ### Added — 📡 **Signal** *(data flowing where it should — probe traces reaching the community pool · alerts audibly signaling · terrain visible for the first time · preload panel actually manageable)*
