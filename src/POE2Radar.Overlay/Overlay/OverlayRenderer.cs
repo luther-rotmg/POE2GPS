@@ -1387,19 +1387,35 @@ public sealed class OverlayRenderer : IDisposable
         // the first enabled rule that matches the entity (top-down, explicit precedence); null or a
         // Hide rule → not drawn; otherwise draw the rule's shape/color/size + optional label. (Junk is
         // still a pre-filter in Phase 1; the API serves every entity regardless for troubleshooting.)
-        foreach (var e in ctx.Entities)
+        //
+        // Hotfix v0.25.1 (2026-07-10): defensive against a rare "Collection was modified" crash
+        // during a game-patch drift window. When the game auto-heal fires we can catch the world
+        // thread re-slicing _entities mid-render; snapshot the reference and iterate by index off
+        // the captured Count so a re-assign / RemoveAll on the world thread never trips the render
+        // frame. Belt: the try/catch drops the current frame's remaining dots on any surprise. The
+        // renderer recovers automatically on the next present.
+        var ents = ctx.Entities;
+        try
         {
-            if (ctx.HideJunk && JunkFilter.IsJunk(e.Metadata)) continue;
+            int entCount = ents?.Count ?? 0;
+            for (int i = 0; i < entCount; i++)
+            {
+                Poe2Live.EntityDot e;
+                try { e = ents![i]; } catch { break; }   // race: list re-sized under us → give up this frame
+                if (ctx.HideJunk && JunkFilter.IsJunk(e.Metadata)) continue;
 
-            var rule = ctx.Resolve?.Invoke(e);
-            if (rule is null || rule.Hide) continue;
+                var rule = ctx.Resolve?.Invoke(e);
+                if (rule is null || rule.Hide) continue;
 
-            var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale);
-            _bStyle!.Color = GetRuleColor(rule);   // D2: memoized
-            DrawIcon(rt, rule.Shape, p, rule.Size, _bStyle, filled: true);
-            if (!string.IsNullOrEmpty(rule.Label))
-                rt.DrawText(rule.Label, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
+                var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale);
+                _bStyle!.Color = GetRuleColor(rule);   // D2: memoized
+                DrawIcon(rt, rule.Shape, p, rule.Size, _bStyle, filled: true);
+                if (!string.IsNullOrEmpty(rule.Label))
+                    rt.DrawText(rule.Label, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
+            }
         }
+        catch (System.InvalidOperationException) { /* concurrent modification during render — drop remaining dots this frame */ }
+        catch (System.ArgumentOutOfRangeException) { /* list shrunk under us — drop remaining dots this frame */ }
 
         // Static tile landmarks (boss arena, treasure, …). Each is styled by its matching "Tile"
         // display rule (unified ruleset) when one applies — shape/color/size/label, or hidden; with no
@@ -1410,22 +1426,32 @@ public sealed class OverlayRenderer : IDisposable
         if (lmStyle.Enabled || ctx.ResolveTile != null)
         {
             var defColor = ParseColor(lmStyle.Color, lmStyle.Opacity);
-            foreach (var lm in ctx.Landmarks)
+            // Hotfix v0.25.1: same defensive pattern as the entity loop above.
+            var lms = ctx.Landmarks;
+            try
             {
-                var tr = ctx.ResolveTile?.Invoke(lm.Path);
-                if (tr is { Hide: true }) continue;                 // a tile rule hides this landmark
-                if (tr is null && !lmStyle.Enabled) continue;       // no rule + default layer off → skip
-                var shape = tr?.Shape ?? lmStyle.Shape;
-                var color = tr != null ? GetRuleColor(tr) : defColor;   // D2: memoized for tile rules
-                var size  = tr?.Size ?? lmStyle.Size;
-                var p = Project(new NumVec2(lm.Center.X, lm.Center.Y), player, center, scale);
-                _bStyle!.Color = color;
-                DrawIcon(rt, shape, p, size, _bStyle, filled: true);
-                // Rule label wins; else curated friendly label (if enabled); else the derived name.
-                var label = tr?.Label is { Length: > 0 } rl ? rl
-                          : (ctx.UseCuratedLandmarks && lm.CuratedName is { } c ? c : lm.Name);
-                rt.DrawText(label, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
+                int lmCount = lms?.Count ?? 0;
+                for (int i = 0; i < lmCount; i++)
+                {
+                    Poe2Live.Landmark lm;
+                    try { lm = lms![i]; } catch { break; }
+                    var tr = ctx.ResolveTile?.Invoke(lm.Path);
+                    if (tr is { Hide: true }) continue;                 // a tile rule hides this landmark
+                    if (tr is null && !lmStyle.Enabled) continue;       // no rule + default layer off → skip
+                    var shape = tr?.Shape ?? lmStyle.Shape;
+                    var color = tr != null ? GetRuleColor(tr) : defColor;   // D2: memoized for tile rules
+                    var size  = tr?.Size ?? lmStyle.Size;
+                    var p = Project(new NumVec2(lm.Center.X, lm.Center.Y), player, center, scale);
+                    _bStyle!.Color = color;
+                    DrawIcon(rt, shape, p, size, _bStyle, filled: true);
+                    // Rule label wins; else curated friendly label (if enabled); else the derived name.
+                    var label = tr?.Label is { Length: > 0 } rl ? rl
+                              : (ctx.UseCuratedLandmarks && lm.CuratedName is { } c ? c : lm.Name);
+                    rt.DrawText(label, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
+                }
             }
+            catch (System.InvalidOperationException) { /* concurrent modification during render — drop remaining landmarks this frame */ }
+            catch (System.ArgumentOutOfRangeException) { /* list shrunk under us — drop remaining landmarks this frame */ }
         }
 
         // Draw-only guidance routes: one full smoothed A* polyline per selected landmark, each in its

@@ -3,6 +3,14 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.25.1] — 2026-07-10 (hotfix)
+
+### Fixed
+
+- 🚨 **`OverlayRenderer.DrawMap` crash on entity/landmark list race.** After a game patch shifted the ES offset (0x264→0x24C, auto-heal fired successfully) some users hit a fatal `System.InvalidOperationException: Collection was modified` inside `OverlayRenderer.DrawMap`'s entity/landmark loops. Defensive fix wraps both `foreach (var e in ctx.Entities)` and `foreach (var lm in ctx.Landmarks)` in index-based iteration + try/catch — if the world thread re-slices the list mid-render the current frame's remaining dots/landmarks are dropped and the overlay recovers on the next present. No feature change, no data loss — just no more crash.
+
+---
+
 ## [0.25.0] — 2026-07-10 "Chorus"
 
 ### Added — 🎼 **Chorus** *(three new Zone Summary chips light up the corner HUD)*
