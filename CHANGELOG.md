@@ -3,6 +3,43 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.30.0] — 2026-07-10 "Instinct"
+
+### Added — 🪦 **Per-character boss wipe log** *(persistent · cross-session · discoverable)*
+
+- 🪦 **Every death in a matched boss zone is logged** against your character name in a new persistent file at `config/boss_wipe_log.json` (schema: `{ characters: { charName: { bosses: { bossKey: count } } } }`). The next time you walk into that boss, the cheat-sheet panel title bar gets a **"🪦 Nx before"** tag so future-you sees what past-you learned.
+- 📊 **New dashboard "Your wipe log" card** on the Bosses tab. Shows your current character, total wipes across all bosses, per-boss count sorted by "what's killing me most", plus a list of other characters on record. Feeds off a new `/api/wipe-log` endpoint that maps `bossKey → label` via the shipped `BossEncounterCatalog`.
+- ⚙️ **Opt-out** with `TrackBossWipes = false` in `settings.json`. No data ever exfiltrates; the log file lives next to your other configs and can be nuked at any time.
+- 🧠 **Only tracks boss zones** (matched cheat-sheet entries) — regular map deaths don't pollute the log. This makes the "what am I struggling with" surface actually useful long-term instead of a noise heap.
+
+### Added — 💥 **Boss panel damage-type chip strip** *(finally, actually colored)*
+
+- ☠ The boss cheat-sheet panel's damage-type row is no longer plain text — it's now a strip of **colored chips** matching the dashboard's boss card: `phys` cream · `fire` orange · `cold` blue · `ltng` yellow · `chaos` purple. Skips elements < 5% share. Reads at-a-glance in-fight instead of parsing a text list.
+
+### Added — ⭐ **Waystone click-to-flag** *(personal red-flag list, remembered forever)*
+
+- ◈ Click any mod row in the waystone panel to **toggle a ★ personal red-flag** on that mod name. Flagged mods get a ★ prefix regardless of the built-in Safe/Notable/Deadly verdict — "I have died to this mod combination before, don't miss it again." Persisted in `settings.WaystoneRedFlags` and immediately visible on the next parse.
+- Never gates functional behavior — the parser still reports the same tiers to the dashboard. Cosmetic-only visual nudge, tailored to YOUR pain points instead of the shipped catalog's.
+
+### Added — 🧪 **Panel state-machine tests** *(safety net for the panel logic)*
+
+- 10 new xUnit tests in `WipeMemoryTests.cs` locking the wipe-counter contract: null/empty guards, increment semantics, snapshot independence, ctor tolerance, ClearZone/ClearAll behavior. Filed through the beads pipeline and executed by the `openrouter/qwen3-coder` worker — landed clean, `10/10 passed`, no regression.
+
+### Under the hood
+
+- New `WipeMemory` class — pure per-character counter, unit-tested, reused inside `BossWipeLog`.
+- New `BossWipeLog` class — thread-safe, load-on-construct + save-on-mutate, tolerant of a missing / corrupt log file (starts empty, never crashes).
+- `WorldSnapshot` gained a `PlayerName` field (from `_live.PlayerName(localPlayer)` which self-caches per localPlayer address) so the render thread has a stable identity key for the wipe log.
+- New `/api/wipe-log` endpoint served by `ApiServer`, wired via a `wipeLogProvider` Func passed at ctor. Serializes `{ character, wipes, total, allCharacters }` as gzipped JSON like the sibling endpoints.
+
+### Deferred to v0.31
+
+- Dashboard "clear this boss" / "reset character" buttons for the wipe log (data model + endpoint already support it — just needs UI wire-in).
+- Waystone red-flag: bulk-import a shipped "meta danger list" of community-flagged mods so first-time users get a sensible starting flag set.
+- Damage-type icons via the atlas icon cache (chip strip is a strong interim; PNG glyphs could come later).
+
+---
+
 ## [0.29.0] — 2026-07-10 "Panels"
 
 ### Added — 📋 **Panels** *(two new in-game overlay panels that pop when you need them and disappear when you don't · closable · collapsable · auto-dismissed on next zone entry)*
