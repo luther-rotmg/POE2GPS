@@ -1137,7 +1137,15 @@ public sealed class OverlayRenderer : IDisposable
 
         const float panelW = 220f;
         const float pad = 6f, titleH = 16f, lineH = 15f;
-        float panelH = titleH + sorted.Count * lineH + pad * 2;
+
+        var collapsed = ctx.PreloadPanelCollapsed;
+
+        // Height math: title row always drawn; hit rows only when expanded and only for hits
+        // whose bound entity has NOT yet spawned (SIG-PRELOAD-HIDE-ON-SPAWN filter applied to
+        // panel geometry so the collapsed height math tracks the visible row count exactly).
+        int visibleRows = 0;
+        if (!collapsed) for (int i = 0; i < sorted.Count; i++) if (!sorted[i].Spawned) visibleRows++;
+        float panelH = titleH + pad * 2 + visibleRows * lineH;
 
         // Corner anchoring — same math as DrawZoneSummary / DrawSessionHud.
         // PreloadAnchor uses lowercase-hyphenated format: "top-right", "bottom-left", etc.
@@ -1158,12 +1166,23 @@ public sealed class OverlayRenderer : IDisposable
         rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
 
         float cy = top + pad;
-        // Header line.
-        rt.DrawText("PRELOAD", _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        // Header line with caret glyph — ▶ collapsed / ▼ expanded — mirrors the DrawMonolithPanel pattern.
+        var caret = collapsed ? "▶" : "▼";
+        rt.DrawText($"{caret} PRELOAD", _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+
+        // Title-bar hit-rect — routed by RadarApp.HitTestWidget / OnOverlayClick under action "preload-collapse".
+        _legendRowRects.Add((new Vortice.RawRectF(left, top, left + panelW, top + pad + titleH), "preload-collapse"));
+
         cy += titleH;
+        if (collapsed) return; // title-only panel; hit rows suppressed.
+
         // Per-hit lines, each coloured by the hit's Color field.
+        // SIG-PRELOAD-HIDE-ON-SPAWN (v0.23): skip hits whose bound entity has spawned; the world
+        // thread flips Spawned=true via `preloadHits[i] = hit with { Spawned = true }` when it
+        // detects a match. Hits with null SpawnEntityMetadata never flip so stay visible.
         foreach (var hit in sorted)
         {
+            if (hit.Spawned) continue;
             var col = ParseColor(hit.Color, 1f);
             _bStyle!.Color = col;
             var text = $"● {hit.Label}";

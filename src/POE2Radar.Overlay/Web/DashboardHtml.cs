@@ -1068,7 +1068,11 @@ internal static class DashboardHtml
           <div class="card" id="dirQueueCard">
             <h3>Zone Plan <small>live ranked queue for this area</small></h3>
             <div class="row" style="margin:0 0 8px 0"><div class="rl" style="flex:1"><small>Local trace probe is capturing your zone traversals. Share one boot to the public pool so POE2GPS&rsquo;s Campaign Director learns from your play.</small></div>
-              <button class="numin" id="tpContribute" title="Packs the most recent complete boot&rsquo;s JSONL trace and POSTs it via the Contribute pipeline (same worker route as atlas/buffs/preload). Hidden when the probe is off.">Contribute trace</button>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+                <button class="numin" id="tpContribute" title="Packs the most recent complete boot&rsquo;s JSONL trace and POSTs it via the Contribute pipeline (same worker route as atlas/buffs/preload). Hidden when the probe is off.">Contribute trace</button>
+                <!-- SIG-TPCONTRIBUTE-SUBTITLE (v0.23): trace uploads now piggyback on the atlas / buffs / preload Contribute clicks automatically, so this button is a manual "send now" affordance rather than a required step. -->
+                <small style="color:var(--ink-faint);font-size:10px">auto-fires with atlas contributions</small>
+              </div>
               <span class="saved" id="savedMsgTp">&#10003; trace shared &mdash; thank you!</span></div>
             <div id="guideDegradeBadge" hidden style="padding:6px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--ink-dim);background:var(--bg-alt);font-size:11px;line-height:1.4">A few quest steps can&rsquo;t auto-advance yet &mdash; they&rsquo;ll skip forward automatically when you enter the next zone. Expected on v0.21 and doesn&rsquo;t need any action.</div>
             <div id="gpsBanner" hidden style="padding:8px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--gold-bright);font-size:13px"></div>
@@ -1275,7 +1279,11 @@ function wireSettings(){
     const k=el.dataset.set;
     if(el.type==='checkbox') el.onchange=()=>saveSetting(k,el.checked);
     else if(el.tagName==='SELECT') el.onchange=()=>saveSetting(k,el.value);
-    else if(el.type==='number'){ el.onchange=()=>{const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v);}; } else { el.onchange=()=>saveSetting(k, el.value); }
+    // SIG-VOLUME-FIX (v0.23): type='range' inputs (e.g. the audio-alert volume slider) also
+    // need parseFloat coercion so the server-side TryInt guard in /api/settings does not silently
+    // drop the value as a JSON string. Without this, the slider looked like it worked but
+    // AudioAlertVolume was never updated and the audio-cue rebuild never fired.
+    else if(el.type==='number' || el.type==='range'){ el.onchange=()=>{const v=parseFloat(el.value); if(!isNaN(v)) saveSetting(k,v);}; } else { el.onchange=()=>saveSetting(k, el.value); }
   });
 }
 /* ── icon / HP-bar / mechanics editors (nested objects: POST the whole {styles}/{hpBars}) ── */
@@ -1945,11 +1953,22 @@ async function contribGateOrToast(){
   }
   return true;
 }
+/* SIG-CONTRIBUTE-PIGGYBACK (v0.23): fire-and-forget POST to /api/contribute-trace after the primary
+   Contribute succeeds, so users who already contribute atlas / buffs / preload also contribute the
+   campaign probe trace without needing a separate click. Guarded on the enableCampaignProbe checkbox
+   so the network round-trip is skipped entirely when the probe is off. Trace failure MUST NOT affect
+   the primary Contribute UX — .catch(()=>{}) swallows any network / 4xx / 5xx response silently. */
+function piggybackTraceContribute(){
+  const probeOn = document.querySelector('[data-set="enableCampaignProbe"]')?.checked;
+  if(!probeOn) return;
+  fetch('/api/contribute-trace',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).catch(()=>{});
+}
+
 $('#eaContribute')?.addEventListener('click',async()=>{
   if(!await contribGateOrToast()) return;
   if(!window._eaOkOnce){ if(!confirm('Share your discovered entity names + objectives publicly? This contains no character data.')) return; window._eaOkOnce=true; }
   try{ const r=await fetch('/api/contribute',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashEa(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+    if(r.ok){ flashEa(); piggybackTraceContribute(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 /* v0.21 CF-DASH-BUTTONS: buff + preload Contribute buttons + zero-cost-when-off DOM sync */
@@ -1975,14 +1994,14 @@ $('#bnContribute')?.addEventListener('click', async()=>{
   if(!await contribGateOrToast()) return;
   if(!window._bnOkOnce){ if(!confirm('Share your observed buff ids + tiers publicly? This contains no character data.')) return; window._bnOkOnce=true; }
   try{ const r = await fetch('/api/contribute-buffs',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashBn(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+    if(r.ok){ flashBn(); piggybackTraceContribute(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 $('#prContribute')?.addEventListener('click', async()=>{
   if(!await contribGateOrToast()) return;
   if(!window._prOkOnce){ if(!confirm('Share your observed preload path frequencies publicly? This contains no character data.')) return; window._prOkOnce=true; }
   try{ const r = await fetch('/api/contribute-preload',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-    if(r.ok){ flashPr(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
+    if(r.ok){ flashPr(); piggybackTraceContribute(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
 /* v0.22 PROBE-UI: Contribute-trace + reset-install-id + one-shot onboarding toast.

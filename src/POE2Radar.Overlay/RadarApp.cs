@@ -937,7 +937,7 @@ public sealed class RadarApp : IDisposable
                 if (!alertSet.Contains(path)) continue;
                 if (TierRank(hit.Tier) < minRank) continue;
                 if (!seen.Add(hit.Label)) continue;   // dedupe by label
-                hits.Add(new PreloadHit(hit.Label, hit.Tier, hit.Category, hit.Color));
+                hits.Add(new PreloadHit(hit.Label, hit.Tier, hit.Category, hit.Color, hit.SpawnEntityMetadata, Spawned: false));
             }
 
             _preloadFrame = hits.Count > 0 ? hits : null;
@@ -1698,6 +1698,7 @@ public sealed class RadarApp : IDisposable
             Monoliths: monoliths,
             ShowMonolithPanel: _settings.Monoliths.ShowPanel,
             MonolithPanelCollapsed: _settings.MonolithPanelCollapsed,
+            PreloadPanelCollapsed: _settings.PreloadPanelCollapsed,
             MonolithsTop: worldFresh && mr.AreaHash == _areaHash ? mr.Top : (IReadOnlyList<MonolithMarker>)Array.Empty<MonolithMarker>(),
             DisplayRulesGen: _displayRules.Generation,
             Session: _sessionSnapshot,
@@ -1859,6 +1860,29 @@ public sealed class RadarApp : IDisposable
         // Accumulate any newly-seen monster mod ids into the persistent catalog (debounced write)
         // so the dashboard rule editor can offer them and they survive restarts / new content.
         _modCatalog.Observe(_entities);
+
+        // Signal — SIG-PRELOAD-HIDE-ON-SPAWN (v0.23): once a bound entity spawns in the entity list,
+        // mark the preload hit spawned so the renderer skips it. Only hits with a non-null
+        // SpawnEntityMetadata participate; hits without binding stay visible until zone change.
+        // Cost is O(hits × entities) — negligible with hits typically ≤10 and _entities post-cull ≤500.
+        // Runs on the world thread; _preloadFrame is world-thread-owned so the mutation is race-free.
+        if (_preloadFrame is { Count: > 0 } preloadHits)
+        {
+            for (int i = 0; i < preloadHits.Count; i++)
+            {
+                var hit = preloadHits[i];
+                if (hit.Spawned) continue;
+                if (hit.SpawnEntityMetadata is not { Length: > 0 } needle) continue;
+                for (int j = 0; j < _entities.Count; j++)
+                {
+                    if (_entities[j].Metadata.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        preloadHits[i] = hit with { Spawned = true };
+                        break;
+                    }
+                }
+            }
+        }
         // (SeenPoiLog.Observe is called below, AFTER _landmarks is refreshed this tick — see ~the
         //  _live.Landmarks(...) assignment — so it logs THIS tick's landmarks, not last tick's.)
         // If the user edited the custom landmark patterns, drop the cached per-area scan so it
@@ -2085,6 +2109,11 @@ public sealed class RadarApp : IDisposable
         else if (action == "mono-collapse")
         {
             _settings.MonolithPanelCollapsed = !_settings.MonolithPanelCollapsed;
+            _settings.Save();
+        }
+        else if (action == "preload-collapse")
+        {
+            _settings.PreloadPanelCollapsed = !_settings.PreloadPanelCollapsed;
             _settings.Save();
         }
         else if (action.StartsWith("corner:", StringComparison.Ordinal))

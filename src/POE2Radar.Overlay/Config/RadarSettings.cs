@@ -279,6 +279,12 @@ public sealed class RadarSettings
     // real estate is minimal until the user opts into the row list.
     public bool MonolithPanelCollapsed { get; set; } = true;
 
+    // Click-to-collapse state for the in-overlay preload panel: when the panel is showing,
+    // clicking the title-bar caret toggles between "title + caret only" (collapsed) and the full hit
+    // list (expanded). Default false — preload is a "look at this" surface, users should see it on
+    // first launch. Persisted so the choice survives restarts.
+    public bool PreloadPanelCollapsed { get; set; } = false;
+
     // ── Session HUD: elapsed time, zone pace, death counter overlay. Off by default. ──
     public SessionHudSettings SessionHud { get; set; } = new();
 

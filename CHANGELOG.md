@@ -3,6 +3,23 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.23.0] — 2026-07-10 "Signal"
+
+### Added — 📡 **Signal** *(data flowing where it should — probe traces reaching the community pool · alerts audibly signaling · terrain visible for the first time · preload panel actually manageable)*
+
+- 📈 **Campaign Probe (opt-out, on by default).** Since v0.22 POE2GPS has quietly gathered anonymized zone-traversal, level-up, boss-encounter, checkpoint-touch, waypoint-unlock, area-transition, and passive-allocation events into a local JSONL file at `%APPDATA%\poe2gps\campaign_traces\`. That data now has a home: every Contribute click (atlas / buffs / preload) auto-piggybacks a trace upload to the community pool, so users who already contribute never need to think about it. Toggle in ⚙️ Settings → **Enable Campaign Probe** — flip off to disable both collection AND upload, no restart needed. Install-ID resets on request from the dashboard so you can start clean any time. UI-tree observers (dialogue, quest-reward) remain silent pending an in-game verification pass; every event that fires today is verified live.
+- 🗺️ **`/map` renders terrain again — for real this time.** The walkable-terrain layer has been silently missing since v0.20.0. Path polylines rendered on a dark background, so the symptom read as "map ok, colors dark" rather than "no terrain layer." Root cause was a wire-format mismatch between `/api/map` (JSON number `areaHash`) and `/stream` SSE (hex-string `area`) — the client compared them with strict `!==` and always rejected the terrain payload. One-line client-side coercion fixes it, plus a regression test that locks the both-sides contract so a future refactor can't silently drift back.
+- 🔊 **Alert volume slider works now.** Dragging the volume slider posted its value as a JSON string; the server-side `TryInt` gate rejected strings; the setting was silently dropped and audio cues kept the boot-time default. One-line fix in `wireSettings()` coerces `type="range"` values to Number before POST.
+- 🗂️ **Preload panel: collapse toggle + hide-on-spawn.** Click the caret next to `PRELOAD` in the panel title to fold everything but the title; click again to reopen. Preload rows for bosses and unique monsters now hide from the panel automatically once the entity appears in the live entity list — the panel stays clean as encounters resolve. Shrines / Chests / Rituals are tile-scoped and stay visible until zone change (no spawn-detection binding for those categories).
+- 📤 **Trace uploads piggyback on every Contribute click.** The `#tpContribute` button in the Zone Plan card stays for manual sends but now shows an `auto-fires with atlas contributions` subtitle. Piggyback POSTs are fire-and-forget — a trace failure at the Worker (or a `enableCampaignProbe=false` toggle) never blocks the primary Contribute checkmark.
+
+### Fixed
+
+- **`/map` black-background regression** (see the `/map` bullet above — technically a v0.20.0 latent bug that no one noticed because the polylines still rendered).
+- **Alert volume slider no-op** (see above — v0.22.x-and-prior behaviour was a silent write-drop).
+
+---
+
 ## [0.22.0] — 2026-07-09 "Threshold"
 
 ### Added — 🚪 **Threshold** *(waygates render as waygates · XP/hour lands on the Session HUD · monolith panel collapses when you're done reading it · atlas content icons snap back to true)*

@@ -105,7 +105,11 @@ public sealed record MonolithMarker(
 /// <summary>One preload-alert entry surfaced on zone entry: a catalog match that passed the frequency
 /// filter and met the configured MinTier. Built once per zone change (never rebuilt per tick); the
 /// render thread reads it from the WorldSnapshot via the zone-load guard.</summary>
-public readonly record struct PreloadHit(string Label, string Tier, string Category, string Color);
+// Signal — SIG-PRELOAD-CATALOG (v0.23): SpawnEntityMetadata is the substring Task 5 (SIG-PRELOAD-
+// HIDE-ON-SPAWN) scans _entities for; when found, the WorldTick pass sets Spawned = true via record
+// `with` expression and the renderer skips the row. Null SpawnEntityMetadata = opt-out (Shrines,
+// Chests, Rituals — tile-scoped content where a spawned entity does not mean "encounter resolved").
+public readonly record struct PreloadHit(string Label, string Tier, string Category, string Color, string? SpawnEntityMetadata, bool Spawned);
 
 /// <summary>One off-screen entity arrow to draw this frame. <see cref="World"/> is the entity's live
 /// world position (re-read from its Render component every render frame via
@@ -237,6 +241,11 @@ public sealed record RenderContext(
     // rows; only the title row (with caret) renders and the title-bar hit-rect toggles this flag via
     // OnOverlayClick. Mirrored from RadarSettings.MonolithPanelCollapsed at ctx assembly time.
     bool MonolithPanelCollapsed = false,
+    // Persisted click-to-collapse state for the preload panel. Collapsed hides all hit rows; only the
+    // title row (with caret) renders and the title-bar hit-rect toggles this flag via OnOverlayClick.
+    // Mirrored from RadarSettings.PreloadPanelCollapsed at ctx assembly time. Default false because
+    // the preload panel is a "look at this" surface — users should see it on first launch.
+    bool PreloadPanelCollapsed = false,
     // Pre-sorted (desc BestEx), capped-to-6 slice of Monoliths for the panel rows — avoids per-frame
     // OrderByDescending(...).Take(6).ToList() in the renderer. Null/empty → none.
     IReadOnlyList<MonolithMarker>? MonolithsTop = null,
