@@ -49,8 +49,12 @@ $rootFull = (Resolve-Path -LiteralPath $Root).Path
 # ── Sentinel-required set ────────────────────────────────────────────────────
 # Files that MUST carry both `TODO(syrairc-license)` and `TODO(syrairc-hash)` in
 # Draft mode. In Formalize mode: same set, but neither token may survive.
+#
+# README.md is deliberately NOT in this set — LO removed the "Powered by /
+# Credits" section from README on origin (commit 2d5af3d, 2026-07-09). The
+# no-forbidden-tokens sweep below still scans README, so a stray bare `<license>`
+# / `<hash>` token still trips the gate; only the presence requirement was lifted.
 $sentinelRequired = @(
-  'README.md',
   'CHANGELOG.md',
   'src/POE2Radar.Core/Campaign/Guide/Data/poe2/HEADER.md',
   'src/POE2Radar.Core/Campaign/Guide/RouteModel.cs',
