@@ -3,6 +3,22 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.25.0] — 2026-07-10 "Chorus"
+
+### Added — 🎼 **Chorus** *(three new Zone Summary chips light up the corner HUD)*
+
+- 📊 **Zone Summary: kills-this-zone chip.** Always visible next to the `Monsters` row. Increments alongside session kills but resets to zero on every zone entry, so you can tell at a glance how much of the current map you've actually cleared. `KillTracker` grew a parallel per-zone counter that clears in `ClearZone()` and increments in lockstep with the session counter — session totals stay untouched by zone resets. Locked by three new `KillTrackerTests` cases.
+- 🌀 **Zone Summary: nearest-mechanic chip.** When any league mechanic (Runestone / Ritual Altar / Breach / Strongbox / Essence Monolith / Shrine) is loaded in the current zone, the panel shows a `Nearest  <kind>  <distance>` row. Distance is grid-units from the player, computed in the same entity walk that produces the mechanic counts. Tier-ranked so a Ritual/Breach beats an Expedition at the same distance.
+- ⭐ **Zone Summary: boss-arena flag.** `★ Boss Arena` lights up when the current zone contains any Unique-rarity entity whose metadata carries `BossArena`. Runs off the same entity walk — zero new memory reads, zero new tick cost.
+
+### Deferred to v0.26 "Reach"
+- Settings tab five-group section headers (Short List #7) — the DOM restructure needs its own reviewed drop.
+- Waystone/map mod-risk warning card (Long List #41).
+- Boss encounter cheat sheet (Long List #42).
+- Localization pipeline (Long List #38) + full-page browser views (Long List #39).
+
+---
+
 ## [0.24.0] — 2026-07-10 "Groove"
 
 ### Added — 🎧 **Groove** *(dashboard shortcuts land · Discord Rich Presence gets 5 new tokens · confusing radar labels rewritten · issue templates get a patch-drift lane and the healer log gets its due)*

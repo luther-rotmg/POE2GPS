@@ -273,6 +273,7 @@ public sealed class SessionTracker
             : (float)(_mapZonesEntered / sessionHours);
 
         var (kn, km, kr, ku) = _kills.Counts;
+        var (kzn, kzm, kzr, kzu) = _kills.ZoneCounts;   // Chorus — CHOR-23 (v0.25): per-zone kills chip.
 
         // XP-ring snapshot fields. When no 9-arg call has fed us a sample yet (_sessionXpSeen=false),
         // CurrentXp and SessionXpDelta both read 0 so downstream consumers can distinguish "no XP
@@ -301,6 +302,7 @@ public sealed class SessionTracker
             XpPerHour:        _xpPerHour,
             CurrentXp:        currentXpOut,
             SessionXpDelta:   sessionXpDeltaOut,
-            RingFilling:      ringFillingOut);
+            RingFilling:      ringFillingOut,
+            KillsThisZone:    kzn + kzm + kzr + kzu);
     }
 }

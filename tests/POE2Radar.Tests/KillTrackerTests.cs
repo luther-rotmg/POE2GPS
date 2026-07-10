@@ -39,4 +39,36 @@ public class KillTrackerTests
         t.Reset();
         Assert.Equal((0,0,0,0), t.Counts);
     }
+
+    // Chorus — CHOR-23 (v0.25): zone-counter parity + zone reset behaviour.
+
+    [Fact] public void Zone_kills_increment_alongside_session_kills()
+    {
+        var t = new KillTracker();
+        t.Observe(0x10, Poe2Live.Rarity.Rare, 5, 5);
+        t.Observe(0x10, Poe2Live.Rarity.Rare, 0, 5);
+        Assert.Equal((0,0,1,0), t.Counts);
+        Assert.Equal((0,0,1,0), t.ZoneCounts);
+    }
+
+    [Fact] public void Zone_kills_reset_on_ClearZone_but_session_totals_survive()
+    {
+        var t = new KillTracker();
+        t.Observe(0x20, Poe2Live.Rarity.Unique, 10, 10);
+        t.Observe(0x20, Poe2Live.Rarity.Unique, 0, 10);
+        Assert.Equal((0,0,0,1), t.ZoneCounts);
+        t.ClearZone();
+        Assert.Equal((0,0,0,0), t.ZoneCounts);
+        // session totals must survive the zone reset — that's the whole point of the split.
+        Assert.Equal((0,0,0,1), t.Counts);
+    }
+
+    [Fact] public void Reset_zeros_both_zone_and_session_counters()
+    {
+        var t = new KillTracker();
+        t.Observe(0x30, Poe2Live.Rarity.Rare, 5, 5); t.Observe(0x30, Poe2Live.Rarity.Rare, 0, 5);
+        t.Reset();
+        Assert.Equal((0,0,0,0), t.Counts);
+        Assert.Equal((0,0,0,0), t.ZoneCounts);
+    }
 }

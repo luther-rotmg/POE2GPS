@@ -132,7 +132,13 @@ public readonly record struct ZoneSummary(
     int BreachCount,
     int StrongboxCount,
     int EssenceCount,
-    int ShrineCount);
+    int ShrineCount,
+    // Chorus — CHOR-23 (v0.25): three new chips computed in the same entity walk that fills the
+    // mechanic counts above. Rendered by DrawZoneSummary in OverlayRenderer.
+    int KillsThisZone = 0,
+    float NearestMechanicDist = 0f,
+    string? NearestMechanicKind = null,
+    bool HasBossArena = false);
 
 /// <summary>What the PoE2 renderer needs each frame. Built fresh by <see cref="RadarApp"/>.</summary>
 public sealed record RenderContext(

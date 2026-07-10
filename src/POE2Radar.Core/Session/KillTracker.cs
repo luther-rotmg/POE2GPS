@@ -9,8 +9,13 @@ public sealed class KillTracker
 {
     private readonly Dictionary<nint, bool> _sawAlive = new();   // address → we've seen it alive this life
     private int _n, _m, _r, _u;
+    // Chorus — v0.25 (CHOR-23): mirror the session counters for the current zone only. Reset in
+    // ClearZone(); increment alongside session counters on each observed kill. Feeds the Zone
+    // Summary HUD's new kills-this-zone chip.
+    private int _nZone, _mZone, _rZone, _uZone;
 
     public (int normal, int magic, int rare, int unique) Counts => (_n, _m, _r, _u);
+    public (int normal, int magic, int rare, int unique) ZoneCounts => (_nZone, _mZone, _rZone, _uZone);
 
     /// <summary>Observe one monster this tick. Only HP→0 (after being seen alive) counts a kill.</summary>
     public void Observe(nint address, Poe2Live.Rarity rarity, int hpCur, int hpMax)
@@ -23,17 +28,22 @@ public sealed class KillTracker
             _sawAlive[address] = false;   // counted; don't recount while it lingers dead
             switch (rarity)
             {
-                case Poe2Live.Rarity.Normal: _n++; break;
-                case Poe2Live.Rarity.Magic:  _m++; break;
-                case Poe2Live.Rarity.Rare:   _r++; break;
-                case Poe2Live.Rarity.Unique: _u++; break;
+                case Poe2Live.Rarity.Normal: _n++; _nZone++; break;
+                case Poe2Live.Rarity.Magic:  _m++; _mZone++; break;
+                case Poe2Live.Rarity.Rare:   _r++; _rZone++; break;
+                case Poe2Live.Rarity.Unique: _u++; _uZone++; break;
             }
         }
     }
 
-    /// <summary>Drop per-entity tracking on zone change (addresses are reused across zones). Keeps totals.</summary>
-    public void ClearZone() => _sawAlive.Clear();
+    /// <summary>Drop per-entity tracking on zone change (addresses are reused across zones). Keeps session
+    /// totals but zeros the zone counters — the Zone Summary chip resets on zone entry.</summary>
+    public void ClearZone()
+    {
+        _sawAlive.Clear();
+        _nZone = _mZone = _rZone = _uZone = 0;
+    }
 
     /// <summary>Full reset (Ctrl+Alt+R): zero the counts + tracking.</summary>
-    public void Reset() { _sawAlive.Clear(); _n = _m = _r = _u = 0; }
+    public void Reset() { _sawAlive.Clear(); _n = _m = _r = _u = 0; _nZone = _mZone = _rZone = _uZone = 0; }
 }
