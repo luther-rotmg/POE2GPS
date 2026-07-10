@@ -1068,7 +1068,11 @@ internal static class DashboardHtml
           <div class="card" id="dirQueueCard">
             <h3>Zone Plan <small>live ranked queue for this area</small></h3>
             <div class="row" style="margin:0 0 8px 0"><div class="rl" style="flex:1"><small>Local trace probe is capturing your zone traversals. Share one boot to the public pool so POE2GPS&rsquo;s Campaign Director learns from your play.</small></div>
-              <button class="numin" id="tpContribute" title="Packs the most recent complete boot&rsquo;s JSONL trace and POSTs it via the Contribute pipeline (same worker route as atlas/buffs/preload). Hidden when the probe is off.">Contribute trace</button>
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+                <button class="numin" id="tpContribute" title="Packs the most recent complete boot&rsquo;s JSONL trace and POSTs it via the Contribute pipeline (same worker route as atlas/buffs/preload). Hidden when the probe is off.">Contribute trace</button>
+                <!-- SIG-TPCONTRIBUTE-SUBTITLE (v0.23): trace uploads now piggyback on the atlas / buffs / preload Contribute clicks automatically, so this button is a manual "send now" affordance rather than a required step. -->
+                <small style="color:var(--ink-faint);font-size:10px">auto-fires with atlas contributions</small>
+              </div>
               <span class="saved" id="savedMsgTp">&#10003; trace shared &mdash; thank you!</span></div>
             <div id="guideDegradeBadge" hidden style="padding:6px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--ink-dim);background:var(--bg-alt);font-size:11px;line-height:1.4">A few quest steps can&rsquo;t auto-advance yet &mdash; they&rsquo;ll skip forward automatically when you enter the next zone. Expected on v0.21 and doesn&rsquo;t need any action.</div>
             <div id="gpsBanner" hidden style="padding:8px 10px;margin:0 0 8px;border:1px solid var(--gold-deep);border-radius:3px;color:var(--gold-bright);font-size:13px"></div>
