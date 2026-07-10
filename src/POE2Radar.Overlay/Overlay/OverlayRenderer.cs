@@ -413,10 +413,23 @@ public sealed class OverlayRenderer : IDisposable
         {
             var bmp = _atlasIcons!.Get(rt, bn);
             if (bmp == null) continue;
-            rt.DrawBitmap(bmp, 1f, BitmapInterpolationMode.Linear, new Rect(ix, iy, ix + iconH, iy + iconH));
+            rt.DrawBitmap(bmp, 1f, BitmapInterpolationMode.Linear, ComputeAtlasContentIconDestRect(ix, iy, iconH));
             ix += iconH + gap;
         }
     }
+
+    /// <summary>
+    /// Destination rect for a single atlas content-icon cell. Square
+    /// (width == height == <paramref name="iconH"/>), origin-aligned to
+    /// (<paramref name="ix"/>, <paramref name="iy"/>).
+    /// <see cref="Vortice.Mathematics.Rect"/>'s four-arg constructor is
+    /// (X, Y, Width, Height) — so passing <c>ix + iconH</c> as the third arg
+    /// (as if the constructor were LTRB) blows the width up with the icon's
+    /// screen-space X and silently mis-places icons at high atlas zoom.
+    /// Extracted from <c>DrawAtlasContentIcons</c> so the row math is unit-lockable.
+    /// </summary>
+    internal static Rect ComputeAtlasContentIconDestRect(float ix, float iy, float iconH)
+        => new Rect(ix, iy, iconH, iconH);
 
     /// <summary>Lay stroked arrowhead chevrons (a row of "&gt;" pointing a→b) at <paramref name="spacing"/>
     /// intervals along the segment (#4). <paramref name="carry"/> holds the leftover distance into the next
