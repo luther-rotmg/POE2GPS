@@ -3,6 +3,19 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.27.1] — 2026-07-10 (support automation)
+
+### Added
+
+- 🔧 **Maintainer helper for the supporter code flow.** The v0.27.0 supporter-code system required LO to compute SHA-256 hashes in a shell, edit C# source, and rebuild for every new Ko-fi donor. This drop moves the hash list out of C# into an embedded `supporter_hashes.json` and adds a dashboard admin section (visible via `?admin=1` on the dashboard URL) that does the whole flow in one place: type a raw code (or 🎲 generate a random one), the SHA-256 auto-computes live via WebCrypto with a Copy button, and paste-ready snippets for `supporter_hashes.json` + `supporters.json` + a Ko-fi DM template render as you type. LO's flow: type/generate, click 3 copy buttons, paste, commit, release, send the DM.
+- ☕ **Real seed code shipped.** The v0.27.0 hash list was placeholder — nothing validated out-of-the-box. This drop ships a real working code (`POE2GPS-FIRST-COFFEE-2026`) so the cosmetic-unlock feature is discoverable immediately. Case + whitespace tolerant on paste.
+
+### Changed
+
+- **`SupporterCodeValidator.Hashes` migrated to `supporter_hashes.json`.** The C# `HashSet` is gone; the loader (`Lazy<HashSet<string>>`) reads the embedded JSON at first use. Adding a new code = edit ONE JSON file. Malformed / missing JSON fails closed (no code validates) rather than crashing.
+
+---
+
 ## [0.27.0] — 2026-07-10 "Support" 🤝
 
 ### Added — 🤝 **Support** *(the community-first release · every supporter gets a place on the roll · cosmetic perks for Ko-fi backers · today's ES-offset patch baked in)*
