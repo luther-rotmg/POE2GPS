@@ -1191,6 +1191,40 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/waystone/parse":
+            {
+                // Reach — CHOR-41 (v0.26): parse a clipboard-copied PoE2 waystone item text and
+                // return the tiered mod-risk breakdown. POST body: { "text": "<clipboard blob>" }.
+                // Loopback-Host gated to keep local-only.
+                if (ctx.Request.HttpMethod != "POST") { NotFound(ctx); break; }
+                if (!IsLoopbackHost(ctx.Request)) { NotFound(ctx); break; }
+                string body;
+                using (var sr = new System.IO.StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding))
+                    body = sr.ReadToEnd();
+                string blob;
+                try
+                {
+                    using var doc = System.Text.Json.JsonDocument.Parse(body);
+                    blob = doc.RootElement.TryGetProperty("text", out var t) && t.ValueKind == System.Text.Json.JsonValueKind.String
+                        ? t.GetString() ?? "" : "";
+                }
+                catch { blob = ""; }
+                var risk = POE2Radar.Core.Game.WaystoneModRisk.Shared.Parse(blob);
+                var wsJson = JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    isWaystone = risk.IsWaystone,
+                    tier       = risk.Tier,
+                    rarity     = risk.Rarity,
+                    totalScore = risk.TotalScore,
+                    shouldSkip = risk.ShouldSkip,
+                    skipThreshold = POE2Radar.Core.Game.WaystoneModRisk.SkipThreshold,
+                    mods       = risk.Mods.Select(m => new { line = m.Line, key = m.ModKey, name = m.Name, tier = m.Tier.ToString(), weight = m.Weight }),
+                    combos     = risk.Combos.Select(c => new { label = c.Label, bonus = c.Bonus, keys = c.Keys }),
+                }, Json);
+                WriteMaybeGzipped(ctx, wsJson, "application/json; charset=utf-8");
+                break;
+            }
+
             case "/api/bosses":
             {
                 // Reach — CHOR-42 (v0.26): serve the shipped BossEncounterCatalog to the dashboard

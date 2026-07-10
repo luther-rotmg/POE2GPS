@@ -472,6 +472,7 @@ internal static class DashboardHtml
             <button class="tab" data-tab="entatlas">Entity Atlas</button>
             <button class="tab" data-tab="gear">Gear &#9733;</button>
             <button class="tab" data-tab="bosses">Bosses</button>
+            <button class="tab" data-tab="waystone">Waystone</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -1161,6 +1162,18 @@ internal static class DashboardHtml
             <div class="row"><div class="rl">Target<small>raw weighted total that = a score of 100</small></div><input id="gTarget" class="numin" type="number" style="width:90px"></div>
             <div class="row"><div class="rl">God-roll threshold<small>score (0&ndash;100) at/above which an item gets a &#9733;</small></div><input id="gThreshold" class="numin" type="number" style="width:90px"></div>
             <div id="gWeightList" class="znotes" style="display:block"></div>
+          </div>
+        </section>
+
+        <!-- Reach — CHOR-41 (v0.26): waystone mod-risk parser. Paste Ctrl+C waystone text into
+             the textarea and get a tiered mod list + combo warnings + a Should-Skip banner. -->
+        <section class="view" data-view="waystone" hidden>
+          <div class="card" style="grid-column:1/-1">
+            <h3>Waystone Mod-Risk <small>&middot; paste a Ctrl+C'd waystone to see its risk breakdown</small></h3>
+            <div class="row"><div class="rl hint-row">In-game: Ctrl+C on the waystone in your inventory, then paste here. Nothing is sent to the community pool. Risk weights + combo bonuses are tuned to broad PoE2 danger patterns &mdash; your build tuning always wins.</div></div>
+            <textarea id="wsInput" placeholder="Paste waystone text here…" style="width:100%;min-height:180px;font-family:Consolas,monospace;font-size:12px;background:#0c0a07;color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:10px;box-sizing:border-box"></textarea>
+            <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="numin" id="wsParse" style="width:auto;padding:8px 16px">Parse</button></div>
+            <div id="wsResult" style="margin-top:12px"></div>
           </div>
         </section>
 
@@ -2921,6 +2934,46 @@ async function loadBosses(){
   }
 }
 document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventListener('click', loadBosses));
+
+/* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
+   The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered
+   mod list, combo hits, total score, and skip recommendation. */
+async function parseWaystone(){
+  const inp = document.getElementById('wsInput');
+  const out = document.getElementById('wsResult');
+  if (!inp || !out) return;
+  const text = inp.value || '';
+  if (!text.trim()) { out.innerHTML = '<div style="color:var(--ink-faint);font-size:12px">Paste waystone text above first.</div>'; return; }
+  try {
+    const r = await fetch('/api/waystone/parse', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text}) });
+    if (!r.ok) { out.innerHTML = '<div style="color:var(--danger,#e88)">Parse failed (HTTP '+r.status+').</div>'; return; }
+    const d = await r.json();
+    if (!d.isWaystone) { out.innerHTML = '<div style="color:var(--ink-faint);font-size:12px">Not recognized as a waystone (need <code>Item Class: Waystones</code> header).</div>'; return; }
+    const skipBanner = d.shouldSkip
+      ? `<div style="background:#c93030;color:#fff;padding:10px 14px;border-radius:3px;margin-bottom:12px;font-family:'Cinzel',Georgia,serif;letter-spacing:.2em;text-transform:uppercase;font-size:12px">⚠ Skip recommended &middot; score ${d.totalScore} / threshold ${d.skipThreshold}</div>`
+      : `<div style="background:var(--bg-alt);color:var(--ink);padding:10px 14px;border-radius:3px;margin-bottom:12px;border:1px solid var(--line-soft);font-size:12px">Score ${d.totalScore} &middot; below skip threshold ${d.skipThreshold}</div>`;
+    const tierCol = t => t==='Deadly' ? '#e33' : t==='Notable' ? '#e88500' : t==='LethalCombo' ? '#c93030' : '#6a6';
+    const modRows = (d.mods||[]).map(m => `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dotted var(--line-soft)">
+        <span style="background:${tierCol(m.tier)};color:#fff;padding:2px 8px;border-radius:2px;font-size:10px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;min-width:60px;text-align:center">${m.tier}</span>
+        <span style="flex:1;font-size:12px">${m.name}</span>
+        <span style="color:var(--ink-faint);font-size:11px">+${m.weight}</span>
+      </div>`).join('');
+    const comboRows = (d.combos||[]).map(c => `
+      <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dotted var(--line-soft)">
+        <span style="background:#c93030;color:#fff;padding:2px 8px;border-radius:2px;font-size:10px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;min-width:60px;text-align:center">Combo</span>
+        <span style="flex:1;font-size:12px">${c.label}</span>
+        <span style="color:var(--ink-faint);font-size:11px">+${c.bonus}</span>
+      </div>`).join('');
+    out.innerHTML = `${skipBanner}
+      ${(d.rarity||d.tier) ? `<div style="font-size:11px;color:var(--ink-faint);margin-bottom:8px">${d.rarity ? d.rarity + ' &middot; ' : ''}Tier ${d.tier}</div>` : ''}
+      ${modRows ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin:8px 0 4px">Mods matched</div>${modRows}` : '<div style="color:var(--ink-faint);font-size:12px">No risky mods matched.</div>'}
+      ${comboRows ? `<div style="font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.14em;margin:16px 0 4px">Combos triggered</div>${comboRows}` : ''}`;
+  } catch (err) {
+    out.innerHTML = '<div style="color:var(--danger,#e88)">Parse failed (network error).</div>';
+  }
+}
+document.getElementById('wsParse')?.addEventListener('click', parseWaystone);
 
 /* ── Groove — v0.24: global save-toast + keyboard shortcuts ────────────────────────────────────
    flashSaved() is available for future callsites (or as a lightweight helper); it does not
