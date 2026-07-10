@@ -166,6 +166,8 @@ public sealed class OverlayRenderer : IDisposable
                 DrawSessionHud(rt, ctx);               // session pace/zone/death HUD (screen-space)
                 DrawZoneSummary(rt, ctx);              // opt-in zone summary panel (rares/chests/exits)
                 DrawPreloadPanel(rt, ctx);             // opt-in zone-entry preload alert (pinnacle/mechanic content)
+                DrawBossPanel(rt, ctx);                // v0.29 Panels: boss cheat-sheet (auto-open on matched zone)
+                DrawWaystonePanel(rt, ctx);            // v0.29 Panels: waystone risk (Ctrl+Alt+W hotkey)
                 DrawCampaignGps(rt, ctx);              // compact campaign GPS instruction line (top strip)
             }
 
@@ -1193,6 +1195,164 @@ public sealed class OverlayRenderer : IDisposable
             var col = ParseColor(hit.Color, 1f);
             _bStyle!.Color = col;
             var text = $"● {hit.Label}";
+            rt.DrawText(text, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bStyle, DrawTextOptions.Clip);
+            cy += lineH;
+        }
+    }
+
+    /// <summary>v0.29 Panels: boss cheat-sheet — pops when the player enters a zone whose code matches
+    /// a <see cref="POE2Radar.Core.Game.BossEncounterCatalog"/> entry. Top-left anchor (below the
+    /// health banner + campaign GPS strips). Title bar has a caret (▶/▼ = collapse) and an ✕ close
+    /// button; both register hit-rects under <c>boss-collapse</c> / <c>boss-close</c>. Body shows the
+    /// damage-type mix, one-shots to dodge, phase cues, over-cap targets and flask notes — text only
+    /// (no chip layout), all in the shared Consolas 12 <see cref="_tf"/>. Auto-dismissed on next zone
+    /// change by the world thread (WorldTick edge in RadarApp).</summary>
+    private void DrawBossPanel(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        var entry = ctx.BossPanelEntry;
+        if (entry is null || ctx.BossPanelDismissed) return;
+
+        const float panelW = 340f;
+        const float pad = 6f, titleH = 18f, lineH = 15f;
+        var collapsed = ctx.BossPanelCollapsed;
+
+        // Build body lines only when expanded (height math tracks visible rows exactly).
+        var lines = new System.Collections.Generic.List<(string text, uint color)>();
+        if (!collapsed)
+        {
+            lines.Add(($"Tier: {entry.Tier}  ·  {entry.Category}", 0xFFFFFFFF));
+            var dmg = entry.DamageTypes;
+            var dmgParts = new System.Collections.Generic.List<string>();
+            if (dmg.Phys      >= 0.05f) dmgParts.Add($"phys {dmg.Phys*100:F0}%");
+            if (dmg.Fire      >= 0.05f) dmgParts.Add($"fire {dmg.Fire*100:F0}%");
+            if (dmg.Cold      >= 0.05f) dmgParts.Add($"cold {dmg.Cold*100:F0}%");
+            if (dmg.Lightning >= 0.05f) dmgParts.Add($"ltng {dmg.Lightning*100:F0}%");
+            if (dmg.Chaos     >= 0.05f) dmgParts.Add($"chaos {dmg.Chaos*100:F0}%");
+            if (dmgParts.Count > 0) lines.Add(($"Damage: {string.Join(" · ", dmgParts)}", 0xFFFFDDDD));
+            if (entry.OneShots is { Count: > 0 })
+            {
+                lines.Add(("One-shots to dodge:", 0xFFFF9080));
+                foreach (var os in entry.OneShots) lines.Add(($"  • {os}", 0xFFFFCCCC));
+            }
+            if (entry.Phases is { Count: > 0 })
+            {
+                lines.Add(("Phases:", 0xFFFFDD80));
+                foreach (var p in entry.Phases) lines.Add(($"  {p.Cue}: {p.Note}", 0xFFFFEEBB));
+            }
+            if (entry.Overcap is { Count: > 0 })
+            {
+                var oc = string.Join(" · ", entry.Overcap.Select(kv => $"{kv.Key}+{kv.Value}%"));
+                lines.Add(($"Overcap: {oc}", 0xFFA0F0FF));
+            }
+            if (!string.IsNullOrEmpty(entry.FlaskNotes))
+                lines.Add(($"Flask: {entry.FlaskNotes}", 0xFFA0FFBF));
+        }
+        float panelH = pad * 2f + titleH + lineH * lines.Count;
+
+        // Top-left anchor, nudged down 60px so we clear the health banner (30px) + campaign GPS strip.
+        const float margin = 10f;
+        float left = margin;
+        float top = margin + 60f;
+        left = Math.Clamp(left, margin, ctx.WindowWidth  - margin - panelW);
+        top  = Math.Clamp(top,  margin, ctx.WindowHeight - margin - panelH);
+        rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
+
+        float cy = top + pad;
+        var caret = collapsed ? "▶" : "▼";
+        // Truncate label so the ✕ never gets shoved off the panel.
+        var label = entry.Label ?? "Boss";
+        if (label.Length > 32) label = label.Substring(0, 29) + "…";
+        rt.DrawText($"{caret} ☠ {label}", _tf!,
+            new Rect(left + pad, cy, left + panelW - pad - 20, cy + titleH), _bText!, DrawTextOptions.Clip);
+        rt.DrawText("✕", _tf!,
+            new Rect(left + panelW - pad - 12, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        // Two hit-rects on the title bar: RIGHT edge (X) dismisses; LEFT of it toggles collapse.
+        var xRect = new Vortice.RawRectF(left + panelW - pad - 16, top, left + panelW, top + pad + titleH);
+        var caretRect = new Vortice.RawRectF(left, top, xRect.Left, top + pad + titleH);
+        _legendRowRects.Add((caretRect, "boss-collapse"));
+        _legendRowRects.Add((xRect, "boss-close"));
+
+        cy += titleH;
+        if (collapsed) return;
+        foreach (var (text, color) in lines)
+        {
+            _bStyle!.Color = ColorFromU(color);
+            rt.DrawText(text, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bStyle, DrawTextOptions.Clip);
+            cy += lineH;
+        }
+    }
+
+    /// <summary>v0.29 Panels: waystone risk cheat-sheet — pops on Ctrl+Alt+W (RadarApp reads the
+    /// clipboard, calls <see cref="POE2Radar.Core.Game.WaystoneModRisk"/>, publishes the result).
+    /// Top-right anchor (opposite corner from the boss panel so they never fight). Same title-bar
+    /// convention as DrawBossPanel: caret collapse + ✕ close, per-panel hit-rect actions
+    /// <c>waystone-collapse</c> / <c>waystone-close</c>. Body shows a skip banner (when the total
+    /// risk score crosses <see cref="POE2Radar.Core.Game.WaystoneModRisk.SkipThreshold"/>), the
+    /// rarity/tier line, then per-tier colored mod rows and any triggered combos. Auto-dismissed on
+    /// next zone change by the world thread (WorldTick edge in RadarApp).</summary>
+    private void DrawWaystonePanel(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        var result = ctx.WaystonePanelResult;
+        if (result is null || !result.IsWaystone || ctx.WaystoneDismissed) return;
+
+        const float panelW = 340f;
+        const float pad = 6f, titleH = 18f, lineH = 15f;
+        var collapsed = ctx.WaystoneCollapsed;
+
+        // Per-tier colours (mirror the dashboard's parseWaystone() colours in DashboardHtml.cs so
+        // in-game + web-UI stay visually consistent).
+        static uint TierColor(POE2Radar.Core.Game.WaystoneModRisk.RiskTier t) => t switch
+        {
+            POE2Radar.Core.Game.WaystoneModRisk.RiskTier.LethalCombo => 0xFFC93030,
+            POE2Radar.Core.Game.WaystoneModRisk.RiskTier.Deadly      => 0xFFEE3333,
+            POE2Radar.Core.Game.WaystoneModRisk.RiskTier.Notable     => 0xFFEE8500,
+            POE2Radar.Core.Game.WaystoneModRisk.RiskTier.Safe        => 0xFF66AA66,
+            _                                                        => 0xFFCCCCCC,
+        };
+
+        var lines = new System.Collections.Generic.List<(string text, uint color)>();
+        if (!collapsed)
+        {
+            if (result.ShouldSkip)
+                lines.Add(($"⚠ SKIP  (risk score {result.TotalScore} ≥ {POE2Radar.Core.Game.WaystoneModRisk.SkipThreshold})", 0xFFEE3333));
+            var header = string.IsNullOrEmpty(result.Rarity)
+                ? $"Tier {result.Tier}  ·  score {result.TotalScore}"
+                : $"{result.Rarity}  ·  Tier {result.Tier}  ·  score {result.TotalScore}";
+            lines.Add((header, 0xFFFFFFFF));
+            foreach (var m in result.Mods)
+            {
+                var label = string.IsNullOrEmpty(m.Name) ? m.Line : $"{m.Name}  (+{m.Weight})";
+                lines.Add(($"  {label}", TierColor(m.Tier)));
+            }
+            foreach (var c in result.Combos)
+                lines.Add(($"  ⚡ combo  {c.Label}  (+{c.Bonus})", 0xFFEE3333));
+        }
+        float panelH = pad * 2f + titleH + lineH * lines.Count;
+
+        // Top-right anchor (opposite of DrawBossPanel; matches monolith / preload conventions).
+        const float margin = 10f;
+        float left = ctx.WindowWidth - margin - panelW;
+        float top  = margin + 60f;
+        left = Math.Clamp(left, margin, ctx.WindowWidth  - margin - panelW);
+        top  = Math.Clamp(top,  margin, ctx.WindowHeight - margin - panelH);
+        rt.FillRectangle(new Vortice.RawRectF(left, top, left + panelW, top + panelH), _bPanel!);
+
+        float cy = top + pad;
+        var caret = collapsed ? "▶" : "▼";
+        rt.DrawText($"{caret} ◈ Waystone", _tf!,
+            new Rect(left + pad, cy, left + panelW - pad - 20, cy + titleH), _bText!, DrawTextOptions.Clip);
+        rt.DrawText("✕", _tf!,
+            new Rect(left + panelW - pad - 12, cy, left + panelW - pad, cy + titleH), _bText!, DrawTextOptions.Clip);
+        var xRect = new Vortice.RawRectF(left + panelW - pad - 16, top, left + panelW, top + pad + titleH);
+        var caretRect = new Vortice.RawRectF(left, top, xRect.Left, top + pad + titleH);
+        _legendRowRects.Add((caretRect, "waystone-collapse"));
+        _legendRowRects.Add((xRect, "waystone-close"));
+
+        cy += titleH;
+        if (collapsed) return;
+        foreach (var (text, color) in lines)
+        {
+            _bStyle!.Color = ColorFromU(color);
             rt.DrawText(text, _tf!, new Rect(left + pad, cy, left + panelW - pad, cy + lineH), _bStyle, DrawTextOptions.Clip);
             cy += lineH;
         }

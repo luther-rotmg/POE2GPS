@@ -27,6 +27,12 @@ public sealed class RadarApp : IDisposable
 {
     private const int WorldHz = 30;
 
+    /// <summary>Reach — v0.26 (Long #38): returns the localized display name for the requested
+    /// map code, falling back to the provided fallback name when the code is null/empty or
+    /// when the localized name is empty.</summary>
+    private string LocalizedMapName(string? mapCode, string fallback)
+        => AtlasMapData.Shared.Get(mapCode)?.LocalizedName(_settings.Language) ?? fallback;
+
     private readonly ProcessHandle _process;
     // Three INDEPENDENT reader stacks over the one shared ProcessHandle (ReadProcessMemory is itself
     // concurrency-safe; the per-instance buffers + caches in MemoryReader/Poe2Live are NOT). Each thread
@@ -68,6 +74,18 @@ public sealed class RadarApp : IDisposable
     private readonly SessionTracker  _session = new();
     private volatile SessionStats?   _sessionSnapshot;
     private DateTime                 _nextSessionResetAt = DateTime.MinValue;
+
+    // ── v0.29 Panels: session-transient state for the boss cheat-sheet + waystone risk overlay panels.
+    // Reset on every zone entry (WorldTick change block) + by their X close-button via OnOverlayClick.
+    // NEVER persisted to settings — every zone entry / hotkey press starts fresh. Written from the world
+    // thread (zone change) OR the render thread (hotkey / click); volatile so both readers see fresh values. ──
+    private volatile POE2Radar.Core.Game.BossEncounterCatalog.EncounterEntry? _bossPanelEntry;
+    private volatile bool _bossPanelDismissed;
+    private volatile bool _bossPanelCollapsed;
+    private volatile POE2Radar.Core.Game.WaystoneModRisk.WaystoneRiskResult? _waystonePanelResult;
+    private volatile bool _waystoneDismissed;
+    private volatile bool _waystoneCollapsed;
+    private DateTime _nextWaystoneAt = DateTime.MinValue;   // Ctrl+Alt+W hotkey debounce
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -1754,7 +1772,14 @@ public sealed class RadarApp : IDisposable
             EntityArrowSize: _settings.EntityArrows.Size,
             EntityArrowShowLabel: _settings.EntityArrows.ShowLabel,
             EntityArrowMax: _settings.EntityArrows.MaxArrows,
-            EntityArrowMinEdgePx: _settings.EntityArrows.MinEdgeDistancePx);
+            EntityArrowMinEdgePx: _settings.EntityArrows.MinEdgeDistancePx,
+            // v0.29 Panels: mirror session-transient panel state to the render thread.
+            BossPanelEntry: _bossPanelEntry,
+            BossPanelDismissed: _bossPanelDismissed,
+            BossPanelCollapsed: _bossPanelCollapsed,
+            WaystonePanelResult: _waystonePanelResult,
+            WaystoneDismissed: _waystoneDismissed,
+            WaystoneCollapsed: _waystoneCollapsed);
         // The overlay is only visible while PoE2 is foreground (Render draws nothing otherwise). Skip
         // the whole draw + UpdateLayeredWindow blit when unfocused — but render once on the focus-loss
         // transition so the last visible frame is cleared rather than left frozen on screen.
@@ -1786,6 +1811,16 @@ public sealed class RadarApp : IDisposable
             _terrain = null; _lastAreaInstance = areaInstance;
             _cachedAreaHash = _live.AreaHash(areaInstance);    // E3: cache; reads at most once per area
             _cachedAreaLevel = _live.AreaLevel(areaInstance);
+            // v0.29 Panels: check the boss catalog for the new zone code (null → not a boss zone), and
+            // reset every panel's transient state so a new zone starts fresh (LO ask: "dismiss OR
+            // zone-change whichever first"). AreaCode() self-caches per instance so this read is cheap.
+            var newAreaCode = _live.AreaCode(areaInstance);
+            _bossPanelEntry = POE2Radar.Core.Game.BossEncounterCatalog.Shared.ByZoneCode(newAreaCode);
+            _bossPanelDismissed = false;
+            _bossPanelCollapsed = false;
+            _waystonePanelResult = null;
+            _waystoneDismissed = false;
+            _waystoneCollapsed = false;
             // Preload Alert: on zone entry, scan loaded files + match catalog + filter noise.
             // HEAVY (~20k reads) — runs ONCE here, never per tick, never on the render thread.
             RunPreloadScan();
@@ -2165,6 +2200,13 @@ public sealed class RadarApp : IDisposable
             _settings.PreloadPanelCollapsed = !_settings.PreloadPanelCollapsed;
             _settings.Save();
         }
+        // v0.29 Panels: title-bar click routing for the boss cheat-sheet + waystone risk panels.
+        // Close (X) → panel gone until next zone entry / hotkey press. Collapse (caret) → title bar
+        // stays visible, body hidden. Both are session-transient; NOT persisted to settings.
+        else if (action == "boss-close")      { _bossPanelDismissed = true; }
+        else if (action == "boss-collapse")   { _bossPanelCollapsed = !_bossPanelCollapsed; }
+        else if (action == "waystone-close")   { _waystoneDismissed = true; _waystonePanelResult = null; }
+        else if (action == "waystone-collapse"){ _waystoneCollapsed = !_waystoneCollapsed; }
         else if (action.StartsWith("corner:", StringComparison.Ordinal))
         {
             _settings.NavMenuCorner = action.Substring("corner:".Length);
@@ -2445,6 +2487,31 @@ public sealed class RadarApp : IDisposable
             _session.Reset(DateTime.UtcNow.Ticks);
             _nextSessionResetAt = DateTime.UtcNow.AddMilliseconds(500);
         }
+        // v0.29 Panels: Ctrl+Alt+W — read clipboard, parse as waystone, open panel if valid.
+        // Foreground-gated + 400 ms debounce. Read-only: clipboard read + GetAsyncKeyState polling.
+        // Silently no-ops on invalid clipboard / non-waystone text; keeps last panel state so
+        // accidental double-tap doesn't wipe the current result.
+        if (DateTime.UtcNow >= _nextWaystoneAt
+            && _gameHwnd != 0 && GetForegroundWindow() == _gameHwnd
+            && Down(0x11) && Down(0x12) && Down(_settings.Keybinds.WaystoneRisk))  // Ctrl+Alt+W
+        {
+            _nextWaystoneAt = DateTime.UtcNow.AddMilliseconds(400);
+            var text = POE2Radar.Overlay.Overlay.Native.ClipboardText.Read();
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                try
+                {
+                    var result = POE2Radar.Core.Game.WaystoneModRisk.Shared.Parse(text);
+                    if (result?.IsWaystone == true)
+                    {
+                        _waystonePanelResult = result;
+                        _waystoneDismissed = false;
+                        _waystoneCollapsed = false;
+                    }
+                }
+                catch { /* malformed clipboard → silent no-op; keep prior panel state */ }
+            }
+        }
         // Quick-Target Cycler + nav-menu chord (controller): L3 = prev, R3 = next, L3+R3 = toggle the nav
         // menu. Poll every frame to keep edge state fresh; only ACT while PoE2 is foreground. The chord
         // suppresses the single-stick cycle so opening the menu never also flips the active target.
@@ -2490,11 +2557,11 @@ public sealed class RadarApp : IDisposable
         // name is unusual: the REAL map name (WorldAreas +0x08), the raw internal code (never localized,
         // always a safe match key), the rolled content tags, biome and grid coord.
         var content = b.Tags.Count > 0 ? string.Join(", ", b.Tags) : "(none)";
-        Console.WriteLine($"\n[atlas tile] \"{b.MapName}\"  code={b.MapCode}  kind={b.Kind}  grid={b.Grid}  biome={b.Biome}");
+        Console.WriteLine($"\n[atlas tile] \"{LocalizedMapName(b.MapCode, b.MapName)}\"  code={b.MapCode}  kind={b.Kind}  grid={b.Grid}  biome={b.Biome}");
         // Status cross-validation (improvement 1): deeper-model accessible/completed vs the element flag bits.
         Console.WriteLine($"            accessible={b.Accessible} completed={b.Completed}  (elem flags=0x{b.Flags:X2}: unlocked={b.Unlocked} visited={b.Visited})");
         Console.WriteLine($"             content: {content}");
-        Console.WriteLine($"             web-UI filters -> Map: \"{b.MapName}\"" + (b.Tags.Count > 0 ? $"   Content: {content}" : ""));
+        Console.WriteLine($"             web-UI filters -> Map: \"{LocalizedMapName(b.MapCode, b.MapName)}\"" + (b.Tags.Count > 0 ? $"   Content: {content}" : ""));
 
         // 1st press → set START · 2nd press → set END (route computed each tick) · 3rd → reset. The grids
         // are read by the world thread (UpdateAtlas/BuildAtlasRoute), so mutate them under _atlasLock —
@@ -2502,8 +2569,8 @@ public sealed class RadarApp : IDisposable
         string stage;
         lock (_atlasLock)
         {
-            if (_atlasStartGrid is null) { _atlasStartGrid = b.Grid; _atlasGoalGrid = null; stage = $"START = {b.Grid} '{b.MapName}'  (F10 another tile to set END)"; }
-            else if (_atlasGoalGrid is null) { _atlasGoalGrid = b.Grid; stage = $"END = {b.Grid} '{b.MapName}'  (routing from {_atlasStartGrid}; F10 again to reset)"; }
+            if (_atlasStartGrid is null) { _atlasStartGrid = b.Grid; _atlasGoalGrid = null; stage = $"START = {b.Grid} '{LocalizedMapName(b.MapCode, b.MapName)}'  (F10 another tile to set END)"; }
+            else if (_atlasGoalGrid is null) { _atlasGoalGrid = b.Grid; stage = $"END = {b.Grid} '{LocalizedMapName(b.MapCode, b.MapName)}'  (routing from {_atlasStartGrid}; F10 again to reset)"; }
             else { _atlasStartGrid = null; _atlasGoalGrid = null; stage = "route RESET (F10 a tile to set a new START)"; }
         }
         Console.WriteLine($"\n[atlas route] {stage}");
@@ -3268,7 +3335,7 @@ public sealed class RadarApp : IDisposable
                 .Select(g => new { tag = g.Key, count = g.Count(), desc = POE2Radar.Core.Game.AtlasMapData.Shared.ContentDesc(g.Key), icon = POE2Radar.Core.Game.AtlasMapData.Shared.ContentIcon(g.Key) }),
             // Distinct MAP NAMES (Sun Temple, Precursor Tower, Vaal City, …) — the separate "Map" filter
             // group, so towers/temples/specific maps are highlightable independently of rolled content.
-            allMaps = nodes.Where(n => !string.IsNullOrEmpty(n.MapName)).GroupBy(n => n.MapName)
+            allMaps = nodes.Where(n => !string.IsNullOrEmpty(n.MapName)).GroupBy(n => LocalizedMapName(n.MapCode, n.MapName))
                 .OrderBy(g => g.Key).Select(g => new { tag = g.Key, count = g.Count() }),
             // Map-archetype KINDS present (Citadel / Boss / Tower / Unique / Merchant) — first-class track
             // targets (improvement 3): tracking "Tower" rings/routes EVERY tower without listing each name.
@@ -3295,7 +3362,7 @@ public sealed class RadarApp : IDisposable
                     id = n.Id, biome = (int)n.Biome, type = n.IconType, hasContent = n.HasContent,
                     unlocked = n.Unlocked, visited = n.Visited, visible = n.Visible,
                     accessible = n.Accessible, completed = n.Completed, kind = n.Kind,
-                    x = (int)n.X, y = (int)n.Y, map = n.MapName, tags = n.Tags,
+                    x = (int)n.X, y = (int)n.Y, map = LocalizedMapName(n.MapCode, n.MapName), tags = n.Tags,
                 }),
         };
     }
@@ -3563,7 +3630,7 @@ public sealed class RadarApp : IDisposable
             if (!_settings.AtlasDrawAll && !isTracked && !isNav && !isArrow && !foggedIconNode) continue;
             var matched = mTrack ?? mNav ?? mArrow;
             var label = matched ?? (isTracked || isNav || isArrow
-                ? (n.Tags is { Count: > 0 } ? n.Tags[0] : (string.IsNullOrEmpty(n.MapName) ? null : n.MapName))
+                ? (n.Tags is { Count: > 0 } ? n.Tags[0] : (string.IsNullOrEmpty(n.MapName) ? null : LocalizedMapName(n.MapCode, n.MapName)))
                 : null);   // icon-only fogged marks carry no label (icons alone)
             string? color = matched != null && _settings.AtlasHighlightColors.TryGetValue(matched, out var c) ? c
                 : (groupColor != null && !string.IsNullOrEmpty(n.MapName) && groupColor.TryGetValue(n.MapName, out var gc) ? gc : null);
