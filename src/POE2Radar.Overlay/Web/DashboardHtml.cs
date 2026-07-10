@@ -622,6 +622,14 @@ internal static class DashboardHtml
         </div>
         <input type="search" id="settingsSearch" placeholder="Search settings&hellip;">
         <div class="panel-grid">
+          <!-- Reach — v0.26 (LO ask): supporters roll. Subtle-but-visible card at the top of Settings.
+               Reads /api/supporters (embedded supporters.json) and renders name pills. -->
+          <div class="card" id="supportersCard" style="grid-column:1/-1">
+            <h3>Supporters <span class="tag">&middot; running on curiosity and coffee</span></h3>
+            <div class="row" style="align-items:flex-start"><div class="rl hint-row" style="flex:1">POE2GPS is a free tool that reads memory legally, feeds a community pool, and ships open source. If it saved you time in a map, consider chipping in &mdash; every drop is one person's work against a game that changes its offsets every patch. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">&#9749; Ko&#8209;fi</a></div></div>
+            <div id="supportersList" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px 0 4px"></div>
+          </div>
+
           <div class="card" id="qsCard" style="grid-column:1/-1">
             <h3>Quick Start <span class="tag">&middot; getting up and running</span></h3>
             <div class="row"><div class="rl hint-row" style="line-height:1.7">
@@ -2934,6 +2942,33 @@ async function loadBosses(){
   }
 }
 document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventListener('click', loadBosses));
+
+/* ── Reach — v0.26 (LO ask): supporters roll ───────────────────────────────────────────────────
+   Loaded once on first Settings-tab activation. Reads /api/supporters and renders pill chips
+   with a tier color. Missing / empty response leaves the section blank rather than showing
+   an error — supporters are optional recognition, not a required feature. */
+let __supportersLoaded = false;
+async function loadSupporters(){
+  if (__supportersLoaded) return; __supportersLoaded = true;
+  const list = document.getElementById('supportersList');
+  if (!list) return;
+  try {
+    const r = await fetch('/api/supporters');
+    if (!r.ok) return;
+    const data = await r.json();
+    const sups = data?.supporters || [];
+    if (!sups.length) { list.innerHTML = '<span style="color:var(--ink-faint);font-size:11px">Be the first to join the roll &mdash; <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright)">chip in on Ko&#8209;fi</a></span>'; return; }
+    const TIER_COL = { gold:'#f5c94f', silver:'#c8c8c8', bronze:'#c78d5a', community:'#8090a0' };
+    list.innerHTML = sups.map(s => {
+      const col = TIER_COL[s.tier] || TIER_COL.community;
+      const title = s.note ? ` title="${(s.note+'').replace(/"/g,'&quot;')}"` : '';
+      return `<span${title} style="background:${col};color:#000;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:600;letter-spacing:.02em">${s.name}</span>`;
+    }).join('');
+  } catch (err) { /* silent — the section can be empty */ }
+}
+document.querySelectorAll('.tab[data-tab="settings"]').forEach(t => t.addEventListener('click', loadSupporters));
+// Also try to load immediately in case Settings is the initial view.
+loadSupporters();
 
 /* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
    The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered

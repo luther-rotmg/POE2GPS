@@ -1225,6 +1225,21 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/supporters":
+            {
+                // Reach — v0.26 (LO ask): serve the embedded supporters.json to the dashboard
+                // Supporters card. No feature gate — the roll is community-facing.
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                var resName = asm.GetManifestResourceNames().FirstOrDefault(n => n.Contains("supporters"));
+                if (resName == null) { Write(ctx, 200, "{\"supporters\":[]}"); break; }
+                using var stream = asm.GetManifestResourceStream(resName);
+                if (stream == null) { Write(ctx, 200, "{\"supporters\":[]}"); break; }
+                using var reader = new System.IO.StreamReader(stream);
+                var supJson = System.Text.Encoding.UTF8.GetBytes(reader.ReadToEnd());
+                WriteMaybeGzipped(ctx, supJson, "application/json; charset=utf-8");
+                break;
+            }
+
             case "/api/bosses":
             {
                 // Reach — CHOR-42 (v0.26): serve the shipped BossEncounterCatalog to the dashboard
