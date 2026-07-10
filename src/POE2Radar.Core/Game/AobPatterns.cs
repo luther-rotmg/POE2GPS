@@ -62,7 +62,7 @@ public static class AobPatterns
             },
             DispOffset:  3,   // rel32 starts after 48 39 2D
             InstrLen:    7,   // cmp [rip+rel32], rbp
-            Description: "PoE2 GameStates global slot (GameHelper2 'Game States')"),
+            Description: "PoE2 GameStates global slot (upstream reference 'Game States')"),
     ];
 
     /// <summary>

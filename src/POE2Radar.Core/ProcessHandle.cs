@@ -35,7 +35,7 @@ public sealed class ProcessHandle : IDisposable
     /// <param name="candidateNames">Process names to search for (without ".exe"). Defaults cover standalone + Steam clients.</param>
     public static ProcessHandle? AttachToPoE(IReadOnlyList<string>? candidateNames = null)
     {
-        // PoE2 client process names (window title "Path of Exile 2"). Source: GameHelper2
+        // PoE2 client process names (window title "Path of Exile 2"). Source: upstream reference
         // GameProcessName.cs — see resources/community-offsets.md.
         candidateNames ??= ["PathOfExile", "PathOfExileSteam", "PathOfExile_x64", "PathOfExile_KG", "PathOfExileEGS"];
 

@@ -508,7 +508,7 @@ public sealed class MechanicStyle
 /// <summary>
 /// A named Atlas colour group (#7): a set of map display names that all draw in one ring/label colour,
 /// so a whole category (Citadels, Halls, Uniques, Expedition) recolours together. Adopted from the
-/// GameHelper2 Atlas plugin's Map Styles. <see cref="Color"/> is <c>#RRGGBB</c>.
+/// upstream reference Atlas plugin's Map Styles. <see cref="Color"/> is <c>#RRGGBB</c>.
 /// </summary>
 public sealed class AtlasMapGroup
 {

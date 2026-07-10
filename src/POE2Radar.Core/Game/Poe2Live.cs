@@ -1242,7 +1242,7 @@ public sealed class Poe2Live
 
     // ── UiElement screen geometry (shared with Poe2Runeforge) ──────────
 
-    /// <summary>Screen-space rect (pixels) of ANY UiElement, via the GameHelper UiElementBase math:
+    /// <summary>Screen-space rect (pixels) of ANY UiElement, via the upstream reference UiElementBase math:
     /// parent-chain unscaled position × resolution scale. Same geometry as <see cref="Poe2Runeforge"/>
     /// (sans its scroll viewport). <paramref name="winW"/>/<paramref name="winH"/> are the current game
     /// window size. Returns false on a read failure, a degenerate (≤1 px) rect, or when the element's own
@@ -1295,7 +1295,7 @@ public sealed class Poe2Live
     }
 
     /// <summary>v1 = winW/2560, v2 = winH/1600; ScaleIndex picks which axis scale(s) apply (1→(v1,v1),
-    /// 2→(v2,v2), 3→(v1,v2), else uniform mul). Mirrors GameHelper's ScaleValue / Poe2Runeforge.</summary>
+    /// 2→(v2,v2), 3→(v1,v2), else uniform mul). Mirrors upstream reference ScaleValue / Poe2Runeforge.</summary>
     private static (float w, float h) UiScaleValue(byte idx, float mul, float winW, float winH)
     {
         if (mul == 0f) mul = 1f;

@@ -286,7 +286,7 @@ public sealed class Poe2Atlas
         public bool Unlocked => (Flags & 0x01) != 0;
         public bool Visited => (Flags & 0x02) != 0;
         public bool HasContent => Content != 0;   // +0x310 (atlas-row ptr) non-null ⇒ has rolled content
-        // Accessible/Completed are decoded from the deeper node-data status byte (the GameHelper-validated
+        // Accessible/Completed are decoded from the deeper node-data status byte (the upstream reference-validated
         // source — *(node+0x10)+0x20 +0x2CF, bit0 accessible / bit1 completed). Accessible ("you can run
         // this now") is the route SOURCE frontier; the element-flag Unlocked/Visited bits are kept separate.
     }
@@ -429,7 +429,7 @@ public sealed class Poe2Atlas
                     _iconTypeCache[el] = iconType;
                 }
             }
-            // Accessible/completed status: the GameHelper-validated deeper model
+            // Accessible/completed status: the upstream reference-validated deeper model
             // *(node+DataStorage)+DataModel → status byte +0x2CF (bit0 accessible, bit1 completed). This is
             // the route SOURCE frontier ("maps you can run right now"). Cheap (2 derefs + 1 byte).
             bool accessible = false, completed = false;

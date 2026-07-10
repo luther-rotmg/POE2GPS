@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace POE2Radar.Core.Game;
 
 /// <summary>
-/// The offline runeshape-monolith recipe catalog + the in-game offer rule, decoded from GameHelper's
+/// The offline runeshape-monolith recipe catalog + the in-game offer rule, decoded from upstream reference's
 /// RunecraftHelper (<c>expedition2_recipes.json</c>, built from the game's Expedition2Recipes /
 /// Expedition2Runes / Expedition2RunesWeights .dat tables). PURE LOGIC — no memory reads: given a
 /// monolith's live state (anchor rune index + hole position, hole count N, area level, and whether it's

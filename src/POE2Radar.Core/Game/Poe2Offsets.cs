@@ -1,14 +1,14 @@
 namespace POE2Radar.Core.Game;
 
 /// <summary>
-/// PoE2 memory offsets — the going-forward source of truth, sourced from the GameHelper2
+/// PoE2 memory offsets — the going-forward source of truth, sourced from the upstream reference
 /// <c>GameOffsets/</c> dump and validated against the live client where marked ✓.
 ///
 /// <para>This is separate from the legacy PoE1-shaped <see cref="KnownOffsets"/> (which the
 /// overlay still references and which is being migrated). As each PoE2 structure is validated
 /// here, the corresponding overlay reader is rechained to use it.</para>
 ///
-/// Markers: ✓ = confirmed against live PoE2; (GH2) = from GameHelper2, not yet live-checked;
+/// Markers: ✓ = confirmed against live PoE2; (prior-art) = from upstream reference, not yet live-checked;
 /// ✗ = transcribed from a third-party IDA dump (a private fork), NOT yet validated against our
 /// live client and NOT yet wired into any read path. Validate via the Research probes before using
 /// any ✗ offset — patch drift means these may be wrong for the current build.
@@ -18,7 +18,7 @@ public static class Poe2
     /// <summary>Tile→world = 250, tile→grid = 23 ⇒ world/grid ratio ≈ 10.8696. ✓</summary>
     public const float WorldToGridRatio = 250f / 23f;
 
-    /// <summary>Conservative network-bubble radius in grid units (GH2 uses 150). </summary>
+    /// <summary>Conservative network-bubble radius in grid units (prior-art uses 150). </summary>
     public const int NetworkBubbleGrid = 150;
 
     /// <summary>
@@ -27,8 +27,8 @@ public static class Poe2
     /// </summary>
     public static class GameState
     {
-        public const int CurrentStatePtr = 0x08;  // (GH2) StdVector — current state
-        public const int States          = 0x48;  // (GH2) inline array of 12 × StdTuple2D<IntPtr> (16 bytes each)
+        public const int CurrentStatePtr = 0x08;  // (prior-art) StdVector — current state
+        public const int States          = 0x48;  // (prior-art) inline array of 12 × StdTuple2D<IntPtr> (16 bytes each)
         public const int StateSlotStride = 0x10;   // each slot is StdTuple2D<IntPtr> (ptr + extra)
         public const int StateSlotCount  = 12;
     }
@@ -46,8 +46,8 @@ public static class Poe2
 
     public static class UiRootStruct
     {
-        public const int UiRootPtr = 0x5A8; // (GH2)
-        public const int GameUiPtr = 0xBF0; // (GH2)
+        public const int UiRootPtr = 0x5A8; // (prior-art)
+        public const int GameUiPtr = 0xBF0; // (prior-art)
     }
 
     /// <summary>
@@ -66,16 +66,16 @@ public static class Poe2
         public const int ServerDataPtr    = 0x598;  // ✓ → ServerData (gateway to player inventories; +0x20 here = LocalPlayer @ 0x5B8). Was 0x580; +0x18 for 0.5.4. PlayerServerDataVec @ +0x48 unchanged.
         public const int AwakeEntities    = 0x6D8;  // ✓ StdMap of live entities (id→EntityPtr). Was 0x6C0; +0x18 for 0.5.4.
         public const int SleepingEntities = 0x6E8;  // ✓ StdMap. Was 0x6D0; +0x18 for 0.5.4 (inferred from the uniform AreaInstance shift; confirm via --rarity).
-        public const int TerrainMetadata  = 0x8B8;  // ✓ TerrainStruct base. Was 0x8A0; +0x18 for 0.5.4 (GH2's 0xD20 drifted).
-        public const int CurrentAreaLevel = 0x0C4;  // ✓ int — per-area, validated 27/32 (GH2's 0xBC drifted). Below the 0.5.4 insertion — unchanged.
-        public const int CurrentAreaHash  = 0x11C;  // ✓ uint — per-area random hash (GH2's 0xFC drifted; +0x120 paired seed). Below the 0.5.4 insertion — unchanged.
+        public const int TerrainMetadata  = 0x8B8;  // ✓ TerrainStruct base. Was 0x8A0; +0x18 for 0.5.4 (prior-art's 0xD20 drifted).
+        public const int CurrentAreaLevel = 0x0C4;  // ✓ int — per-area, validated 27/32 (prior-art's 0xBC drifted). Below the 0.5.4 insertion — unchanged.
+        public const int CurrentAreaHash  = 0x11C;  // ✓ uint — per-area random hash (prior-art's 0xFC drifted; +0x120 paired seed). Below the 0.5.4 insertion — unchanged.
     }
 
     /// <summary>Entity StdMap conventions. Maps live at AreaInstance+0x6D8 (Awake) / +0x6E8 (Sleeping) on 0.5.4.</summary>
     public static class EntityList
     {
         public const int StdMapSize = 0x10; // each StdMap is {Head ptr, int Size, pad} = 16 bytes
-        /// <summary>Entity ids below this are real entities; above are visuals/decorations (GH2 filter). ✓ confirmed live.</summary>
+        /// <summary>Entity ids below this are real entities; above are visuals/decorations (prior-art filter). ✓ confirmed live.</summary>
         public const uint VisualIdThreshold = 0x40000000;
     }
 
@@ -96,8 +96,8 @@ public static class Poe2
     {
         public const int EntityDetailsPtr = 0x08; // ✓ → EntityDetails
         public const int ComponentList    = 0x10; // ✓ StdVector of component pointers (8-byte elems)
-        public const int Id               = 0x80; // (GH2) uint  (read 0 for local player — revisit)
-        public const int IsValid          = 0x84; // (GH2) byte; valid when bit0 clear
+        public const int Id               = 0x80; // (prior-art) uint  (read 0 for local player — revisit)
+        public const int IsValid          = 0x84; // (prior-art) byte; valid when bit0 clear
     }
 
     public static class EntityDetails
@@ -253,7 +253,7 @@ public static class Poe2
     }
 
     /// <summary>Mods component (on items) — rarity lives at a DIFFERENT offset than ObjectMagicProperties.
-    /// ⚠ validated live 2026-06-12 on a dropped unique (read 3 = Unique). Matches GameHelper2's
+    /// ⚠ validated live 2026-06-12 on a dropped unique (read 3 = Unique). Matches upstream reference's
     /// ModsAndObjectMagicProperties (Rarity at the sub-struct's +0x94; for the item Mods component the
     /// sub-struct is at +0x00, so rarity = +0x94). Enum 0=Normal,1=Magic,2=Rare,3=Unique.</summary>
     public static class ModsComponent
@@ -262,7 +262,7 @@ public static class Poe2
         public const int Identified = 0x90; // ✓ int — 1 = identified, 0 = unidentified. Validated live
                                             // 2026-06-12 by diffing an identified unique (Earthbound=1) vs
                                             // an unidentified one (Keelhaul=0) on the ground.
-        // Affix mod vectors — AllModsType (GH2) lives at the sub-struct's +0xA0, each a StdVector of
+        // Affix mod vectors — AllModsType (prior-art) lives at the sub-struct's +0xA0, each a StdVector of
         // ModArrayStruct (stride 0x40). A record's ModsPtr (+0x28) → Mods.dat row whose first qword →
         // UTF-16 internal mod id ("UniqueGiantsBlood1"). ✓ validated live 2026-06-16 against the
         // identified unique gloves "Treefingers Riveted Mitts" (read UniqueGiantsBlood1 + 5 more) and
@@ -299,7 +299,7 @@ public static class Poe2
     }
 
     /// <summary>Stack component (on stackable items) — current stack count. ✓ validated live 2026-06-16
-    /// (currency/gem stacks in the player inventory read their true counts; matches GH2 StackOffsets).</summary>
+    /// (currency/gem stacks in the player inventory read their true counts; matches prior-art StackOffsets).</summary>
     public static class StackComponent
     {
         public const int Count = 0x18; // ✓ int — current stack size
@@ -357,19 +357,19 @@ public static class Poe2
     /// <summary>Stats / LocalStats component — aggregated stat (key,value) pairs. ⚠ observed 2026-06-16.
     /// A StatArrayStruct is {int statIndex; int value}; the vector of them was found at +0x20 on an item's
     /// LocalStats component (read [131 = 18] = +18 local Energy Shield on the body armour). statIndex maps
-    /// 1:1 to GameHelper2's GameStats enum (value = Stats.dat row index + 1, e.g. 131 = local_energy_shield),
+    /// 1:1 to upstream reference's GameStats enum (value = Stats.dat row index + 1, e.g. 131 = local_energy_shield),
     /// and that enum's ordering MATCHES our live build — so statIndex → stat-id string is solved via a ported
     /// GameStats table. NB: only LOCAL stats live on an item; global mods (life/resist) only aggregate onto
-    /// the character's Stats component once equipped. GH2 chain for the character Stats component:
+    /// the character's Stats component once equipped. prior-art chain for the character Stats component:
     /// +0x160 → StatsStructInternal, Stats StdVector @ +0xF8 (StatArrayStruct stride 0x08).</summary>
     public static class StatsComponent
     {
         public const int StatArrayStride = 0x08; // ✓ {int statIndex; int value}
         // ⚠ item LocalStats: a {key,value} StdVector observed at component +0x20 (one entry). Character
-        // Stats: StatsChangedByItemsPtr @ +0x160 → StatsStructInternal; its Stats vec @ +0xF8 (GH2).
+        // Stats: StatsChangedByItemsPtr @ +0x160 → StatsStructInternal; its Stats vec @ +0xF8 (prior-art).
         public const int ItemLocalStatsVec = 0x20;  // ⚠ (one observation)
-        public const int StatsChangedByItemsPtr = 0x160; // (GH2) → StatsStructInternal
-        public const int StatsStructStatsVec     = 0xF8;  // (GH2) StdVector<StatArrayStruct>
+        public const int StatsChangedByItemsPtr = 0x160; // (prior-art) → StatsStructInternal
+        public const int StatsStructStatsVec     = 0xF8;  // (prior-art) StdVector<StatArrayStruct>
     }
 
     /// <summary>Chest component. ✓ OpenState @ +0x168 — the offset is stable, but the 2026-06-06 patch
@@ -386,7 +386,7 @@ public static class Poe2
     public static class Positioned
     {
         // ✓ validated live: player (friendly) = 0x01, hostile MastodonBoss = 0x00.
-        // GameHelper2 rule: IsFriendly = (Reaction & 0x7F) == 1.
+
         public const int Reaction = 0x1E0;
 
         // ✓ validated live (presence buff on/off sweep, Research --presence): the presence
@@ -431,7 +431,7 @@ public static class Poe2
 
     /// <summary>
     /// MapUiElement (large map + minimap share this class/vtable). ✓ validated live: exactly two
-    /// elements carry DefaultShift=(0,-20) with Zoom=0.5. Struct shape matches GH2 (shifted +0x70):
+    /// elements carry DefaultShift=(0,-20) with Zoom=0.5. Struct shape matches prior-art (shifted +0x70):
     /// Shift→DefaultShift = 8, DefaultShift→Zoom = 0x38.
     /// </summary>
     public static class MapUiElement
@@ -441,7 +441,7 @@ public static class Poe2
         public const int Zoom         = 0x3A8; // ✓ float (0.5 live)
     }
 
-    /// <summary>UiElement base — ✓ validated live (GH2's offsets drifted: Self 0x30→0x8, Flags 0x1B8→0x180).
+    /// <summary>UiElement base — ✓ validated live (prior-art's offsets drifted: Self 0x30→0x8, Flags 0x1B8→0x180).
     /// Parent/Position/Size from the 2026-06-07 community offset dump (resources/additional offsets.txt);
     /// Position + Size confirmed live on the atlas-node class (size = 40×40 icons, positions vary per node).</summary>
     public static class UiElement
@@ -449,7 +449,7 @@ public static class Poe2
         public const int Self           = 0x08;  // ✓ self pointer
         public const int Children       = 0x10;  // ✓ StdVector begin (child UiElement ptrs); End @ +0x18
         public const int ChildrenEnd    = 0x18;  // ✓ StdVector end
-        public const int PositionModifier = 0xF0; // StdTuple2D<float>; added to parent pos when Flags bit 0x0A set (GH2 UiElementBase)
+        public const int PositionModifier = 0xF0; // StdTuple2D<float>; added to parent pos when Flags bit 0x0A set (prior-art UiElementBase)
         public const int Parent         = 0xB8;  // (community) parent UiElement; true UI root = *(UiRoot+0xB8)
         public const int RelativePos    = 0x118; // ✓ StdTuple2D<float> position relative to parent (varies per atlas node)
         public const int LocalScaleMul  = 0x130; // float local scale multiplier (also the atlas zoom on node elements)
@@ -464,7 +464,7 @@ public static class Poe2
         public const int SizeH          = 0x28C; // ✓ float unscaled height (atlas node = 40)
         // Full visibility is hierarchical: an element is shown iff its own bit 0x0B AND every
         // ancestor's bit are set. Walk Parent (+0xB8) up to the root.
-        // Screen geometry (GH2 UiElementBaseFuncs): v1 = winW/2560, v2 = winH/1600 (BaseResolution
+        // Screen geometry (prior-art UiElementBaseFuncs): v1 = winW/2560, v2 = winH/1600 (BaseResolution
         // 2560×1600). ScaleValue(ScaleIndex, LocalScaleMul): idx1→(v1,v1) idx2→(v2,v2) idx3→(v1,v2),
         // else (mul,mul). screenPos = unscaledParentChainPos × ScaleValue; screenSize = UnscaledSize × ScaleValue.
         public const double BaseResW = 2560.0;
@@ -528,11 +528,11 @@ public static class Poe2
         public const int State       = 0x32C; // (community) u8 state (seen =1 on loaded nodes)
         public const int Biome       = 0x32E; // ✓ u8 biome index (0..12)
         public const int Flags       = 0x32F; // (community) u8: bit0 unlocked, bit1 visited
-        public const int GridPos     = 0x320; // ✓ live 2026-06-08 — StdTuple2D<int> atlas grid coord (X,Y); 1:1 with node, range small (e.g. X[-16..31] Y[0..47]). The key for node-graph pathfinding. (GameHelper2-sourced)
+        public const int GridPos     = 0x320; // ✓ live 2026-06-08 — StdTuple2D<int> atlas grid coord (X,Y); 1:1 with node, range small (e.g. X[-16..31] Y[0..47]). The key for node-graph pathfinding. (prior-art-sourced)
         public const int Completion  = 0x339; // (community) u8 per-node completion id
         public const int ContentVec  = 0x350; // (community) StdVector begin (content list); End @ +0x358
 
-        /// <summary>Alternate node-DATA model (GameHelper2): <c>*(*(node+0x10)+0x20)</c> → a struct with
+        /// <summary>Alternate node-DATA model (prior-art): <c>*(*(node+0x10)+0x20)</c> → a struct with
         /// biome <c>+0x2CE</c> / status byte <c>+0x2CF</c> (bit0 accessible, bit1 completed) / mapId at
         /// <c>+0x2A0</c> (ptr→ptr→ptr→UTF-16 "MapXxx"). Validated live 2026-06-08 (biome matches the
         /// element's own <see cref="Biome"/> 200/200). POE2Radar reads biome/mapId DIRECTLY off the
@@ -545,13 +545,13 @@ public static class Poe2
         public const int DataMapId   = 0x2A0;  // ptr chain → UTF-16 "MapXxx"
     }
 
-    /// <summary>Atlas CONNECTION GRAPH (✓ live 2026-06-08, GameHelper2-sourced). The node canvas (the
+    /// <summary>Atlas CONNECTION GRAPH (✓ live 2026-06-08, prior-art-sourced). The node canvas (the
     /// parent holding the most node-class children — POE2Radar's detected <c>_nodeCanvas</c>) carries a
     /// <c>StdVector</c> of edges at <c>+0x5A8</c>. Each edge is 20 bytes: <c>{ int unknown; StdTuple2D&lt;int&gt;
     /// source; StdTuple2D&lt;int&gt; target }</c> — source @ +0x04, target @ +0x0C, both in node grid
     /// coords (<see cref="AtlasNode.GridPos"/>). Live: 291 edges, 100% endpoints on real grid positions,
     /// avg degree 2.9 / max 5 (a real sparse atlas graph). This is what enables "route from the player's
-    /// current node to a target node in the fewest hops" (A* over the graph, per GH2's FindShortestPathAStar).
+    /// current node to a target node in the fewest hops" (A* over the graph, per prior-art's FindShortestPathAStar).
     /// Re-discover after a patch with <c>POE2Radar.Research --atlas-graph</c>.</summary>
     public static class AtlasGraph
     {

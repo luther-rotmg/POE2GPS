@@ -4,7 +4,7 @@ namespace POE2Radar.Core.Game;
 
 /// <summary>
 /// Reads the in-game "Runeshape Combinations" reward panel (the rune-crafting league mechanic) so the
-/// overlay can price each reward. Ported from GameHelper's RuneforgeHelper plugin and validated live
+/// overlay can price each reward. Ported from upstream reference Atlas plugin and validated live
 /// 2026-06-14 (Research <c>--runeforge</c>). Read-only.
 ///
 /// <para>The panel is located by a UI-FLAGS-FINGERPRINT walk with BACKTRACKING from GameUi
@@ -16,7 +16,7 @@ namespace POE2Radar.Core.Game;
 /// when the panel is closed. See <see cref="Poe2Offsets.Runeforge"/> for the fingerprints + offsets.</para>
 ///
 /// <para>Each visible row's <c>kid[0]</c> holds an inline std::wstring "&lt;count&gt;x &lt;name&gt;" at
-/// <see cref="Poe2Offsets.Runeforge.NameWString"/>. Screen rects are computed via the GameHelper
+/// <see cref="Poe2Offsets.Runeforge.NameWString"/>. Screen rects are computed via the upstream reference
 /// UiElementBase math (parent-chain unscaled position × resolution scale).</para>
 /// </summary>
 public sealed class Poe2Runeforge
@@ -124,7 +124,7 @@ public sealed class Poe2Runeforge
         return false;
     }
 
-    // ── geometry (GameHelper UiElementBaseFuncs port) ──────────────────────────────────────────────
+    // ── geometry (upstream reference UiElementBaseFuncs port) ──────────────────────────────────────────────
 
     private bool TryScreenRect(nint row, NumVec2 scroll, float winW, float winH, out NumVec2 pos, out NumVec2 size)
     {
@@ -143,7 +143,7 @@ public sealed class Poe2Runeforge
     }
 
     /// <summary>v1 = winW/2560, v2 = winH/1600; ScaleIndex selects which axis scale(s) apply (1→(v1,v1),
-    /// 2→(v2,v2), 3→(v1,v2), else uniform <paramref name="mul"/>). Mirrors GameHelper's ScaleValue.</summary>
+    /// 2→(v2,v2), 3→(v1,v2), else uniform <paramref name="mul"/>). Mirrors upstream reference ScaleValue.</summary>
     private static (float w, float h) ScaleValue(byte idx, float mul, float winW, float winH)
     {
         if (mul == 0f) mul = 1f;
@@ -179,7 +179,7 @@ public sealed class Poe2Runeforge
         if (parent == _viewport) parentPos += scroll;
 
         // If the element shares its parent's scale, positions just add; otherwise rescale the parent
-        // position into this element's scale space (GameHelper TryGetUnscaledPosition).
+        // position into this element's scale space (upstream reference TryGetUnscaledPosition).
         _reader.TryReadStruct<byte>(el + Poe2.UiElement.ScaleIndex, out var elIdx);
         _reader.TryReadStruct<float>(el + Poe2.UiElement.LocalScaleMul, out var elMul);
         _reader.TryReadStruct<byte>(parent + Poe2.UiElement.ScaleIndex, out var pIdx);

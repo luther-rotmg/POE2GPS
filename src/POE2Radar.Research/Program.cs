@@ -384,7 +384,7 @@ return 0;
 // ── ServerData probe — locate the quest-state container ────────────────────
 // AreaInstance+0x598 is the PlayerInfo/LocalPlayerStruct base on 0.5.4 (was 0x580, +0x18) (+0x00
 // ServerDataPtr, +0x20 LocalPlayerPtr). LocalPlayer @ AreaInstance+0x5B8 (= base+0x20) is validated,
-// so the +0x598 deref is the ServerData object. In PoE1 GameHelper, ServerData holds the quest-states
+// so the +0x598 deref is the ServerData object. In PoE1 upstream reference, ServerData holds the quest-states
 // list (among league/guild/passives). This surfaces ServerData's strings (to confirm identity)
 // and its StdVector-shaped fields (quest-list candidates), and writes the raw region to a temp
 // file so two runs (before/after advancing a quest) can be byte-diffed to pinpoint quest flags.
@@ -540,7 +540,7 @@ static int RunServerDataDiff(ProcessHandle process, MemoryReader reader)
 }
 
 // ── Player inventory + item-structure probe ────────────────────────────────
-// Walks the GameHelper2 inventory chain (re-derived for our drifted build) and dumps every
+// Walks the upstream reference inventory chain (re-derived for our drifted build) and dumps every
 // inventory + every item's identity (metadata, rarity, identified, art, stack) and mod ids.
 //   AreaInstance +0x580 -> ServerData
 //   ServerData   +0x48  -> StdVector PlayerServerData ; [0] -> ServerDataStructure
@@ -1024,13 +1024,13 @@ static string InvName(int id) => id switch
 };
 
 // ── PoE2 entity / component-map probe ──────────────────────────────────────
-// Validates the GameHelper2 PoE2 layout: Entity{Id@0x80, IsValid@0x84, ItemBase{
+// Validates the upstream reference PoE2 layout: Entity{Id@0x80, IsValid@0x84, ItemBase{
 //   EntityDetailsPtr@0x08, ComponentList StdVector@0x10}}, EntityDetails{name@0x08,
 //   ComponentLookUpPtr@0x28}, ComponentLookUp.StdBucket@0x28 of (NamePtr, Index) →
 //   ComponentList[Index]. Render.CurrentWorldPosition@0xB8; grid = world / (250/23).
 static int RunEntityProbe(MemoryReader reader, nint entity)
 {
-    const float WorldToGridRatio = 250f / 23f; // ≈ 10.8696 (GameHelper2 TileStructure)
+    const float WorldToGridRatio = 250f / 23f; // ≈ 10.8696 (upstream reference TileStructure)
 
     Console.WriteLine($"Entity @ 0x{entity:X16}");
     if (!reader.TryReadStruct<uint>(entity + 0x80, out var id) ||
@@ -1071,7 +1071,7 @@ static int RunEntityProbe(MemoryReader reader, nint entity)
         Console.WriteLine($"    [{index,2}] {name,-22} @ 0x{compAddr:X16}");
     }
 
-    // Render.CurrentWorldPosition validated @ +0x138 on live PoE2 (GameHelper2's 0xB8 is stale here).
+    // Render.CurrentWorldPosition validated @ +0x138 on live PoE2 (upstream reference's 0xB8 is stale here).
     if (byName.TryGetValue("Render", out var render) && render != 0 &&
         reader.TryReadStruct<POE2Radar.Core.Game.Vector3>(render + 0x138, out var world))
     {
@@ -2940,7 +2940,7 @@ static nint ResolveComponentAddr(MemoryReader reader, nint entity, string name)
     return 0;
 }
 
-// ── Tiles: read the terrain tile grid (GameHelper2 GetTgtFileData) — each tile's TgtPath →
+// ── Tiles: read the terrain tile grid (upstream reference GetTgtFileData) — each tile's TgtPath →
 // grid positions. Shows what static tile-based landmarks exist (boss arenas, special rooms,
 // waypoints) and whether a per-tile semantic "detail name" is reachable. TerrainStruct @
 // AreaInstance+0x8B8 (0.5.4; was 0x8A0): TotalTiles@+0x18, TileDetailsPtr StdVector@+0x28
@@ -4130,7 +4130,7 @@ static void DumpInts(MemoryReader reader, nint addr, int span, string label)
 }
 
 // ── Monolith: validate the device→station chain that exposes hole count N + anchor rune ───────────
-// Ports GameHelper RunecraftHelper's MonolithRewards resolution to confirm the offsets live on OUR
+// Ports upstream reference RunecraftHelper's MonolithRewards resolution to confirm the offsets live on OUR
 // patch. For each Expedition2Encounter device: device → StateMachine → listener vec (SM+0x20) →
 // station = *(node) − 0x98 (verified *(station+0x10)==device). Then station+0x38 = N (hole count),
 // station+0x28 = anchor rune row ptr, station+0x3c = anchor hole index, and the anchor rune index =
@@ -4302,7 +4302,7 @@ static System.Numerics.Vector2 EntityGrid(MemoryReader reader, nint entity)
 }
 
 // ── Runeforge / "Runeshape Combinations" reward panel probe ─────────────────────────────────────
-// Validates (against the LIVE patch, with the panel OPEN) the port of GameHelper's RuneforgeHelper:
+// Validates (against the LIVE patch, with the panel OPEN) the port of upstream reference's RuneforgeHelper:
 //   1) resolve the recipes panel by a UI-FLAGS-FINGERPRINT walk with backtracking from GameUi
 //      (= Ptr(InGameState + UiRoot 0x2F0), the UiRootStruct the game treats as a UiElement). Child
 //      indices drift across restarts/patches but each element's Flags "role" bits are stable — so we
@@ -4313,7 +4313,7 @@ static System.Numerics.Vector2 EntityGrid(MemoryReader reader, nint entity)
 //      can be ported with confidence. Run with the Runeshape Combinations panel OPEN.
 static int RunRuneforge(ProcessHandle process, MemoryReader reader)
 {
-    // Flag-fingerprint chain (GameHelper RuneforgeHelper, PoE2 0.5.x): window-container (gate, step 0)
+    // Flag-fingerprint chain (upstream reference RuneforgeHelper, PoE2 0.5.x): window-container (gate, step 0)
     // → … → recipes-container. Match (flags & ~visibleBit); see RfWalk.
     uint[] fps = { 0x00462EF1, 0x00502EF3, 0x00502EF7, 0x00542EF1, 0x00502EF1 };
     const uint UiVisibleMask = 1u << Poe2.UiElement.FlagVisibleBit; // 0x800
@@ -6268,8 +6268,8 @@ static int AtlasDiagSample(ProcessHandle process, MemoryReader reader, Poe2Atlas
     return chained;
 }
 
-// ── Atlas GRAPH probe: validate the GameHelper2-sourced node GRID COORDINATES + CONNECTION GRAPH ──
-// (resources/GameHelper2-main .../ImportantUiElements.cs). These are the two structures POE2Radar
+// ── Atlas GRAPH probe: validate the upstream reference-sourced node GRID COORDINATES + CONNECTION GRAPH ──
+// (resources/upstream reference-main .../ImportantUiElements.cs). These are the two structures POE2Radar
 // currently LACKS — they're what enables node-to-node atlas pathfinding ("route from here to that map
 // in the fewest hops"). GH2 reads: grid pos @ nodeElem+0x320 (StdTuple2D<int>); connection edges @
 // atlasPanel+0x5A8 (StdVector of {int unknown; Tuple2D<int> src; Tuple2D<int> dst}); and a node-DATA
@@ -6280,7 +6280,7 @@ static int RunAtlasGraph(ProcessHandle process, MemoryReader reader)
 {
     var (_, igs, _, _) = ResolveChain(process, reader);
     if (igs == 0) { Console.Error.WriteLine("no chain (in game?)."); return 1; }
-    Console.WriteLine("ATLAS GRAPH PROBE — grid coords + connection graph (GameHelper2 structures)\n=========================================================================");
+    Console.WriteLine("ATLAS GRAPH PROBE — grid coords + connection graph (upstream reference structures)\n=========================================================================");
 
     var (vt, canvas, nodes) = FindAtlasNodeClass(reader, igs);
     if (vt == 0 || nodes.Count < 50) { Console.Error.WriteLine($"FAIL: atlas-node class not found ({nodes.Count} instances). Open the Atlas MAP view, then re-run."); return 1; }
@@ -7465,11 +7465,11 @@ static int RunChainProbe(ProcessHandle process, MemoryReader reader)
 //     2. Resolve the FileRoot heap address.
 //     3. Walk its 16-bucket hashtable to enumerate loaded FileInfoValueStruct paths.
 //
-// ARCHITECTURE (GameHelper2 source)
+// ARCHITECTURE (upstream reference source)
 //   FileRoot → array of 16 LoadedFilesRootObject buckets, each an MS-STL unordered_map.
 //   Each hashtable node: node+0x00=Useless0, node+0x08=FilesPointer, node+0x10=Useless1.
 //   FilesPointer → FileInfoValueStruct { +0x08 StdWString Name; +0x40 int AreaChangeCount }.
-//   GameHelper2 filters to paths where AreaChangeCount == <area counter>. POE2GPS has no
+
 //   such counter (only AreaHash at AreaInstance+0x11C). The probe therefore PRINTS the
 //   +0x40 value per node so we can identify the discriminator from live data.
 //
@@ -7571,7 +7571,7 @@ static int RunPreload(ProcessHandle process, MemoryReader reader)
         // Hypothesis: each bucket is a StdVector { nint First, nint Last, nint End } (24 bytes).
         // We also try stride=8 and stride=16 in case our hypothesis is off.
         Console.WriteLine();
-        Console.WriteLine("  Walking 16-bucket array (GameHelper2 layout):");
+        Console.WriteLine("  Walking 16-bucket array (upstream reference layout):");
 
         var candidatePaths = new List<(string Path, int AreaCount)>();
 
@@ -7616,7 +7616,7 @@ static int RunPreload(ProcessHandle process, MemoryReader reader)
         Console.WriteLine();
         Console.WriteLine("AOB resolved OK but walk produced no asset strings.");
         Console.WriteLine("See hex dumps above to adjust struct layout (bucket stride / node offsets).");
-        Console.WriteLine("Next step: compare FileRoot hex dump qwords to expected GameHelper2 shapes.");
+        Console.WriteLine("Next step: compare FileRoot hex dump qwords to expected upstream reference shapes.");
         return 0;
     }
 
@@ -7686,7 +7686,7 @@ static int RunPreload(ProcessHandle process, MemoryReader reader)
 static List<(string Path, int AreaCount)> TryWalkFileRootBuckets(
     MemoryReader reader, nint fileRoot, int bucketStride)
 {
-    // FileRoot layout (GameHelper2): TotalCount = 0x10 (16 buckets).
+    // FileRoot layout (upstream reference): TotalCount = 0x10 (16 buckets).
     // Hypothesis: the bucket array starts at fileRoot+0x00 with each bucket being a
     // StdVector { nint First, nint Last, nint End } = 24 bytes (= stride 24).
     // Each node in the vector: { +0x00 Useless0, +0x08 FilesPointer, +0x10 Useless1 }.
@@ -7978,7 +7978,7 @@ static int RunDump(MemoryReader reader, nint addr, int len)
 //     4. In --watch mode: polls every --interval ms and prints the full resolved buff list so
 //        you can observe buffs appearing/disappearing in real time (apply/remove a flask to validate).
 //
-// ARCHITECTURE (GameHelper2 Buffs, PoE2 lineage)
+// ARCHITECTURE (upstream reference Buffs, PoE2 lineage)
 //   Buffs component (component name "Buffs") carries a std::vector of BuffEntry objects.
 //   Each BuffEntry is typically 0x28..0x38 bytes; entry+0x00 is a pointer to a BuffDefinition row
 //   whose first qword → UTF-16 buff id (e.g. "flask_effect_life", "shrine_buff_damage").
