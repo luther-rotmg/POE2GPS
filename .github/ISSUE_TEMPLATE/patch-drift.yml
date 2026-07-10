@@ -1,0 +1,83 @@
+name: "Patch drift report"
+description: "A game patch shifted memory offsets and something no longer reads right."
+title: "[drift] "
+labels: ["patch-drift", "bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        POE2GPS is a strictly read-only overlay, so game patches sometimes shift the memory
+        offsets it reads and something starts rendering wrong (HP bar flat-lines, atlas
+        goes blank, area name shows garbage, etc). This template collects the specific
+        info the maintainer needs to publish a fix in the next release — usually within a
+        day or two.
+
+        **Before filing:** POE2GPS self-heals vitals offsets on startup and prints a
+        `Life ... auto-relocated 0x{old}→0x{new}` line to the log when it does. If you see
+        that line, the app already fixed itself and no report is needed. Only file if the
+        overlay is genuinely broken after a patch.
+  - type: input
+    id: version
+    attributes:
+      label: "POE2GPS version"
+      description: "Bottom of the overlay window, or Settings > About."
+      placeholder: "v0.23.0"
+    validations:
+      required: true
+  - type: input
+    id: patch
+    attributes:
+      label: "PoE2 client patch"
+      description: "The GGG patch number (e.g. 0.3.0). Check the game's launcher."
+      placeholder: "0.3.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: subsystem
+    attributes:
+      label: "What subsystem looks wrong?"
+      options:
+        - "Vitals (HP / Mana / ES bars)"
+        - "Terrain (walkable bitmap / /map view)"
+        - "Area code / area hash (wrong area name)"
+        - "Atlas (nodes / connections / content icons)"
+        - "UI-tree (dashboard reading no data)"
+        - "Monster mods / affix nameplates"
+        - "Player XP / Session HUD"
+        - "Landmarks / entity list"
+        - "Other (describe below)"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: "What's happening?"
+      description: "What do you see in the overlay? What did you expect to see instead?"
+    validations:
+      required: true
+  - type: textarea
+    id: healer
+    attributes:
+      label: "Log output — the healer lines"
+      description: |
+        Open `%APPDATA%\POE2GPS\logs\` (or run `%APPDATA%\poe2gps\logs\` in Explorer), grab
+        the most recent log file, and paste any lines containing `drifted`, `auto-relocated`,
+        `pattern`, or `AOB`. Paste as-is — no need to redact character names, POE2GPS never
+        logs those.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: repro
+    attributes:
+      label: "Minimal repro"
+      description: "What zone / class / action reproduces it? Anything specific to when it appears vs works."
+    validations:
+      required: false
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: "Consent"
+      options:
+        - label: "This report contains no account credentials, character name, or private info I want kept out of a public issue."
+          required: true
