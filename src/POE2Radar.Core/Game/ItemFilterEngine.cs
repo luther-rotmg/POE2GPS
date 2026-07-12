@@ -161,4 +161,116 @@ public sealed class ItemFilterEngine
     }
 
     private sealed record FilterFile([property: JsonPropertyName("filters")] IReadOnlyList<FilterRule> Filters);
+
+    // ── v0.31 Prospector — Match algorithm (T6) ─────────────────────────────────────────────────────
+
+    /// <summary>One matched filter with the reason string for logging / debugging.</summary>
+    public sealed record MatchedFilter(FilterRule Rule, string Reason);
+
+    /// <summary>Return all filters that match the item's implicit + explicit affix lists, sorted by
+    /// <see cref="FilterRule.Priority"/> DESC (ties broken by list index). Empty = no match.
+    /// The optional <paramref name="translator"/> parameter enables stat-id routing via
+    /// <see cref="ItemModTranslator.StatIdsFor"/>; when null, requirement.StatId is treated as a
+    /// case-insensitive substring probe on <see cref="Poe2Live.RawAffix.ModId"/>. Scope + maxTier
+    /// constraints are best-effort — they PASS when the resolver info isn't available (fail-safe).</summary>
+    public IReadOnlyList<MatchedFilter> Match(
+        IReadOnlyList<Poe2Live.RawAffix> implicits,
+        IReadOnlyList<Poe2Live.RawAffix> explicits,
+        ItemModTranslator? translator = null)
+    {
+        FilterRule[] snapshot;
+        lock (_gate) snapshot = _rules.ToArray();
+
+        var matched = new List<MatchedFilter>();
+        for (var i = 0; i < snapshot.Length; i++)
+        {
+            var rule = snapshot[i];
+            if (!rule.Enabled) continue;
+            if (rule.Requirements is not { Count: > 0 }) continue;   // empty AND-group never matches
+            if (RuleMatches(rule, implicits, explicits, translator, out var reason))
+                matched.Add(new MatchedFilter(rule, reason));
+        }
+        matched.Sort((a, b) => b.Rule.Priority.CompareTo(a.Rule.Priority));
+        return matched;
+    }
+
+    private static bool RuleMatches(
+        FilterRule rule,
+        IReadOnlyList<Poe2Live.RawAffix> implicits,
+        IReadOnlyList<Poe2Live.RawAffix> explicits,
+        ItemModTranslator? translator,
+        out string reason)
+    {
+        var passed = 0;
+        foreach (var req in rule.Requirements)
+        {
+            if (!RequirementSatisfied(req, implicits, explicits, translator))
+            {
+                reason = $"failed req {passed + 1}/{rule.Requirements.Count} ({req.StatId} {req.Op} {req.Value})";
+                return false;
+            }
+            passed++;
+        }
+        reason = $"passed {passed}/{rule.Requirements.Count} reqs";
+        return true;
+    }
+
+    private static bool RequirementSatisfied(
+        FilterRequirement req,
+        IReadOnlyList<Poe2Live.RawAffix> implicits,
+        IReadOnlyList<Poe2Live.RawAffix> explicits,
+        ItemModTranslator? translator)
+    {
+        // Scope: "implicit" gates against implicit list; "prefix"/"suffix" both target the explicit
+        // list (source of the mod's slot isn't distinguishable at this layer for MVP — treat both
+        // as "explicit"). Empty/null scope = both lists searched.
+        var scope = req.Scope;
+        bool wantImplicit = scope is null || scope.Any(s => string.Equals(s, "implicit", StringComparison.OrdinalIgnoreCase));
+        bool wantExplicit = scope is null
+            || scope.Any(s => string.Equals(s, "prefix", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(s, "suffix", StringComparison.OrdinalIgnoreCase)
+                           || string.Equals(s, "explicit", StringComparison.OrdinalIgnoreCase));
+
+        if (wantImplicit)
+            foreach (var aff in implicits)
+                if (MatchesStat(aff, req, translator))
+                    foreach (var v in aff.Values ?? (IReadOnlyList<int>)Array.Empty<int>())
+                        if (OpMatches(req, v)) return true;
+
+        if (wantExplicit)
+            foreach (var aff in explicits)
+                if (MatchesStat(aff, req, translator))
+                    foreach (var v in aff.Values ?? (IReadOnlyList<int>)Array.Empty<int>())
+                        if (OpMatches(req, v)) return true;
+
+        return false;
+    }
+
+    private static bool MatchesStat(Poe2Live.RawAffix aff, FilterRequirement req, ItemModTranslator? translator)
+    {
+        if (translator is null)
+        {
+            // Fallback: modId substring match on StatId. Test-friendly + tolerates translator not
+            // being wired at engine call sites (e.g. renderer tests, headless tools).
+            return aff.ModId?.Contains(req.StatId, StringComparison.OrdinalIgnoreCase) == true;
+        }
+        var statIds = translator.StatIdsFor(aff.ModId);
+        if (statIds is null || statIds.Length == 0)
+        {
+            // Translator has no mapping for this mod id — fall back to substring to stay useful.
+            return aff.ModId?.Contains(req.StatId, StringComparison.OrdinalIgnoreCase) == true;
+        }
+        foreach (var sid in statIds)
+            if (string.Equals(sid, req.StatId, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    private static bool OpMatches(FilterRequirement req, double v) => req.Op switch
+    {
+        ">=" => v >= req.Value,
+        "<=" => v <= req.Value,
+        "==" => Math.Abs(v - req.Value) < 1e-9,
+        "between" => v >= req.Value && v <= (req.ValueMax ?? req.Value),
+        _ => false,
+    };
 }
