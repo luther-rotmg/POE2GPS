@@ -1511,6 +1511,7 @@ public sealed class ApiServer : IDisposable
         audioToneObjective       = _settings.AudioToneObjective,
         audioAlertMechanic       = _settings.AudioAlertMechanic,
         audioToneMechanic        = _settings.AudioToneMechanic,
+        webMapRevealRadiusCells  = _settings.WebMapRevealRadiusCells,
         firstRunSeen             = _settings.FirstRunSeen,
         // Atlas colour groups (#7): the full group list so the dashboard can render + edit them.
         atlasGroups              = _settings.AtlasGroups,
@@ -1647,6 +1648,7 @@ public sealed class ApiServer : IDisposable
                 case "audioAlertUniqueDrop" when TryBool(p.Value, out var b): _settings.AudioAlertUniqueDrop = b; applied.Add(p.Name); break;
                 case "audioAlertObjective" when TryBool(p.Value, out var b): _settings.AudioAlertObjective = b; applied.Add(p.Name); break;
                 case "audioAlertRadiusCells" when TryInt(p.Value, out var n): _settings.AudioAlertRadiusCells = Math.Clamp(n, 10, 200); applied.Add(p.Name); break;
+                case "webMapRevealRadiusCells" when TryInt(p.Value, out var n): _settings.WebMapRevealRadiusCells = Math.Clamp(n, 20, 200); applied.Add(p.Name); break;
                 case "audioAlertVolume"   when TryInt(p.Value, out var n): _settings.AudioAlertVolume = Math.Clamp(n, 0, 100); applied.Add(p.Name); break;
                 case "audioToneMonster"   when TryString(p.Value, out var s): _settings.AudioToneMonster   = s.Trim(); applied.Add(p.Name); break;
                 case "audioToneItem"      when TryString(p.Value, out var s): _settings.AudioToneItem      = s.Trim(); applied.Add(p.Name); break;

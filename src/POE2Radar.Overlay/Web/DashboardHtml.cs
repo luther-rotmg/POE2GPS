@@ -1077,6 +1077,11 @@ internal static class DashboardHtml
             </div>
             <div style="height:14px"><span class="saved" id="savedMsgKb">&#10003; saved</span></div>
           </div>
+          <div class="card" data-card="web-map">
+            <h3>Web Map</h3>
+            <div class="row"><div class="rl">Web map reveal radius (cells)<small>fog disc around player on /map &mdash; higher = more terrain visible at once</small></div>
+              <input class="numin" type="number" min="20" max="200" step="10" data-set="webMapRevealRadiusCells"></div>
+          </div>
           <div class="sec-hdr">Integrations</div>
           <div class="card collapsed" data-card="obs-overlay">
             <h3>OBS Overlay <small class="tag">&middot; browser source</small></h3>

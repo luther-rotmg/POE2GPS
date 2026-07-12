@@ -7,7 +7,7 @@
   // --------- Constants (spec §6) ---------
   const RENDER_DELAY_MS = 66.67;   // 2 * (1000/30)
   const RING_SIZE = 6;             // ~200 ms history at 30 Hz
-  const REVEAL_RADIUS_CELLS = 24;
+  let REVEAL_RADIUS_CELLS = 60;
   const COS = 0.780430;
   const SIN = 0.625243;
   const OFFSET_EMA_ALPHA = 0.2;
@@ -689,6 +689,19 @@
     loadAtlasIcons().catch(() => {}); // best-effort; empty bundle in v0.20.0 RC1
     openStream();
     state.rafId = requestAnimationFrame(frame);
+    
+    // Fetch settings and update REVEAL_RADIUS_CELLS
+    fetch('/api/settings')
+      .then(response => response.json())
+      .then(s => {
+        if (typeof s.webMapRevealRadiusCells === 'number' && s.webMapRevealRadiusCells > 0) {
+          REVEAL_RADIUS_CELLS = s.webMapRevealRadiusCells;
+        }
+      })
+      .catch(() => {
+        // Use default value if settings fetch fails
+        REVEAL_RADIUS_CELLS = 60;
+      });
   });
 
   function toggleGpsMode() {
