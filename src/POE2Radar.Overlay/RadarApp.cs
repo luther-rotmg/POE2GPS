@@ -55,6 +55,7 @@ public sealed class RadarApp : IDisposable
     private readonly RadarSettings _settings;
     private readonly HiddenEntities _hidden;
     private readonly WatchedEntities _watched;
+    private readonly ItemFilterEngine _itemFilterEngine;   // v0.31 Prospector: user filter engine for item highlights
     private readonly LandmarkPatterns _landmarkPatterns;
     private readonly DisplayRules _displayRules;
     // Cached delegates for the per-frame RenderContext, so we don't allocate a method-group delegate +
@@ -228,7 +229,7 @@ public sealed class RadarApp : IDisposable
     // live world position is re-read every RENDER frame into _itemFrame so the label tracks smoothly
     // (dropped items bob, so a 30 Hz-sampled position aliases/jitters when projected at render rate —
     // same reason HP bars re-read per frame).
-    private readonly record struct ItemLabelSpec(nint Render, string Name, string Value, bool Highlight, bool ShowName);
+    private readonly record struct ItemLabelSpec(nint Render, string Name, string Value, bool Highlight, bool ShowName, uint? BorderColor = null);
     private readonly List<ItemLabel> _itemFrame = new();   // render-thread scratch (rebuilt per frame)
     private readonly record struct AffixNameplateSpec(nint Render, AffixLine[] Lines);
     private readonly List<AffixNameplateTarget> _affixFrame = new();   // render-thread scratch (rebuilt per frame)
@@ -518,6 +519,8 @@ public sealed class RadarApp : IDisposable
         _window.OnClientClick = OnOverlayClick;
         _hidden = new HiddenEntities(Path.Combine(ConfigDir, "hidden_entities.json"));
         _watched = new WatchedEntities(Path.Combine(ConfigDir, "watched_entities.json"));
+        // v0.31 Prospector: item filter engine — highlight items matching user's affix filters.
+        _itemFilterEngine = new ItemFilterEngine(Path.Combine(ConfigDir, "item_filters.json"));
         _campaign = new CampaignObjectives(Path.Combine(ConfigDir, "campaign_objectives.json"));
         _landmarkPatterns = new LandmarkPatterns(Path.Combine(ConfigDir, "landmark_patterns.json"));
         // v0.30 Instinct: persistent per-character boss-wipe log (survives across sessions).
@@ -842,6 +845,17 @@ public sealed class RadarApp : IDisposable
                                      total         = _wipeLog.TotalFor(name),
                                      allCharacters = _wipeLog.Characters(),
                                  };
+                             },
+                             // v0.31 Prospector: expose the item-filter engine + a match counter to the dashboard.
+                             itemFilters: _itemFilterEngine,
+                             itemFilterMatchesProvider: () =>
+                             {
+                                 var groundCount = 0;
+                                 foreach (var e in _entities)
+                                     if (e.ItemAffixes is { Count: > 0 } affs
+                                         && _itemFilterEngine.Match(Array.Empty<Poe2Live.RawAffix>(), affs).Count > 0)
+                                         groundCount++;
+                                 return new { ground = groundCount, equipped = 0, inventory = 0 };
                              });
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
@@ -1508,7 +1522,7 @@ public sealed class RadarApp : IDisposable
             foreach (var s in snap.ItemLabels)
             {
                 if (!_liveRender.TryLiveBarAt(s.Render, 0, out var w, out _, out _)) continue;
-                _itemFrame.Add(new ItemLabel(w, s.Name, s.Value, s.Highlight, s.ShowName));
+                _itemFrame.Add(new ItemLabel(w, s.Name, s.Value, s.Highlight, s.ShowName, s.BorderColor));
             }
 
             // Affix nameplates: re-read each mob's live world position THIS frame (same HP-bar pattern),
@@ -2344,7 +2358,18 @@ public sealed class RadarApp : IDisposable
         {
             if (e.ItemName is not { Length: > 0 } name) continue;   // name comes from game memory only
             if (!_live.TryBarComponents(e.Address, out var render, out _)) continue;
-            labels.Add(new ItemLabelSpec(render, name, "", false, ShowName: true));
+            // v0.31 Prospector: run the item-filter engine over this drop's affixes. If any filter
+            // matches, its color becomes the label border. Priority-sorted; winner wins. Empty
+            // affix list (unresolved this tick) → no match, plain label.
+            uint? borderColor = null;
+            var affixes = e.ItemAffixes;
+            if (affixes is { Count: > 0 })
+            {
+                var matches = _itemFilterEngine.Match(Array.Empty<Poe2Live.RawAffix>(), affixes);
+                if (matches is { Count: > 0 })
+                    borderColor = PackColor(matches[0].Rule.Color);
+            }
+            labels.Add(new ItemLabelSpec(render, name, "", false, ShowName: true, BorderColor: borderColor));
         }
         return labels;
     }

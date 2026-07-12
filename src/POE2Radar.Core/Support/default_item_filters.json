@@ -1,0 +1,89 @@
+{
+  "filters": [
+    {
+      "id": "es-jeweler",
+      "name": "ES Jeweler",
+      "enabled": false,
+      "color": "#FF8800",
+      "priority": 100,
+      "requirements": [
+        { "statId": "local_energy_shield_pct", "op": ">=", "value": 10 },
+        { "statId": "faster_start_of_es_recharge_pct", "op": ">=", "value": 5 }
+      ]
+    },
+    {
+      "id": "life-chest",
+      "name": "Life Chest Baseline",
+      "enabled": false,
+      "color": "#FF3355",
+      "priority": 100,
+      "requirements": [
+        { "statId": "base_maximum_life", "op": ">=", "value": 60 }
+      ]
+    },
+    {
+      "id": "rare-amulet",
+      "name": "Rare Amulet Baseline",
+      "enabled": false,
+      "color": "#FFCC33",
+      "priority": 100,
+      "requirements": [
+        { "statId": "base_fire_damage_resistance_pct", "op": ">=", "value": 15 },
+        { "statId": "base_cold_damage_resistance_pct", "op": ">=", "value": 15 },
+        { "statId": "base_lightning_damage_resistance_pct", "op": ">=", "value": 15 }
+      ]
+    },
+    {
+      "id": "cast-speed-wand",
+      "name": "Cast Speed Wand",
+      "enabled": false,
+      "color": "#66AACC",
+      "priority": 100,
+      "requirements": [
+        { "statId": "base_cast_speed_+%", "op": ">=", "value": 8 }
+      ]
+    },
+    {
+      "id": "resist-ring",
+      "name": "Resist Ring",
+      "enabled": false,
+      "color": "#66FF66",
+      "priority": 100,
+      "requirements": [
+        { "statId": "base_fire_damage_resistance_pct", "op": ">=", "value": 25 },
+        { "statId": "base_cold_damage_resistance_pct", "op": ">=", "value": 25 }
+      ]
+    },
+    {
+      "id": "faster-attacks-weapon",
+      "name": "Faster Attacks Weapon",
+      "enabled": false,
+      "color": "#EE8500",
+      "priority": 100,
+      "requirements": [
+        { "statId": "attack_speed_+%", "op": ">=", "value": 8 }
+      ]
+    },
+    {
+      "id": "es-life-chest",
+      "name": "ES/Life Chest",
+      "enabled": false,
+      "color": "#A64DFF",
+      "priority": 100,
+      "requirements": [
+        { "statId": "local_energy_shield_pct", "op": ">=", "value": 8 },
+        { "statId": "base_maximum_life", "op": ">=", "value": 40 }
+      ]
+    },
+    {
+      "id": "movement-boots",
+      "name": "Movement Speed Boots",
+      "enabled": false,
+      "color": "#26E6D9",
+      "priority": 100,
+      "requirements": [
+        { "statId": "base_movement_velocity_+%", "op": ">=", "value": 15 }
+      ]
+    }
+  ]
+}

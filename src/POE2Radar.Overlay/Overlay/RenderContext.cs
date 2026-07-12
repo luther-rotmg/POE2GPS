@@ -52,7 +52,7 @@ public readonly record struct BuffNameplateTarget(Vector3 World, POE2Radar.Core.
 /// <summary><see cref="ShowName"/> = draw the resolved item NAME above the value (with a backing panel) —
 /// used for UNIDENTIFIED uniques, whose name the game hides. When false (identified uniques, runes,
 /// essences, currency…) only the value is drawn in a compact chip. <see cref="Highlight"/> adds a border.</summary>
-public readonly record struct ItemLabel(Vector3 World, string Name, string Value, bool Highlight, bool ShowName);
+public readonly record struct ItemLabel(Vector3 World, string Name, string Value, bool Highlight, bool ShowName, uint? BorderColor = null);
 
 /// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the canvas-space CENTER of
 /// the node (RelativePos top-left + half node dimension), via <c>AtlasGeometry.AtlasCentre</c>; the

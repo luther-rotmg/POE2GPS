@@ -3,6 +3,39 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.31.0] — 2026-07-12 "Prospector"
+
+### Added — 🎯 **Item Filter engine** *(highlight items matching your desired affix combos)*
+
+- 🎯 **New "Item Filters" dashboard tab** — card grid where each card is a filter with a name, border color, priority, enabled toggle, and a list of AND-linked requirements. Ships with 8 curated starter presets (ES Jeweler, Life Chest Baseline, Rare Amulet Baseline, Cast Speed Wand, Resist Ring, Faster Attacks Weapon, ES/Life Chest, Movement Speed Boots) disabled by default. Toggle any preset on, or click "+ New filter" to author your own.
+- ✨ **Full stat-key DSL** — each requirement is a `statId + op (>=, <=, ==, between) + value` with optional scope (`prefix` / `suffix` / `implicit`) and optional `maxTier`. Match algorithm returns filters priority-sorted; the winning filter's color is drawn as the border in-game. Storage: `config/item_filters.json`. Full JSON round-trip via `/api/item-filters`.
+- 💎 **Highlight on ground items** — dropped items whose affixes match an enabled filter now get a colored border on the ground label. Same shape as the existing unique-price highlight, per-filter color. When both apply, filter color wins over the legacy gold.
+- 📊 **Live match counters** — each filter card shows how many items match on the ground right now. Equipped + inventory + stash counters land in v0.32.
+- 🛡 **Restore starter presets** button — additively re-adds any preset id you've deleted (never removes your own filters).
+
+### Fixed — 🗺 **/map view improvements**
+
+- 🗺 **Fog reveal radius bumped 24 → 60 cells** (matches `AudioAlertRadiusCells` so both proximity systems agree). Community feedback: previous 24 was too tight in atlas + open zones. Also settings-configurable via `WebMapRevealRadiusCells` (Settings → Advanced) with range 20-200 — tune without a recompile.
+- 🔍 **/map zoom with mousewheel + `+`/`-` keys.** Cursor-anchored zoom on the wheel (pixel under cursor stays put); center-anchored on keyboard. Range `0.5x`–`32x`. Persists across page reload via `localStorage`. HUD readout shows the current zoom level as `z<N.N>`.
+
+### Under the hood
+
+- New `ItemFilterEngine` in `POE2Radar.Core.Game` — load-on-construct + save-on-mutate + generation counter, mirrors the `DisplayRules` pattern. Storage `config/item_filters.json`. Match algorithm is thread-safe and allocation-friendly.
+- New `default_item_filters.json` embedded resource — the shipped preset catalog. First-run copy materializes the seed to disk with `enabled: false`.
+- New `/api/item-filters` GET/POST + `/api/item-filters/restore-presets` + `/api/item-filters/matches` endpoints.
+- Extends `Poe2Live.ReadIdentityFromItem` to populate `EntityDot.ItemAffixes` on ground drops (respects the existing `_itemReadBudget` "read once per drop" contract). The affix data was already read for equipped items via the God-Roll Detector — this extension routes the same reader to ground drops.
+- `ItemLabel.BorderColor` per-label field: `DrawItemLabels` honors it, replacing the hardcoded gold ColItemHi when set.
+- 20 new xUnit tests (14 for the Match algorithm + 6 for storage/load/save round-trip + malformed tolerance + preset seed).
+
+### Deferred to v0.32 "Panorama"
+
+- Highlight on **character equipment slots** — data already flows (God-Roll Detector reads equipped items every 30 ticks); needs a one-shot live probe of the CharacterPanel UiRoot child index + slot fingerprints. Batched with v0.32's other panel walkers to share the probe session.
+- Highlight on **player inventory panel** — server-side reads already ship; needs UI-panel walker + per-cell screen-rect projection.
+- Highlight on **stash grid tabs** (regular / quad / jewel / map / relic) — InventoryStruct layout reuses; needs stash-panel walker + tab-switch detection.
+- Specialty stash tabs (currency / fragment / essence / delirium / expedition) — each own bead in v0.33+.
+
+---
+
 ## [0.30.0] — 2026-07-10 "Instinct"
 
 ### Added — 🪦 **Per-character boss wipe log** *(persistent · cross-session · discoverable)*

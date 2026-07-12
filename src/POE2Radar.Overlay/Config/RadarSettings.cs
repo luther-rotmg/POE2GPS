@@ -112,6 +112,12 @@ public sealed class RadarSettings
     // log file lives alongside settings and can be deleted at any time.
     public bool TrackBossWipes { get; set; } = true;
 
+    /// <summary>v0.31 Prospector: reveal disc radius (in terrain grid cells) around the player on
+    /// the /map view. Terrain outside this disc is masked by fog. Default 60 matches
+    /// AudioAlertRadiusCells so both proximity systems agree. Range 20-200; range clamp is
+    /// enforced client-side (map.js) not here.</summary>
+    public int WebMapRevealRadiusCells { get; set; } = 60;
+
     /// <summary>Resolve the effective language key against the shipped translation set. When
     /// <see cref="Language"/> is empty, maps the Windows system locale (via
     /// <see cref="System.Globalization.CultureInfo.CurrentCulture"/>) to one of the shipped keys;

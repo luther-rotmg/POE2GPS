@@ -672,7 +672,9 @@ public sealed class OverlayRenderer : IDisposable
                 const float halfH = 19f;
                 var panel = new Vortice.RawRectF(sx - halfW, sy - halfH, sx + halfW, sy + halfH);
                 rt.FillRectangle(panel, _bPanel!);
-                if (it.Highlight) { _bStyle!.Color = ColItemHi; rt.DrawRectangle(panel, _bStyle, 2.5f); }
+                // v0.31 Prospector: filter-matched border wins over the legacy unique-price gold.
+                if (it.BorderColor is uint bc1) { _bStyle!.Color = ColorFromU(bc1); rt.DrawRectangle(panel, _bStyle, 2.5f); }
+                else if (it.Highlight)         { _bStyle!.Color = ColItemHi;       rt.DrawRectangle(panel, _bStyle, 2.5f); }
                 _bStyle!.Color = it.Highlight ? ColItemHi : ColItemText;
                 rt.DrawText(text, _tf!, new Rect(sx - halfW + 4f, sy - halfH + 2f, sx + halfW - 2f, sy + halfH - 1f),
                     _bStyle, DrawTextOptions.Clip);
@@ -685,7 +687,9 @@ public sealed class OverlayRenderer : IDisposable
                 const float halfH = 11f;
                 var panel = new Vortice.RawRectF(sx - halfW, sy - halfH, sx + halfW, sy + halfH);
                 rt.FillRectangle(panel, _bPanel!);
-                if (it.Highlight) { _bStyle!.Color = ColItemHi; rt.DrawRectangle(panel, _bStyle, 2f); }
+                // v0.31 Prospector: filter-matched border wins over the legacy unique-price gold.
+                if (it.BorderColor is uint bc2) { _bStyle!.Color = ColorFromU(bc2); rt.DrawRectangle(panel, _bStyle, 2f); }
+                else if (it.Highlight)         { _bStyle!.Color = ColItemHi;       rt.DrawRectangle(panel, _bStyle, 2f); }
                 _bStyle!.Color = it.Highlight ? ColItemHi : ColItemText;
                 rt.DrawText(it.Value, _tf!, new Rect(sx - halfW + 3f, sy - halfH + 1f, sx + halfW - 2f, sy + halfH),
                     _bStyle, DrawTextOptions.Clip);
