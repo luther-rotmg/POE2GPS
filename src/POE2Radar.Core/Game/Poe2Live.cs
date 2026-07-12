@@ -61,7 +61,7 @@ public sealed class Poe2Live
     private readonly Dictionary<nint, string> _buffId = new();     // StatusEffect addr → id (static per instance)
 
     private readonly Dictionary<nint, string[]> _mods = new();     // entity → affix mod ids (static per spawn; cached; empty = no mods)
-    private readonly Dictionary<nint, (Rarity rarity, string? art, bool identified, string? name)> _itemIdent = new(); // WorldItem entity → dropped-item identity (static; cached)
+    private readonly Dictionary<nint, (Rarity rarity, string? art, bool identified, string? name, IReadOnlyList<RawAffix>? affixes)> _itemIdent = new(); // WorldItem entity → dropped-item identity (static; cached)
     private readonly Dictionary<nint, uint> _idAt = new();         // entity address → last-seen std::map key id (recycle guard)
     // Bounds the number of NEW (uncached) monster mod reads per Entities() pass so walking into a large
     // pack can't stall the world tick. Cached monsters cost nothing; new ones fill over a few ticks.
@@ -144,7 +144,8 @@ public sealed class Poe2Live
     public readonly record struct EntityDot(
         uint Id, nint Address, System.Numerics.Vector2 Grid, Vector3 World, EntityCategory Category, string Metadata,
         int HpCur, int HpMax, bool Poi, byte Reaction, Rarity Rarity, bool Opened, bool IconComplete = false,
-        IReadOnlyList<string>? Mods = null, string? ItemArt = null, bool ItemIdentified = true, string? ItemName = null)
+        IReadOnlyList<string>? Mods = null, string? ItemArt = null, bool ItemIdentified = true, string? ItemName = null,
+        IReadOnlyList<RawAffix>? ItemAffixes = null)
     {
         // ItemName (positional): a dropped item's rendered BASE-TYPE display name (Base +0x10 → +0x30),
         // e.g. "Greater Orb of Augmentation". The price key for NON-uniques (currency/runes/essences),
@@ -561,12 +562,25 @@ public sealed class Poe2Live
             // basename + rarity, read once off the inner item entity. Rarity then reflects the item.
             string? itemArt = null, itemName = null;
             var itemIdentified = true;
+            IReadOnlyList<RawAffix>? itemAffixes = null;
             if (EnableItemIdentityReads && cat == EntityCategory.Other && meta.Contains("WorldItem", StringComparison.Ordinal))
-                (rarity, itemArt, itemIdentified, itemName) = ReadItemIdentity(entity);
+            {
+                var itemIdentity = ReadItemIdentity(entity);
+                var (rarityTemp, itemArtTemp, itemIdentifiedTemp, itemNameTemp) = itemIdentity;
+                rarity = rarityTemp;
+                itemArt = itemArtTemp;
+                itemIdentified = itemIdentifiedTemp;
+                itemName = itemNameTemp;
+                // Get affixes from the cache
+                if (_itemIdent.TryGetValue(entity, out var cachedIdentity))
+                {
+                    itemAffixes = cachedIdentity.affixes;
+                }
+            }
 
             var (poi, iconComplete) = ReadIcon(entity);
             dots.Add(new EntityDot(id, entity, g, wv, cat, meta, hpCur, hpMax,
-                poi, ReadReaction(entity), rarity, opened, iconComplete, mods, itemArt, itemIdentified, itemName));
+                poi, ReadReaction(entity), rarity, opened, iconComplete, mods, itemArt, itemIdentified, itemName, itemAffixes));
         }
         return dots;
     }
@@ -795,23 +809,23 @@ public sealed class Poe2Live
     /// </summary>
     private (Rarity, string?, bool, string?) ReadItemIdentity(nint entity)
     {
-        if (_itemIdent.TryGetValue(entity, out var cached)) return cached;
+        if (_itemIdent.TryGetValue(entity, out var cached)) return (cached.rarity, cached.art, cached.identified, cached.name);
         if (_itemReadBudget <= 0) return (Rarity.NonMonster, null, true, null);   // out of budget — retry next tick (don't cache)
 
         var wi = ResolveComponent(entity, "WorldItem");
         var item = wi == 0 ? 0 : Ptr(wi + Poe2.WorldItemComponent.ItemEntity);
-        if (item == 0) { var v = (Rarity.NonMonster, (string?)null, true, (string?)null); _itemIdent[entity] = v; return v; }
+        if (item == 0) { var v = (Rarity.NonMonster, (string?)null, true, (string?)null, (IReadOnlyList<RawAffix>?)null); _itemIdent[entity] = v; return (v.Item1, v.Item2, v.Item3, v.Item4); }
         _itemReadBudget--;
 
         var result0 = ReadIdentityFromItem(item);
         _itemIdent[entity] = result0;
-        return result0;
+        return (result0.rarity, result0.art, result0.identified, result0.name);
     }
 
     /// <summary>Read an item ENTITY's identity directly (rarity/art/identified/base-type name) — the shared
     /// core of <see cref="ReadItemIdentity"/> without the WorldItem unwrap or per-entity cache, for callers
     /// (ritual shop, inventory) that already hold the item entity. See the field notes inline.</summary>
-    private (Rarity, string?, bool, string?) ReadIdentityFromItem(nint item)
+    private (Rarity rarity, string? art, bool identified, string? name, IReadOnlyList<RawAffix>? affixes) ReadIdentityFromItem(nint item)
     {
         // Rarity (+0x94) + Identified (+0x90) from the item's Mods component (distinct from monster
         // ObjectMagicProperties+0x144). Identified defaults true (non-uniques / no Mods comp aren't "unID").
@@ -851,7 +865,17 @@ public sealed class Poe2Live
             if (namePtr != 0) { var s = _reader.ReadStringUtf16(namePtr, 64); if (!string.IsNullOrWhiteSpace(s)) name = s.Trim(); }
         }
 
-        return (rarity, art, identified, name);
+        // Read implicit + explicit affixes from the Mods component
+        IReadOnlyList<RawAffix>? affixes = null;
+        if (modsComp != 0)
+        {
+            var affixList = new List<RawAffix>();
+            ReadRawAffixesInto(modsComp + Poe2.ModsComponent.ImplicitMods, affixList);
+            ReadRawAffixesInto(modsComp + Poe2.ModsComponent.ExplicitMods, affixList);
+            affixes = affixList.Count > 0 ? affixList : null;
+        }
+
+        return (rarity, art, identified, name, affixes);
     }
 
     /// <summary>"Art/2DItems/Weapons/.../Uniques/Earthbound.dds" → "Earthbound" (last path segment, no
@@ -1387,7 +1411,11 @@ public sealed class Poe2Live
             var tile = Ptr(gf + (nint)(i * 8));
             var item = TileItem(tile);
             if (item == 0) continue;
-            var (rarity, art, identified, name) = ReadIdentityFromItem(item);
+            var itemIdentity = ReadIdentityFromItem(item);
+            var rarity = itemIdentity.rarity;
+            var art = itemIdentity.art;
+            var identified = itemIdentity.identified;
+            var name = itemIdentity.name;
             if (!TryUiElementRect(tile, winW, winH, out var x, out var y, out var w, out var h)) continue;
             result.Add(new RitualReward(rarity, art, name, identified, x, y, w, h));
         }
@@ -1741,7 +1769,10 @@ public sealed class Poe2Live
                     if (!ReadMetadata(item).StartsWith("Metadata/Items", StringComparison.Ordinal)) continue;
 
                     // Identity: name, rarity, identified — reuse ReadIdentityFromItem.
-                    var (rarityEnum, _, identified, name) = ReadIdentityFromItem(item);
+                    var itemIdentity = ReadIdentityFromItem(item);
+                    var rarityEnum = itemIdentity.rarity;
+                    var identified = itemIdentity.identified;
+                    var name = itemIdentity.name;
                     var rarStr = rarityEnum switch
                     {
                         Rarity.Normal => "Normal",
