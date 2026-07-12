@@ -491,6 +491,7 @@ internal static class DashboardHtml
             <button class="tab" data-tab="gear">Gear &#9733;</button>
             <button class="tab" data-tab="bosses">Bosses</button>
             <button class="tab" data-tab="waystone">Waystone</button>
+            <button class="tab" data-tab="itemfilters">Item Filters</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -1264,6 +1265,22 @@ internal static class DashboardHtml
             <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="numin" id="wsParse" style="width:auto;padding:8px 16px">Parse</button></div>
             <div id="wsResult" style="margin-top:12px"></div>
           </div>
+        </section>
+
+        <!-- v0.31 Prospector: Item Filters — user-defined highlight rules for items matching affix combos. -->
+        <section class="view" data-view="itemfilters" hidden>
+          <div class="panel-grid">
+            <div class="card" style="grid-column:1/-1">
+              <h3>🎯 Item Filters <span class="tag">&middot; highlight items matching your affix combos</span></h3>
+              <div class="row"><div class="rl hint-row">Create filters that match items by their affixes (stat + threshold). Matching items get a colored border in-game — on the <b>ground today</b>, plus <b>equipped / inventory / stash</b> as those surfaces land in v0.32. Multiple matching filters: highest priority wins.</div></div>
+              <div id="ifList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:8px"></div>
+              <div class="controls" style="margin:12px 0 0">
+                <button class="addbtn" id="ifAdd" style="width:auto;margin:0;padding:9px 16px">+ New filter</button>
+                <button class="addbtn" id="ifRestore" style="width:auto;margin:0;padding:9px 16px">Restore starter presets</button>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsgIf">&#10003; saved</span></div>
         </section>
 
         <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
@@ -3072,6 +3089,109 @@ async function loadBosses(){
   }
 }
 document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventListener('click', loadBosses));
+
+/* ── v0.31 Prospector — Item Filters tab: card grid over /api/item-filters. ───────────────────
+   Fetches the filter list + match counters + mod-name autocomplete (from ModCatalog via /api/mods)
+   on tab open. Save-on-change discipline: every mutation POSTs the whole list. Cards support
+   name/color/priority/enabled edits, add/remove requirements, and delete/duplicate. */
+let __ifData = { filters: [] };
+let __ifMatches = { ground: 0, equipped: 0, inventory: 0 };
+function ifEsc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+async function loadItemFilters(){
+  const list = document.getElementById('ifList');
+  if (!list) return;
+  try {
+    const r = await fetch('/api/item-filters'); __ifData = await r.json();
+    const m = await fetch('/api/item-filters/matches'); __ifMatches = await m.json();
+    renderItemFilters();
+  } catch { list.innerHTML = '<div class="hint-row" style="opacity:.6">Failed to load item filters.</div>'; }
+}
+function renderItemFilters(){
+  const host = document.getElementById('ifList'); if (!host) return;
+  const filters = __ifData.filters || [];
+  if (!filters.length) {
+    host.innerHTML = '<div class="hint-row" style="opacity:.7">No filters yet. Click <b>+ New filter</b> or <b>Restore starter presets</b>.</div>';
+    return;
+  }
+  const html = filters.map((f, i) => `
+    <div class="card" data-fi="${i}" style="padding:12px">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <input type="color" class="if-color" value="${ifEsc(f.color || '#FFFFFF')}" title="Border color">
+        <input class="if-name" value="${ifEsc(f.name || 'Untitled')}" style="flex:1;font-weight:bold" placeholder="Filter name">
+        <input class="if-priority" type="number" value="${f.priority ?? 100}" min="0" max="1000" style="width:60px" title="Priority (higher wins ties)">
+        <label class="sw" title="enabled"><input type="checkbox" class="if-enabled" ${f.enabled ? 'checked' : ''}><span class="track"></span><span class="knob"></span></label>
+        <button class="delbtn if-del" title="delete">&times;</button>
+      </div>
+      <div class="if-reqs" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px">
+        ${(f.requirements || []).map((r, ri) => `
+          <div class="if-req" data-ri="${ri}" style="display:flex;gap:4px;align-items:center;font-size:12px">
+            <input class="if-req-stat" list="modVocab" value="${ifEsc(r.statId || '')}" style="flex:1" placeholder="stat id (e.g. local_energy_shield_pct)">
+            <select class="if-req-op" style="width:70px">
+              ${['>=', '<=', '==', 'between'].map(op => `<option value="${op}"${r.op === op ? ' selected' : ''}>${op}</option>`).join('')}
+            </select>
+            <input class="if-req-val" type="number" value="${r.value ?? 0}" step="0.01" style="width:60px">
+            ${r.op === 'between' ? `<input class="if-req-valmax" type="number" value="${r.valueMax ?? 0}" step="0.01" style="width:60px">` : ''}
+            <button class="delbtn if-req-del" title="remove requirement">&times;</button>
+          </div>
+        `).join('')}
+      </div>
+      <button class="addbtn if-req-add" style="width:auto;margin:0 0 8px;padding:4px 10px;font-size:11px">+ requirement</button>
+      <div style="font-size:11px;color:var(--ink-faint)">🎯 ground: ${__ifMatches.ground || 0}${__ifMatches.equipped ? ' · equipped: ' + __ifMatches.equipped : ''}${__ifMatches.inventory ? ' · inventory: ' + __ifMatches.inventory : ''}</div>
+    </div>
+  `).join('');
+  host.innerHTML = html;
+  host.querySelectorAll('[data-fi]').forEach(card => {
+    const i = +card.dataset.fi;
+    const f = __ifData.filters[i]; if (!f) return;
+    card.querySelector('.if-color').onchange = e => { f.color = e.target.value; saveItemFilters(); };
+    card.querySelector('.if-name').onchange  = e => { f.name = e.target.value; saveItemFilters(); };
+    card.querySelector('.if-priority').onchange = e => { f.priority = parseInt(e.target.value, 10) || 0; saveItemFilters(); };
+    card.querySelector('.if-enabled').onchange = e => { f.enabled = e.target.checked; saveItemFilters(); };
+    card.querySelector('.if-del').onclick = () => {
+      if (!confirm('Delete filter "' + f.name + '"?')) return;
+      __ifData.filters.splice(i, 1); saveItemFilters(); renderItemFilters();
+    };
+    card.querySelector('.if-req-add').onclick = () => {
+      (f.requirements ||= []).push({ statId: '', op: '>=', value: 0 });
+      saveItemFilters(); renderItemFilters();
+    };
+    card.querySelectorAll('.if-req').forEach(reqEl => {
+      const ri = +reqEl.dataset.ri;
+      const req = f.requirements[ri]; if (!req) return;
+      reqEl.querySelector('.if-req-stat').onchange = e => { req.statId = e.target.value; saveItemFilters(); };
+      reqEl.querySelector('.if-req-op').onchange = e => { req.op = e.target.value; saveItemFilters(); renderItemFilters(); };
+      reqEl.querySelector('.if-req-val').onchange = e => { req.value = parseFloat(e.target.value) || 0; saveItemFilters(); };
+      const vmax = reqEl.querySelector('.if-req-valmax'); if (vmax) vmax.onchange = e => { req.valueMax = parseFloat(e.target.value) || 0; saveItemFilters(); };
+      reqEl.querySelector('.if-req-del').onclick = () => { f.requirements.splice(ri, 1); saveItemFilters(); renderItemFilters(); };
+    });
+  });
+}
+async function saveItemFilters(){
+  try {
+    await fetch('/api/item-filters', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(__ifData)
+    });
+    const m = await fetch('/api/item-filters/matches'); __ifMatches = await m.json();
+    const el = document.getElementById('savedMsgIf');
+    if (el) { el.classList.add('show'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), 1100); }
+  } catch {}
+}
+document.getElementById('ifAdd')?.addEventListener('click', () => {
+  (__ifData.filters ||= []).push({
+    id: 'user-' + Date.now(),
+    name: 'New Filter', enabled: false, color: '#FF8800', priority: 100,
+    requirements: [],
+  });
+  saveItemFilters(); renderItemFilters();
+});
+document.getElementById('ifRestore')?.addEventListener('click', async () => {
+  if (!confirm('Restore starter presets? Existing filters are kept; only missing preset ids are appended.')) return;
+  try { await fetch('/api/item-filters/restore-presets', { method: 'POST' }); } catch {}
+  loadItemFilters();
+});
+document.querySelectorAll('.tab[data-tab="itemfilters"]').forEach(t => t.addEventListener('click', loadItemFilters));
 
 /* ── Support — v0.27 (LO ask, expanded): supporters roll v2 ────────────────────────────────────
    Reads /api/supporters. Renders:
