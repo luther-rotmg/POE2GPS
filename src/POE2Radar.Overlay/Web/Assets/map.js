@@ -20,7 +20,10 @@
     ring: [],                              // { t: server ms, snap: payload }
     serverOffset: 0,                       // sample.t - performance.now(), smoothed
     currentArea: null,                     // last-seen areaHash string
-    zoom: parseInt(localStorage.getItem('zoom') || '4', 10),
+    // v0.31 Prospector: mutable float zoom + cursor-anchored pan offset (wheel/keyboard drives both).
+    zoom: Math.max(0.5, Math.min(32, parseFloat(localStorage.getItem('mapZoom') || localStorage.getItem('zoom') || '4'))),
+    panX: 0,
+    panY: 0,
     isoMode: localStorage.getItem('iso_mode') !== '0',  // default true (iso)
     gpsMode: (params.get('gps') === '1') || localStorage.getItem('gps_mode') === '1',
     lastFrameNow: 0,
@@ -355,7 +358,7 @@
     // Player at (playerX, playerY) → viewport centre. Terrain grid indexes into cvs at (px, py)
     // for that world; iso-transform centres it.
     c.save();
-    applyIsoTransform(c, cw / 2, ch / 2, state.zoom);
+    applyIsoTransform(c, cw / 2 + state.panX, ch / 2 + state.panY, state.zoom);
     c.drawImage(cvs, -playerX, -playerY);
     c.restore();
   }
@@ -399,7 +402,7 @@
     const ch = state.canvas.clientHeight;
     const s = state.zoom;
     const px = pose.player.x, py = pose.player.y;
-    const cx = cw / 2, cy = ch / 2;
+    const cx = cw / 2 + state.panX, cy = ch / 2 + state.panY;
     const halfSpan = Math.max(cw, ch) * 0.5;
     const ents = Array.from(state.entities.values());
 
@@ -466,7 +469,7 @@
     const c = state.ctx;
     const s = state.zoom;
     const px = pose.player.x, py = pose.player.y;
-    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    const cx = state.canvas.clientWidth / 2 + state.panX, cy = state.canvas.clientHeight / 2 + state.panY;
     for (const m of pose.snap.monoliths || []) {
       const [sx, sy] = worldToScreen(m.x - px, m.y - py, s);
       const dx = cx + sx, dy = cy + sy;
@@ -499,7 +502,7 @@
     const c = state.ctx;
     const s = state.zoom;
     const px = pose.player.x, py = pose.player.y;
-    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    const cx = state.canvas.clientWidth / 2 + state.panX, cy = state.canvas.clientHeight / 2 + state.panY;
     for (const lm of (state.landmarks.landmarks || state.landmarks || [])) {
       if (typeof lm.x !== 'number' || typeof lm.y !== 'number') continue;
       const [sx, sy] = worldToScreen(lm.x - px, lm.y - py, s);
@@ -526,7 +529,7 @@
     const c = state.ctx;
     const s = state.zoom;
     const px = pose.player.x, py = pose.player.y;
-    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    const cx = state.canvas.clientWidth / 2 + state.panX, cy = state.canvas.clientHeight / 2 + state.panY;
     for (const node of (state.atlas.nodes || [])) {
       const [sx, sy] = worldToScreen(node.x - px, node.y - py, s);
       const dx = cx + sx, dy = cy + sy;
@@ -542,7 +545,7 @@
 
   function drawPlayer() {
     const c = state.ctx;
-    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    const cx = state.canvas.clientWidth / 2 + state.panX, cy = state.canvas.clientHeight / 2 + state.panY;
 
     // Sample the ring for heading.
     const heading = velocityHeading();
@@ -579,7 +582,7 @@
     const c = state.ctx;
     const s = state.zoom;
     const px = pose.player.x, py = pose.player.y;
-    const cx = state.canvas.clientWidth / 2, cy = state.canvas.clientHeight / 2;
+    const cx = state.canvas.clientWidth / 2 + state.panX, cy = state.canvas.clientHeight / 2 + state.panY;
     c.save();
     c.strokeStyle = PAL.pathBlue;
     c.lineWidth = 2;
@@ -628,7 +631,7 @@
 
     if (!document.body.classList.contains('obs')) {
       const ec = state.entities.size;
-      state.hud.textContent = `${state.currentArea || '—'} · ${ec} dots · ${state.isoMode ? 'iso' : 'top'} · z${state.zoom} · ${currentFps()} fps`;
+      state.hud.textContent = `${state.currentArea || '—'} · ${ec} dots · ${state.isoMode ? 'iso' : 'top'} · z${state.zoom.toFixed(1)} · ${currentFps()} fps`;
     }
   }
 
@@ -712,11 +715,42 @@
 
   const gpsBtn = document.getElementById('gpsToggle');
   if (gpsBtn) gpsBtn.addEventListener('click', toggleGpsMode);
+
+  // v0.31 Prospector: mousewheel zoom with cursor-anchored pan correction. The pixel under the
+  // cursor stays put as zoom changes — panX/panY absorb the delta so the viewport-center-based
+  // draw pipeline still lands on the correct terrain point. Persists to localStorage.
+  state.canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const newZoom = Math.max(0.5, Math.min(32, state.zoom * factor));
+    if (newZoom === state.zoom) return;
+    const scaleRatio = newZoom / state.zoom;
+    const rect = state.canvas.getBoundingClientRect();
+    const cw = state.canvas.clientWidth;
+    const ch = state.canvas.clientHeight;
+    // Cursor coords relative to canvas top-left.
+    const cx = e.clientX - rect.left;
+    const cy = e.clientY - rect.top;
+    state.panX += (cx - cw / 2 - state.panX) * (1 - scaleRatio);
+    state.panY += (cy - ch / 2 - state.panY) * (1 - scaleRatio);
+    state.zoom = newZoom;
+    try { localStorage.setItem('mapZoom', newZoom.toFixed(2)); } catch (err) {}
+  }, { passive: false });
+
   document.addEventListener('keydown', (e) => {
     if (e.repeat) return;
     const t = e.target;
     if (t && t.matches && t.matches('input, textarea, [contenteditable]')) return;
     if (e.key === 'g' || e.key === 'G') toggleGpsMode();
+    // v0.31 Prospector: +/- keyboard zoom. Center-anchored (no pan correction).
+    if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_') {
+      e.preventDefault();
+      const factor = (e.key === '-' || e.key === '_') ? 1 / 1.15 : 1.15;
+      const newZoom = Math.max(0.5, Math.min(32, state.zoom * factor));
+      if (newZoom === state.zoom) return;
+      state.zoom = newZoom;
+      try { localStorage.setItem('mapZoom', newZoom.toFixed(2)); } catch (err) {}
+    }
   });
 
   window.__poe2gpsBuildEdges = buildEdges;
