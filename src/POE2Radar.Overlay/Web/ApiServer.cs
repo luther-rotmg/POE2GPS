@@ -103,6 +103,8 @@ public sealed class ApiServer : IDisposable
     // /api/contribute-trace short-circuits to a clean 400 in that case.
     private readonly POE2Radar.Core.Campaign.Probe.EventWriter? _traceWriter;
     private readonly Func<object>? _wipeLog;   // v0.30 Instinct: /api/wipe-log payload provider
+    private readonly ItemFilterEngine? _itemFilters;   // v0.31 Prospector: /api/item-filters engine
+    private readonly Func<object>? _itemFilterMatches; // v0.31 Prospector: /api/item-filters/matches counter
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -142,7 +144,12 @@ public sealed class ApiServer : IDisposable
         POE2Radar.Core.Campaign.Probe.EventWriter? traceWriter = null,
         // v0.30 Instinct: per-character boss wipe log (persistent) — served at /api/wipe-log to
         // populate the "Your wipes" dashboard card. Null → the endpoint returns an empty payload.
-        Func<object>? wipeLogProvider = null)
+        Func<object>? wipeLogProvider = null,
+        // v0.31 Prospector: user's item filter ruleset (persistent) — served at /api/item-filters.
+        // Null → the endpoint returns an empty envelope. The matches provider counts items matching
+        // any filter on the ground / equipped / inventory surfaces for the dashboard card display.
+        ItemFilterEngine? itemFilters = null,
+        Func<object>? itemFilterMatchesProvider = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -177,6 +184,8 @@ public sealed class ApiServer : IDisposable
         _assetHost = assetHost;
         _traceWriter = traceWriter;
         _wipeLog = wipeLogProvider;
+        _itemFilters = itemFilters;
+        _itemFilterMatches = itemFilterMatchesProvider;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1281,6 +1290,49 @@ public sealed class ApiServer : IDisposable
                 // Empty envelope when the provider isn't wired (defensive).
                 object payload = _wipeLog?.Invoke() ?? new { character = "", wipes = new Dictionary<string, int>(), total = 0, allCharacters = Array.Empty<string>() };
                 WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(payload, Json), "application/json; charset=utf-8");
+                break;
+            }
+
+            case "/api/item-filters":
+            {
+                // v0.31 Prospector: GET returns the current user filter list; POST replaces it wholesale.
+                // Missing engine (headless / test scaffolding) → empty envelope, POST silently no-ops.
+                if (_itemFilters is null)
+                {
+                    WriteMaybeGzipped(ctx, System.Text.Encoding.UTF8.GetBytes("{\"filters\":[]}"), "application/json; charset=utf-8");
+                    break;
+                }
+                if (ctx.Request.HttpMethod == "POST")
+                {
+                    try
+                    {
+                        using var reader = new StreamReader(ctx.Request.InputStream);
+                        var body = reader.ReadToEnd();
+                        var payload = JsonSerializer.Deserialize<ItemFiltersEnvelope>(body, Json);
+                        if (payload?.Filters is not null) _itemFilters.Replace(payload.Filters);
+                    }
+                    catch (Exception ex) { Console.Error.WriteLine($"/api/item-filters POST failed: {ex.Message}"); }
+                }
+                var envelope = new ItemFiltersEnvelope(_itemFilters.All);
+                WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(envelope, Json), "application/json; charset=utf-8");
+                break;
+            }
+
+            case "/api/item-filters/restore-presets":
+            {
+                // v0.31 Prospector: append any shipped starter preset ids not currently in the list.
+                if (ctx.Request.HttpMethod != "POST") { NotFound(ctx); break; }
+                _itemFilters?.RestoreStarterPresets();
+                Write(ctx, 200, "{\"ok\":true}");
+                break;
+            }
+
+            case "/api/item-filters/matches":
+            {
+                // v0.31 Prospector: per-surface match count (ground / equipped / inventory).
+                // Empty envelope when the provider isn't wired.
+                object matchesPayload = _itemFilterMatches?.Invoke() ?? new { ground = 0, equipped = 0, inventory = 0 };
+                WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(matchesPayload, Json), "application/json; charset=utf-8");
                 break;
             }
 
@@ -2737,6 +2789,10 @@ public sealed class ApiServer : IDisposable
         try { _listener.Stop(); } catch { }
         _listener.Close();
     }
+
+    /// <summary>v0.31 Prospector: envelope for /api/item-filters GET + POST payloads.</summary>
+    private sealed record ItemFiltersEnvelope(
+        [property: System.Text.Json.Serialization.JsonPropertyName("filters")] IReadOnlyList<FilterRule> Filters);
 }
 
 /// <summary>One selected navigation route projected to a wire-format polyline. Grid-space coordinates

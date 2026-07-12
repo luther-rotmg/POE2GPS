@@ -845,6 +845,17 @@ public sealed class RadarApp : IDisposable
                                      total         = _wipeLog.TotalFor(name),
                                      allCharacters = _wipeLog.Characters(),
                                  };
+                             },
+                             // v0.31 Prospector: expose the item-filter engine + a match counter to the dashboard.
+                             itemFilters: _itemFilterEngine,
+                             itemFilterMatchesProvider: () =>
+                             {
+                                 var groundCount = 0;
+                                 foreach (var e in _entities)
+                                     if (e.ItemAffixes is { Count: > 0 } affs
+                                         && _itemFilterEngine.Match(Array.Empty<Poe2Live.RawAffix>(), affs).Count > 0)
+                                         groundCount++;
+                                 return new { ground = groundCount, equipped = 0, inventory = 0 };
                              });
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
