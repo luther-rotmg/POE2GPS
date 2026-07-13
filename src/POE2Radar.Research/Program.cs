@@ -187,6 +187,11 @@ if (HasFlag(args, "--pagediff"))
         TryGetHexArg(args, "--lo") ?? unchecked((nint)0x040180000000L), TryGetHexArg(args, "--hi") ?? unchecked((nint)0x040190000000L),
         TryGetStrArg(args, "--save"), TryGetStrArg(args, "--exclude"), TryGetStrArg(args, "--only"));
 
+// v0.32 Panorama — batch probe of CharacterPanel + InventoryPanel + StashPanel UiRoot child indices
+// via visibility-bit transition + per-slot fingerprints (relX/Y/W/H normalized to panel bounds).
+if (HasFlag(args, "--probe-panels"))
+    return RunProbePanels(process, reader);
+
 if (HasFlag(args, "--atlas-live"))
 {
     // Exercise the real Core reader (dynamic locator, no hardcoded addresses) — what the overlay/API use.
@@ -8409,6 +8414,137 @@ static nint? TryGetHexArg(string[] args, string flag)
     var s = args[idx + 1];
     if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s[2..];
     return long.TryParse(s, System.Globalization.NumberStyles.HexNumber, null, out var v) ? (nint)v : null;
+}
+
+// ── v0.32 Panorama — panel probe ────────────────────────────────────────────────────────────────
+// Interactive walker: guides the user through opening + closing each target panel (Character,
+// Inventory, Stash) to fingerprint its UiRoot child index by visibility-bit transition, then
+// captures per-slot / per-cell child fingerprints (relX/Y/W/H normalized to panel bounds).
+static int RunProbePanels(ProcessHandle process, MemoryReader reader)
+{
+    var (_, igs, _, _) = ResolveChain(process, reader);
+    if (igs == 0) { Console.Error.WriteLine("Chain resolve failed — are you actually in-game (not at title)?"); return 1; }
+    var uiRoot = SafePtr(reader, igs + Poe2.InGameState.UiRoot);
+    if (uiRoot == 0) { Console.Error.WriteLine("no UiRoot"); return 1; }
+    Console.WriteLine($"UiRoot = 0x{uiRoot:X}");
+
+    List<(int idx, nint addr, bool visible, float x, float y, float w, float h)> Snapshot()
+    {
+        var results = new List<(int, nint, bool, float, float, float, float)>();
+        var first = SafePtr(reader, uiRoot + Poe2.UiElement.Children);
+        if (!reader.TryReadStruct<nint>(uiRoot + Poe2.UiElement.ChildrenEnd, out var last) || first == 0)
+            return results;
+        var n = ((long)last - first) / 8;
+        for (var i = 0L; i < n && i < 200; i++)
+        {
+            var child = SafePtr(reader, first + (nint)(i * 8));
+            if (child == 0) continue;
+            reader.TryReadStruct<uint>(child + Poe2.UiElement.Flags, out var flags);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.RelativePos, out var rx);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.RelativePos + 4, out var ry);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.SizeW, out var w);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.SizeH, out var h);
+            bool visible = (flags & (1u << Poe2.UiElement.FlagVisibleBit)) != 0;
+            results.Add(((int)i, child, visible, rx, ry, w, h));
+        }
+        return results;
+    }
+
+    static List<int> Transitions(List<(int idx, nint addr, bool visible, float x, float y, float w, float h)> before,
+                                 List<(int idx, nint addr, bool visible, float x, float y, float w, float h)> after)
+    {
+        var byIdx = before.ToDictionary(r => r.idx, r => r.visible);
+        var trans = new List<int>();
+        foreach (var a in after)
+            if (byIdx.TryGetValue(a.idx, out var wasVis) && !wasVis && a.visible)
+                trans.Add(a.idx);
+        return trans;
+    }
+
+    void FingerprintPanel(nint panelAddr, string label, float px, float py, float pw, float ph)
+    {
+        Console.WriteLine($"\n  ── {label} panel fingerprints (panel rect {pw:F0}x{ph:F0} @ {px:F0},{py:F0}) ──");
+        var first = SafePtr(reader, panelAddr + Poe2.UiElement.Children);
+        if (!reader.TryReadStruct<nint>(panelAddr + Poe2.UiElement.ChildrenEnd, out var last) || first == 0)
+        { Console.WriteLine("  (no direct children)"); return; }
+        var n = ((long)last - first) / 8;
+        Console.WriteLine($"  {n} direct children  (relX / relY / relW / relH — normalized 0..1)");
+        for (var i = 0L; i < n && i < 60; i++)
+        {
+            var child = SafePtr(reader, first + (nint)(i * 8));
+            if (child == 0) continue;
+            reader.TryReadStruct<uint>(child + Poe2.UiElement.Flags, out var flags);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.RelativePos, out var cx);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.RelativePos + 4, out var cy);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.SizeW, out var cw);
+            reader.TryReadStruct<float>(child + Poe2.UiElement.SizeH, out var ch);
+            bool vis = (flags & (1u << Poe2.UiElement.FlagVisibleBit)) != 0;
+            if (!vis) continue;
+            var nrx = pw > 0 ? cx / pw : 0f;
+            var nry = ph > 0 ? cy / ph : 0f;
+            var nrw = pw > 0 ? cw / pw : 0f;
+            var nrh = ph > 0 ? ch / ph : 0f;
+            Console.WriteLine($"    child[{i,3}]  rx={nrx:F3}  ry={nry:F3}  rw={nrw:F3}  rh={nrh:F3}   (abs {cx:F0},{cy:F0} {cw:F0}x{ch:F0})");
+        }
+    }
+
+    int ProbeOnePanel(string label, string openInstruction)
+    {
+        Console.WriteLine($"\n\n===============================================================");
+        Console.WriteLine($"  Probing: {label}");
+        Console.WriteLine($"===============================================================");
+        Console.WriteLine($"\nSTEP 1: With the {label} panel CLOSED in-game, press Enter to snapshot baseline...");
+        Console.ReadLine();
+        var closed = Snapshot();
+        Console.WriteLine($"Baseline: {closed.Count} direct children of UiRoot, {closed.Count(c => c.visible)} visible.");
+
+        Console.WriteLine($"\nSTEP 2: {openInstruction}  Then press Enter...");
+        Console.ReadLine();
+        var open = Snapshot();
+        Console.WriteLine($"After-open: {open.Count(c => c.visible)} visible.");
+
+        var trans = Transitions(closed, open);
+        if (trans.Count == 0)
+        {
+            Console.WriteLine("No child transitioned hidden -> visible. Try again? (y = re-run, n = skip, x = abort)");
+            var again = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+            if (again == "y") return ProbeOnePanel(label, openInstruction);
+            if (again == "x") return -2;
+            return -1;
+        }
+        if (trans.Count > 1)
+            Console.WriteLine($"Multiple children transitioned: {string.Join(", ", trans)}. Usually the largest-area one is the panel root.");
+
+        foreach (var idx in trans)
+        {
+            var (_, addr, _, x, y, w, h) = open.First(o => o.idx == idx);
+            Console.WriteLine($"\n{label}.UiRootChildIndex = {idx}   (addr 0x{addr:X}, rect {w:F0}x{h:F0} @ {x:F0},{y:F0})");
+            FingerprintPanel(addr, label, x, y, w, h);
+        }
+        return trans[0];
+    }
+
+    Console.WriteLine("\nv0.32 Panorama panel probe — will guide you through CharacterPanel, InventoryPanel, StashPanel.");
+    Console.WriteLine("For each: close it, snapshot baseline, open it, snapshot again, then diff to find the UiRoot child that toggled visible.");
+    Console.WriteLine("Best to close ALL panels between probes so the diff is clean. Copy the output — frontier bakes constants after.\n");
+
+    int cIdx = ProbeOnePanel("CharacterPanel", "Open the Character panel (default hotkey: C).");
+    if (cIdx == -2) { Console.WriteLine("Aborted."); return 1; }
+
+    int iIdx = ProbeOnePanel("InventoryPanel", "Close Character panel; open Inventory (default hotkey: I).");
+    if (iIdx == -2) { Console.WriteLine("Aborted."); return 1; }
+
+    int sIdx = ProbeOnePanel("StashPanel", "Close everything; walk to a stash NPC and open it.");
+    if (sIdx == -2) { Console.WriteLine("Aborted."); return 1; }
+
+    Console.WriteLine("\n===============================================================");
+    Console.WriteLine("  SUMMARY");
+    Console.WriteLine("===============================================================");
+    Console.WriteLine($"  CharacterPanel.UiRootChildIndex = {(cIdx >= 0 ? cIdx.ToString() : "SKIPPED")}");
+    Console.WriteLine($"  InventoryPanel.UiRootChildIndex = {(iIdx >= 0 ? iIdx.ToString() : "SKIPPED")}");
+    Console.WriteLine($"  StashPanel.UiRootChildIndex     = {(sIdx >= 0 ? sIdx.ToString() : "SKIPPED")}");
+    Console.WriteLine("\nCopy this whole session's output; frontier will bake the constants + fingerprints.");
+    return 0;
 }
 
 static class Win

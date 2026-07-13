@@ -471,6 +471,50 @@ public static class Poe2
         public const double BaseResH = 1600.0;
     }
 
+    /// <summary>v0.32 Panorama: direct-child indices of the three main panels on UiRoot
+    /// (InGameState + 0x2F0). Indices are HINTS ONLY — verify by shape before use, since
+    /// indices drift across restarts/patches per prior-art convention.
+    ///
+    /// Fingerprints captured live 2026-07-12 (PoE2 v0.5.x):
+    /// - CharacterPanel: 986x1600 @ (0, 0), 3 direct visible children, has content child in y=[0.05,0.10]
+    /// - InventoryPanel: 986x1600 @ (screenW - 986, 0), right-anchored, ~7 direct visible children,
+    ///                   has 5x12 grid child at rx=0.008 ry=0.554 rw=0.984 rh=0.244
+    /// - StashPanel:     986x1600 @ (0, 0), 6 direct visible children, has bottom action bar
+    ///                   child in y=[0.80,0.85] with rw=[0.60,0.80] (this band-child is the
+    ///                   discriminator vs CharacterPanel, since both anchor at (0, 0))
+    ///
+    /// Behavioral note: opening a stash ALSO opens the inventory — StashPanel + InventoryPanel
+    /// can be visible simultaneously.
+    /// </summary>
+    public static class Panels
+    {
+        // Width/height (unscaled UI coords, base 2560x1600).
+        public const float PanelWidthUnscaled  = 986f;
+        public const float PanelHeightUnscaled = 1600f;
+
+        // Idx hints from live 2026-07-12 capture. USED AS STARTING POINT ONLY — resolver
+        // verifies shape before trusting the child at these indices.
+        public const int CharacterPanel_IdxHint = 33;
+        public const int InventoryPanel_IdxHint = 34;
+        public const int StashPanel_IdxHint     = 35;
+
+        // Stash discriminator: presence of a visible direct child whose position/size falls
+        // inside this band separates StashPanel from CharacterPanel.
+        public const float StashBottomBarRyMin = 0.80f;
+        public const float StashBottomBarRyMax = 0.85f;
+        public const float StashBottomBarRwMin = 0.60f;
+        public const float StashBottomBarRwMax = 0.80f;
+
+        // Inventory grid child fingerprint (child[2] of InventoryPanel).
+        public const float InventoryGridRx = 0.008f;
+        public const float InventoryGridRy = 0.554f;
+        public const float InventoryGridRw = 0.984f;
+        public const float InventoryGridRh = 0.244f;
+
+        // Tolerance for "matches this fingerprint" comparisons on normalized coords.
+        public const float FingerprintTolerance = 0.03f;
+    }
+
     /// <summary>"Runeshape Combinations" reward panel (rune-crafting league mechanic). The panel is found
     /// by a UI-FLAGS-FINGERPRINT walk with backtracking from GameUi (= <see cref="InGameState.UiRoot"/>,
     /// the UiRootStruct the game treats as a UiElement) — child indices drift per patch/restart, the Flags

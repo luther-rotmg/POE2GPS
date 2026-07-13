@@ -1264,6 +1264,115 @@ public sealed class Poe2Live
         return (flags & (1u << Poe2.UiElement.FlagVisibleBit)) != 0;
     }
 
+    /// <summary>v0.32 Panorama: locate the CharacterPanel UiElement, if open.
+    /// Returns 0 if not found or not visible. Uses idx hint first, then shape fallback.</summary>
+    public nint TryFindCharacterPanel()
+    {
+        if (!TryResolve(out var igs, out _, out _)) return 0;
+        var uiRoot = Ptr(igs + Poe2.InGameState.UiRoot);
+        if (uiRoot == 0) return 0;
+        return TryFindPanelByShape(uiRoot, PanelKind.Character);
+    }
+
+    /// <summary>v0.32 Panorama: locate the InventoryPanel UiElement, if open.
+    /// Returns 0 if not found or not visible.</summary>
+    public nint TryFindInventoryPanel()
+    {
+        if (!TryResolve(out var igs, out _, out _)) return 0;
+        var uiRoot = Ptr(igs + Poe2.InGameState.UiRoot);
+        if (uiRoot == 0) return 0;
+        return TryFindPanelByShape(uiRoot, PanelKind.Inventory);
+    }
+
+    /// <summary>v0.32 Panorama: locate the StashPanel UiElement, if open. Returns 0 if not
+    /// found or not visible. Note: opening a stash also opens InventoryPanel — both can be
+    /// visible simultaneously.</summary>
+    public nint TryFindStashPanel()
+    {
+        if (!TryResolve(out var igs, out _, out _)) return 0;
+        var uiRoot = Ptr(igs + Poe2.InGameState.UiRoot);
+        if (uiRoot == 0) return 0;
+        return TryFindPanelByShape(uiRoot, PanelKind.Stash);
+    }
+
+    private enum PanelKind { Character, Inventory, Stash }
+
+    private nint TryFindPanelByShape(nint uiRoot, PanelKind kind)
+    {
+        if (!ChildSpan(uiRoot, out var first, out var n)) return 0;
+
+        // Try idx hint first (fast path).
+        int hint = kind switch
+        {
+            PanelKind.Character => Poe2.Panels.CharacterPanel_IdxHint,
+            PanelKind.Inventory => Poe2.Panels.InventoryPanel_IdxHint,
+            PanelKind.Stash     => Poe2.Panels.StashPanel_IdxHint,
+            _ => -1
+        };
+        if (hint >= 0 && hint < n)
+        {
+            var candidate = Ptr(first + (nint)(hint * 8));
+            if (candidate != 0 && MatchesPanelShape(candidate, kind)) return candidate;
+        }
+
+        // Fallback: scan all UiRoot children.
+        for (long i = 0; i < n; i++)
+        {
+            if (i == hint) continue; // already tried
+            var child = Ptr(first + (nint)(i * 8));
+            if (child == 0) continue;
+            if (MatchesPanelShape(child, kind)) return child;
+        }
+        return 0;
+    }
+
+    private bool MatchesPanelShape(nint el, PanelKind kind)
+    {
+        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
+        if (!_reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var flags)) return false;
+        if ((flags & visBit) == 0) return false;
+
+        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos, out var x)) return false;
+        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos + 4, out var y)) return false;
+        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.SizeW, out var w)) return false;
+        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.SizeH, out var h)) return false;
+
+        // All three panels share the 986x1600 rect. Reject anything else immediately.
+        if (System.Math.Abs(w - Poe2.Panels.PanelWidthUnscaled)  > 4f) return false;
+        if (System.Math.Abs(h - Poe2.Panels.PanelHeightUnscaled) > 4f) return false;
+
+        return kind switch
+        {
+            PanelKind.Inventory => x > 100f && System.Math.Abs(y) < 4f, // right-anchored
+            PanelKind.Character => System.Math.Abs(x) < 4f && System.Math.Abs(y) < 4f
+                                   && !HasStashBottomBar(el),           // left-anchored, no stash bar
+            PanelKind.Stash     => System.Math.Abs(x) < 4f && System.Math.Abs(y) < 4f
+                                   && HasStashBottomBar(el),            // left-anchored, has stash bar
+            _ => false
+        };
+    }
+
+    private bool HasStashBottomBar(nint panel)
+    {
+        if (!ChildSpan(panel, out var first, out var n)) return false;
+        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
+        for (long i = 0; i < n && i < 60; i++)
+        {
+            var child = Ptr(first + (nint)(i * 8));
+            if (child == 0) continue;
+            if (!_reader.TryReadStruct<uint>(child + Poe2.UiElement.Flags, out var f)) continue;
+            if ((f & visBit) == 0) continue;
+            if (!_reader.TryReadStruct<float>(child + Poe2.UiElement.RelativePos + 4, out var cy)) continue;
+            if (!_reader.TryReadStruct<float>(child + Poe2.UiElement.SizeW,        out var cw)) continue;
+            var ry = cy / Poe2.Panels.PanelHeightUnscaled;
+            var rw = cw / Poe2.Panels.PanelWidthUnscaled;
+            if (ry >= Poe2.Panels.StashBottomBarRyMin && ry <= Poe2.Panels.StashBottomBarRyMax
+                && rw >= Poe2.Panels.StashBottomBarRwMin && rw <= Poe2.Panels.StashBottomBarRwMax)
+                return true;
+        }
+        return false;
+    }
+
     // ── UiElement screen geometry (shared with Poe2Runeforge) ──────────
 
     /// <summary>Screen-space rect (pixels) of ANY UiElement, via the upstream reference UiElementBase math:
