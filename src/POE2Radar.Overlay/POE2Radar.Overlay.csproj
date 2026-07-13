@@ -51,6 +51,7 @@
     <EmbeddedResource Include="Web/Assets/atlas-icons.json" />
     <EmbeddedResource Include="Web/Assets/supporters.json" />
     <EmbeddedResource Include="Web/Assets/dashboard.css" />
+    <EmbeddedResource Include="Web/Assets/dashboard.js" />
   </ItemGroup>
 
 </Project>
