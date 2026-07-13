@@ -128,10 +128,20 @@ async function mintCode(claims, env) {
   const canonical = JSON.stringify(sortObject(claims));
   const payloadBytes = new TextEncoder().encode(canonical);
 
-  // Cloudflare Workers Web Crypto supports Ed25519 via importKey({name:'Ed25519'}, ...).
+  // Cloudflare Workers' Web Crypto REJECTS 'raw' Ed25519 imports with the 'sign' usage
+  // ('raw' means public key in their spec — you get "invalid usage 'sign'"). The workaround
+  // is a PKCS8 DER envelope, which is a fixed 16-byte prefix + the 32-byte private key.
+  // The prefix encodes: SEQUENCE ┃ version 0 ┃ algorithm OID 1.3.101.112 (Ed25519) ┃ octet-string wrap.
+  const pkcs8Prefix = new Uint8Array([
+    0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06,
+    0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+  ]);
+  const pkcs8Bytes = new Uint8Array(pkcs8Prefix.length + priv.length);
+  pkcs8Bytes.set(pkcs8Prefix);
+  pkcs8Bytes.set(priv, pkcs8Prefix.length);
   const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    priv,
+    'pkcs8',
+    pkcs8Bytes,
     { name: 'Ed25519' },
     false,
     ['sign']
