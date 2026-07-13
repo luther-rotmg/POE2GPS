@@ -71,6 +71,10 @@ public sealed class RadarApp : IDisposable
     private readonly PresetStore _presetStore;
     private volatile GearSnapshot? _gearSnapshot;   // God-Roll Detector (experimental); null when off
     private int _gearTickCounter;
+    // v0.32 Panorama live counters: cache the raw inventory items list from the last
+    // ReadInventory call so the itemFilterMatchesProvider closure can match them against
+    // enabled filters without a per-request memory hop.
+    private IReadOnlyList<Poe2Live.InventoryItem>? _lastInventoryForFilters;
     // ── Session HUD tracker + published snapshot (render thread reads _sessionSnapshot lock-free). ──
     private readonly SessionTracker  _session = new();
     private volatile SessionStats?   _sessionSnapshot;
@@ -848,15 +852,17 @@ public sealed class RadarApp : IDisposable
                              },
                              // v0.31 Prospector: expose the item-filter engine + a match counter to the dashboard.
                              itemFilters: _itemFilterEngine,
-                             itemFilterMatchesProvider: () =>
-                             {
-                                 var groundCount = 0;
-                                 foreach (var e in _entities)
-                                     if (e.ItemAffixes is { Count: > 0 } affs
-                                         && _itemFilterEngine.Match(Array.Empty<Poe2Live.RawAffix>(), affs).Count > 0)
-                                         groundCount++;
-                                 return new { ground = groundCount, equipped = 0, inventory = 0 };
-                             });
+                              itemFilterMatchesProvider: () =>
+                              {
+                                  var groundCount = 0;
+                                  foreach (var e in _entities)
+                                      if (e.ItemAffixes is { Count: > 0 } affs
+                                          && _itemFilterEngine.Match(Array.Empty<Poe2Live.RawAffix>(), affs).Count > 0)
+                                          groundCount++;
+
+                                  var (equippedCount, inventoryCount) = CountInventoryFilterMatches(_lastInventoryForFilters, _itemFilterEngine);
+                                  return new { ground = groundCount, equipped = equippedCount, inventory = inventoryCount, stash = 0 };
+                              });
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
@@ -1939,30 +1945,35 @@ public sealed class RadarApp : IDisposable
 
         // God-Roll Detector (experimental, default OFF): when enabled, score the inventory on a SLOW
         // cadence (~every 30 world ticks ≈ 1 Hz — inventory changes slowly). When off, read nothing.
-        if (_settings.EnableGearScorer)
+        if (_settings.EnableGearScorer || _settings.EnableItemFilterLiveCounters)
         {
             if (_gearTickCounter++ % 30 == 0)
             {
-                var weights = _gearWeights.Snapshot();
                 var inv = _live.ReadInventory(areaInstance);
-                var scored = new List<ScoredItem>(inv.Count);
-                foreach (var it in inv)
+                _lastInventoryForFilters = _settings.EnableItemFilterLiveCounters ? inv : null;
+
+                if (_settings.EnableGearScorer)
                 {
-                    var affixes = new List<Affix>(it.Affixes.Count);
-                    foreach (var ra in it.Affixes)
+                    var weights = _gearWeights.Snapshot();
+                    var scored = new List<ScoredItem>(inv.Count);
+                    foreach (var it in inv)
                     {
-                        var line = string.Join("; ", ItemModTranslator.Shared.RenderMod(ra.ModId, ra.Values));
-                        var ids = ItemModTranslator.Shared.StatIdsFor(ra.ModId) ?? System.Array.Empty<string>();
-                        var val = ra.Values.Count > 0 ? ra.Values.Max() : 0;
-                        affixes.Add(new Affix(line, ids, val, ra.ModId));
+                        var affixes = new List<Affix>(it.Affixes.Count);
+                        foreach (var ra in it.Affixes)
+                        {
+                            var line = string.Join("; ", ItemModTranslator.Shared.RenderMod(ra.ModId, ra.Values));
+                            var ids = ItemModTranslator.Shared.StatIdsFor(ra.ModId) ?? System.Array.Empty<string>();
+                            var val = ra.Values.Count > 0 ? ra.Values.Max() : 0;
+                            affixes.Add(new Affix(line, ids, val, ra.ModId));
+                        }
+                        var gs = GearScorer.Score(affixes, weights);
+                        scored.Add(new ScoredItem(it.Name, it.Rarity, it.Identified, it.InventoryId, gs.Score, gs.IsGodRoll, gs.Affixes));
                     }
-                    var gs = GearScorer.Score(affixes, weights);
-                    scored.Add(new ScoredItem(it.Name, it.Rarity, it.Identified, it.InventoryId, gs.Score, gs.IsGodRoll, gs.Affixes));
+                    _gearSnapshot = new GearSnapshot(scored);
                 }
-                _gearSnapshot = new GearSnapshot(scored);
             }
         }
-        else if (_gearSnapshot != null) { _gearSnapshot = null; }
+        else if (_gearSnapshot != null) { _gearSnapshot = null; _lastInventoryForFilters = null; }
         // Drop the local player's own entity — it lives in the AwakeEntities map like any
         // other Player, but the dedicated center blip already represents "you" (gated by
         // ShowPlayerBlip). Without this, a Player-category dot renders at map-center even with
@@ -3958,6 +3969,22 @@ public sealed class RadarApp : IDisposable
             return dm.dmDisplayFrequency > 1 ? (int)dm.dmDisplayFrequency : 0;
         }
         catch { return 0; }
+    }
+
+    internal static (int equipped, int inventory) CountInventoryFilterMatches(
+        IReadOnlyList<Poe2Live.InventoryItem>? snap,
+        ItemFilterEngine engine)
+    {
+        if (snap == null) return (0, 0);
+        int eq = 0, inv = 0;
+        foreach (var it in snap)
+        {
+            if (it.Affixes is not { Count: > 0 } affs) continue;
+            if (engine.Match(Array.Empty<Poe2Live.RawAffix>(), affs).Count == 0) continue;
+            if (it.InventoryId == 1) inv++;
+            else                     eq++;
+        }
+        return (eq, inv);
     }
 
     public void Dispose()

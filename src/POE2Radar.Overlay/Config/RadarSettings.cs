@@ -301,6 +301,13 @@ public sealed class RadarSettings
     // default; when off, no inventory is read at all. See the dashboard "Gear ⭐" tab.
     public bool EnableGearScorer { get; set; } = false;
 
+    /// <summary>v0.32 Panorama: when true, the /api/item-filters/matches endpoint returns
+    /// live equipped + inventory match counts using the same ReadInventory cadence as
+    /// EnableGearScorer. Default false — this piggybacks on the inventory read, so leaving
+    /// EnableGearScorer off saves the memory cost. When on, the read happens either way.
+    /// (Stash counter stays at 0 until a stash reader ships.)</summary>
+    public bool EnableItemFilterLiveCounters { get; set; } = false;
+
     // ── Audio alerts. Master gate defaults OFF — nothing plays out of the box. Individual sub-toggles
     //    are pre-enabled so turning on EnableAudioAlerts immediately activates all three cue types. ──
     public bool EnableAudioAlerts { get; set; } = false;     // master gate — default OFF
