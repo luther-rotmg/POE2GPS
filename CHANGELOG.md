@@ -3,6 +3,41 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.32.0] — 2026-07-13 "Panorama"
+
+### Added — 🖼 **Colored borders in-game on filter-matched inventory items**
+
+- 🎯 **Your item filters now paint your bag.** Open the inventory panel and every cell whose item matches an enabled filter gets a border in that filter's color — the same colors your Item Filters dashboard cards show. Same match algorithm as ground drops: winner-takes-color when multiple filters hit (priority DESC, ties by list order), so your prioritized filters lead.
+- 🧷 **Multi-cell items get one border spanning the whole slot rectangle.** A 2×2 body armour reads as one 2×2 highlight, not four tiny quadrants.
+- ⚙️ **Gated behind two settings.** Flip both `EnableItemFilterLiveCounters` and `EnableInventoryHighlights` in `settings.json` (or the dashboard Settings → Advanced strip) to turn it on. Default off, same "opt-in for the memory read" posture as the God-Roll Detector.
+- ⏱ **~1 Hz refresh cadence, ~1 s stale-close window.** Highlights refresh on the same 30-tick heartbeat the counters use — no per-frame memory cost. Closing the panel leaves the last painted cells up for at most a second before they clear. Documented tradeoff.
+
+### Added — 📊 **Per-filter live match counters** *(each card shows its own count)*
+
+- 🃏 **Each Item Filters card now displays its OWN ground / equipped / inventory count** instead of the same totals smeared across every card. An item that matches three filters bumps three counters — reading a card's number tells you "how many items would this filter highlight if it were the only one on."
+- 📐 **New summary strip at the top of the tab** shows the aggregate totals across all enabled filters — one line, at-a-glance total: `🎯 total matches — ground: N · equipped: N · inventory: N`.
+- 📦 **Equipped + inventory totals are live.** The v0.31 `/api/item-filters/matches` endpoint stubbed both at zero pending v0.32 — now they read from the same 1 Hz inventory snapshot that feeds the God-Roll Detector, so no new memory-read pressure when Gear Scorer is already on.
+- 🕳 **Stash counter reserved but zero.** The payload envelope ships a `stash` field so the dashboard stays forward-compatible when a stash reader lands in v0.33+ — no reshape needed.
+
+### Under the hood
+
+- New panel-resolver framework at `Poe2Live.TryFindCharacterPanel` / `TryFindInventoryPanel` / `TryFindStashPanel`. Each uses an idx-hint fast path against the resolved UiRoot child, then falls back to a shape-fingerprint scan when the hint drifts (the same convention `Poe2Runeforge` uses for deep-panel walks). CharacterPanel vs StashPanel — which both anchor at the left edge — disambiguate on the presence of the stash-tab bottom bar's normalized-band fingerprint.
+- New `Poe2Live.ComputeInventoryCellRect` pure math helper — takes a panel's unscaled screen origin + a cell's grid coordinates + grid dims + window size, returns a scaled screen-pixel rect. Directly unit-testable (no memory reads), used by the overlay renderer to place borders.
+- New `Poe2Live.TryGetPanelUnscaledRect` + `Poe2Live.TryGetInventoryGridDims` — thin memory-read helpers over the already-validated UiElement + InventoryStruct offsets. Feed the resolver's panel handle into the math helper.
+- New `Poe2Live.InventoryItem` slot fields: `SlotStartX/Y`, `SlotEndX/Y` (positional defaults appended — every existing 5-arg construction stays compiling).
+- New `RenderContext.PanelHighlight` readonly record struct + `PanelHighlights` field — the render-thread contract for what to draw. Coords are unscaled UI base (2560×1600); the renderer scales at draw time so a mid-frame window resize can't skew the rects.
+- New `RadarApp.BuildInventoryHighlights` internal static — pure aggregation from (inventory snapshot, filter engine, panel rect, grid dims) → highlight list. `RadarApp.CountPerFilterMatches` internal static — per-filter attribution for the dashboard card counts.
+- New `Poe2Radar.Research --probe-panels` CLI walker for internal panel-fingerprint capture — interactively guides through Character/Inventory/Stash open/close cycles, diffs the UiRoot visibility bits, and prints normalized child fingerprints. Powers future v0.33+ probes for equipment slots + stash grids.
+- 28 new xUnit tests: 10 panel resolver behavioral facts, 5 cell-rect math, 4 live-counter split, 3 per-filter attribution, 6 highlight builder. Test suite: 711 → 739.
+
+### Deferred to v0.33+
+
+- Highlight on **character equipment slots** — the panel resolver ships; needs a one-shot slot fingerprint probe to pin the equipment-slot grid inside the panel's content area.
+- Highlight on **stash grid tabs** (regular / quad / jewel / map / relic) — the stash panel resolver ships; needs a stash-side inventory reader (`Poe2Live.ReadStashItems`) plus tab-switch detection before the highlight pipeline can attach.
+- Specialty stash tabs (currency / fragment / essence / delirium / expedition) — each own drop.
+
+---
+
 ## [0.31.1] — 2026-07-12 (Companion keypair rotation)
 
 ### Fixed — 🔐 **Rotated the Ed25519 supporter keypair before donations open**
