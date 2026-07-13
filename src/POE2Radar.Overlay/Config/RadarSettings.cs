@@ -316,6 +316,13 @@ public sealed class RadarSettings
     /// briefly (<1s). Default false.</summary>
     public bool EnableInventoryHighlights { get; set; } = false;
 
+    /// <summary>v0.33 Drop Timeline: when true, POE2GPS records each ground drop the
+    /// player observes (rarity + name + zone + timestamp) to <c>config/drop_timeline.json</c>.
+    /// Ring-buffered at 1000 entries. In-memory dedup prevents double-recording the same
+    /// drop within a session. Purely local — no telemetry, no pricing egress. Default off
+    /// (opt-in for the persistent file).</summary>
+    public bool EnableDropTimeline { get; set; } = false;
+
     // ── Audio alerts. Master gate defaults OFF — nothing plays out of the box. Individual sub-toggles
     //    are pre-enabled so turning on EnableAudioAlerts immediately activates all three cue types. ──
     public bool EnableAudioAlerts { get; set; } = false;     // master gate — default OFF

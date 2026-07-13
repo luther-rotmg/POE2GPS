@@ -99,6 +99,10 @@ public sealed class RadarApp : IDisposable
     // boss panel title bar surfaces the prior count as "🪦 Nx before". _lastDeathsThisZone is the
     // delta anchor for edge detection (see RenderTick post-session-update block).
     private POE2Radar.Overlay.Overlay.BossWipeLog _wipeLog = null!;   // set in ctor after ConfigDir resolved
+    // v0.33 Drop Timeline: persistent per-session record of ground-item drops (name/rarity/zone/timestamp).
+    // Records each non-white drop the player observes while EnableDropTimeline is true.
+    private readonly DropTimeline _dropTimeline = new(
+        Path.Combine(AppContext.BaseDirectory, "config", "drop_timeline.json"));
     private int _lastDeathsThisZone;                                   // render thread only
     private int _landmarkGen;
     private int _displayRulesGen;
@@ -2113,6 +2117,26 @@ public sealed class RadarApp : IDisposable
 
         // Name labels for already-named ground drops (read-only; no economy lookups).
         var itemLabels = BuildItemLabels();
+
+        // v0.33 Drop Timeline: record fresh non-white ground drops (dedup by entity id per session).
+        if (_settings.EnableDropTimeline)
+        {
+            var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var pname = _world.PlayerName ?? "";
+            foreach (var e in _entities)
+            {
+                if (e.ItemName is not { Length: > 0 } iname) continue;
+                if (e.Rarity == Poe2Live.Rarity.Normal) continue;   // skip whites — user noise
+                var rar = e.Rarity switch
+                {
+                    Poe2Live.Rarity.Magic  => "Magic",
+                    Poe2Live.Rarity.Rare   => "Rare",
+                    Poe2Live.Rarity.Unique => "Unique",
+                    _                      => "Normal",
+                };
+                _dropTimeline.Record(ts, rar, iname, areaCode, pname, e.Id);
+            }
+        }
 
         // Affix nameplates for elite monsters (shares the _resolveCache populated above).
         var affixSpecs = BuildAffixSpecs();
@@ -4131,6 +4155,7 @@ public sealed class RadarApp : IDisposable
         _seenPoiLog.Flush();
         _entityAtlas.Flush();
         _entityNameStore.Flush();
+        _dropTimeline.Flush();
         _replanner.Dispose();
         _api.Dispose();
         _sse?.Dispose();
