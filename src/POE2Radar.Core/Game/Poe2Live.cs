@@ -1296,6 +1296,21 @@ public sealed class Poe2Live
         return TryFindPanelByShape(uiRoot, PanelKind.Stash);
     }
 
+    /// <summary>v0.32 Panorama: read a resolved panel UiElement's UNSCALED screen rect
+    /// (RelativePos + SizeW/SizeH). Returns false if any read fails or if the resulting
+    /// dimensions are non-positive. Coordinate space is the game's UI base (2560×1600) —
+    /// callers scale to pixels via winW/2560, winH/1600.</summary>
+    public bool TryGetPanelUnscaledRect(nint panelAddr, out float x, out float y, out float w, out float h)
+    {
+        x = 0; y = 0; w = 0; h = 0;
+        if (panelAddr == 0) return false;
+        if (!_reader.TryReadStruct<float>(panelAddr + Poe2.UiElement.RelativePos,     out x)) return false;
+        if (!_reader.TryReadStruct<float>(panelAddr + Poe2.UiElement.RelativePos + 4, out y)) return false;
+        if (!_reader.TryReadStruct<float>(panelAddr + Poe2.UiElement.SizeW,           out w)) return false;
+        if (!_reader.TryReadStruct<float>(panelAddr + Poe2.UiElement.SizeH,           out h)) return false;
+        return w > 0f && h > 0f;
+    }
+
     internal enum PanelKind { Character, Inventory, Stash }
 
     private nint TryFindPanelByShape(nint uiRoot, PanelKind kind)
@@ -1897,6 +1912,44 @@ public sealed class Poe2Live
     //             → +0x320 StdVector<InventoryArrayStruct> (stride 0x18).
     // Self-validates the two drift-prone hops (PlayerServerData vec, PlayerInventories vec) with
     // brute-scan fallbacks, exactly as the Research probe does.
+
+    /// <summary>v0.32 Panorama: read the grid dimensions (cols × rows) of the player's
+    /// inventory identified by invId (1 = Main bag; 2 = BodyArmour; 3 = Weapon1; etc — see
+    /// Poe2Offsets.cs Inventory section for the full Inventories.dat index). Walks the same
+    /// chain as ReadInventory but stops at the InventoryStruct — no item enumeration.
+    /// Returns false if the chain resolve fails or the invId isn't present.</summary>
+    public bool TryGetInventoryGridDims(nint areaInstance, int invId, out int cols, out int rows)
+    {
+        cols = 0; rows = 0;
+        try
+        {
+            var serverData = Ptr(areaInstance + Poe2.AreaInstance.ServerDataPtr);
+            if (serverData == 0) return false;
+            var sdStruct = ResolveServerDataStructForInventory(serverData);
+            if (sdStruct == 0) return false;
+            var (invVecOff, invVec, invCount) =
+                FindPlayerInventoriesVecForInventory(sdStruct, Poe2.ServerData.PlayerInventoriesVec);
+            if (invVecOff < 0 || invCount <= 0) return false;
+
+            for (long i = 0; i < invCount; i++)
+            {
+                var rec = invVec.First + (nint)(i * Poe2.ServerData.InvArrayStride);
+                if (!_reader.TryReadStruct<int>(rec + Poe2.ServerData.InvArrayId, out var id) || id != invId)
+                    continue;
+                var invPtr = Ptr(rec + Poe2.ServerData.InvArrayPtr);
+                if (invPtr == 0) return false;
+                if (!_reader.TryReadStruct<int>(invPtr + Poe2.Inventory.TotalBoxesX, out cols)) return false;
+                if (!_reader.TryReadStruct<int>(invPtr + Poe2.Inventory.TotalBoxesY, out rows)) return false;
+                return cols > 0 && rows > 0;
+            }
+            return false;
+        }
+        catch
+        {
+            cols = 0; rows = 0;
+            return false;
+        }
+    }
 
     /// <summary>
     /// Read the player's inventory items and their raw rolled affixes (experimental; default-OFF).
