@@ -3,6 +3,21 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.31.1] — 2026-07-12 (Companion keypair rotation)
+
+### Fixed — 🔐 **Rotated the Ed25519 supporter keypair before donations open**
+
+- Rotated the Ed25519 keypair backing the Companion signed-supporter-code flow. The old public hex (`99392f...`) shipped with the v0.28 Companion drop was generated in-session while building the feature; before real Ko-fi donations start minting real codes, the keypair had to be rotated so the private half only ever existed in the Cloudflore Worker's encrypted secret store — never in git history.
+- The new public key (`ac8da1...`) ships in `src/POE2Radar.Core/Support/supporter_public_key.txt`. The private half stays on the Worker only.
+- Backwards-compat: donors who had already received v0.27-era hash-based codes still validate (the legacy path in `SupporterCodeValidator.IsSupporter` is untouched). Zero codes have been minted with the OLD private key, so this rotation invalidates nothing in the wild.
+- 8 Ed25519 tests re-signed with the new keypair and all still pass; full suite 711/2/713 unchanged.
+
+### Manual (LO — closes PMS-16 step 2)
+
+- With this shipped, `wrangler secret put SIGNING_PRIVATE_KEY_HEX` on the deployed Cloudflare Worker will match the public key baked into POE2GPS v0.31.1+, so donor codes minted server-side will validate client-side on the first user launch after this release.
+
+---
+
 ## [0.31.0] — 2026-07-12 "Prospector"
 
 ### Added — 🎯 **Item Filter engine** *(highlight items matching your desired affix combos)*
