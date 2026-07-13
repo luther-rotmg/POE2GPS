@@ -3095,7 +3095,7 @@ document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventList
    on tab open. Save-on-change discipline: every mutation POSTs the whole list. Cards support
    name/color/priority/enabled edits, add/remove requirements, and delete/duplicate. */
 let __ifData = { filters: [] };
-let __ifMatches = { ground: 0, equipped: 0, inventory: 0 };
+let __ifMatches = { ground: 0, equipped: 0, inventory: 0, stash: 0, byFilter: {} };
 function ifEsc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
 async function loadItemFilters(){
   const list = document.getElementById('ifList');
@@ -3113,6 +3113,7 @@ function renderItemFilters(){
     host.innerHTML = '<div class="hint-row" style="opacity:.7">No filters yet. Click <b>+ New filter</b> or <b>Restore starter presets</b>.</div>';
     return;
   }
+  const summary = `<div class="hint-row" style="margin-bottom:8px;opacity:.75">🎯 total matches — ground: ${__ifMatches.ground || 0}${__ifMatches.equipped ? ' · equipped: ' + __ifMatches.equipped : ''}${__ifMatches.inventory ? ' · inventory: ' + __ifMatches.inventory : ''}</div>`;
   const html = filters.map((f, i) => `
     <div class="card" data-fi="${i}" style="padding:12px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
@@ -3136,10 +3137,10 @@ function renderItemFilters(){
         `).join('')}
       </div>
       <button class="addbtn if-req-add" style="width:auto;margin:0 0 8px;padding:4px 10px;font-size:11px">+ requirement</button>
-      <div style="font-size:11px;color:var(--ink-faint)">🎯 ground: ${__ifMatches.ground || 0}${__ifMatches.equipped ? ' · equipped: ' + __ifMatches.equipped : ''}${__ifMatches.inventory ? ' · inventory: ' + __ifMatches.inventory : ''}</div>
+      <div style="font-size:11px;color:var(--ink-faint)">🎯 ground: ${(__ifMatches.byFilter?.[f.id]?.ground) || 0}${(__ifMatches.byFilter?.[f.id]?.equipped) ? ' · equipped: ' + __ifMatches.byFilter[f.id].equipped : ''}${(__ifMatches.byFilter?.[f.id]?.inventory) ? ' · inventory: ' + __ifMatches.byFilter[f.id].inventory : ''}</div>
     </div>
   `).join('');
-  host.innerHTML = html;
+  host.innerHTML = summary + html;
   host.querySelectorAll('[data-fi]').forEach(card => {
     const i = +card.dataset.fi;
     const f = __ifData.filters[i]; if (!f) return;

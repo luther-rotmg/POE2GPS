@@ -19,8 +19,13 @@ public class LiveCountersTests
 
     private static RawAffix Aff(string modId, params int[] values) => new(modId, values);
     
-    private static InventoryItem Item(int inventoryId, string name, string rarity, bool identified, params RawAffix[] affixes) 
+    private static InventoryItem Item(int inventoryId, string name, string rarity, bool identified, params RawAffix[] affixes)
         => new(name, rarity, identified, inventoryId, affixes);
+
+    private static Poe2Live.EntityDot GroundItem(params RawAffix[] affixes)
+        => new(0, 0, default, default, Poe2Live.EntityCategory.Other, "Metadata/Items/Test",
+               0, 0, false, 0, Poe2Live.Rarity.Rare, false,
+               ItemAffixes: affixes);
 
     [Fact]
     public void Split_by_InventoryId_1_is_bag_others_are_equipped()
@@ -102,9 +107,77 @@ public class LiveCountersTests
         };
 
         var (equipped, inventory) = RadarApp.CountInventoryFilterMatches(items, engine);
-        
+
         Assert.Equal(0, equipped);
         Assert.Equal(0, inventory);
     }
-    
+
+    [Fact]
+    public void PerFilter_attributes_matches_to_all_matching_filters()
+    {
+        var engine = EmptyEngine();
+        engine.Add(new FilterRule("A", "A high", true,  "#FF0000", 100,
+            new[] { new FilterRequirement("Life", ">=", 60, null, null, null) }));
+        engine.Add(new FilterRule("B", "B low",  true,  "#00FF00",  50,
+            new[] { new FilterRequirement("Life", ">=", 40, null, null, null) }));
+
+        var items = new List<InventoryItem>
+        {
+            Item(1, "LifeItem", "Rare", true, Aff("Life_1", 70)),  // Main bag, matches BOTH filters
+        };
+
+        var (gr, eq, inv) = RadarApp.CountPerFilterMatches(
+            Array.Empty<Poe2Live.EntityDot>(), items, engine);
+
+        Assert.Empty(gr);
+        Assert.Empty(eq);
+        Assert.Equal(1, inv["A"]);
+        Assert.Equal(1, inv["B"]);
+    }
+
+    [Fact]
+    public void PerFilter_splits_ground_vs_equipped_vs_inventory()
+    {
+        var engine = EmptyEngine();
+        engine.Add(new FilterRule("X", "X", true, "#FF0000", 100,
+            new[] { new FilterRequirement("EnergyShield", ">=", 10, null, null, null) }));
+
+        var entities = new List<Poe2Live.EntityDot>
+        {
+            GroundItem(Aff("EnergyShield_1", 15)),  // ground
+        };
+        var items = new List<InventoryItem>
+        {
+            Item(1, "BagItem",  "Rare", true, Aff("EnergyShield_1", 20)),  // inventory bucket
+            Item(2, "BodyItem", "Rare", true, Aff("EnergyShield_1", 25)),  // equipped bucket
+        };
+
+        var (gr, eq, inv) = RadarApp.CountPerFilterMatches(entities, items, engine);
+
+        Assert.Equal(1, gr["X"]);
+        Assert.Equal(1, eq["X"]);
+        Assert.Equal(1, inv["X"]);
+    }
+
+    [Fact]
+    public void PerFilter_omits_disabled_filters()
+    {
+        var engine = EmptyEngine();
+        engine.Add(new FilterRule("A", "Enabled",  true,  "#FF0000", 100,
+            new[] { new FilterRequirement("Life", ">=", 40, null, null, null) }));
+        engine.Add(new FilterRule("B", "Disabled", false, "#00FF00",  50,
+            new[] { new FilterRequirement("Life", ">=", 40, null, null, null) }));
+
+        var items = new List<InventoryItem>
+        {
+            Item(1, "LifeItem", "Rare", true, Aff("Life_1", 70)),  // Would match BOTH if both enabled
+        };
+
+        var (_, _, inv) = RadarApp.CountPerFilterMatches(
+            Array.Empty<Poe2Live.EntityDot>(), items, engine);
+
+        Assert.True(inv.ContainsKey("A"));
+        Assert.False(inv.ContainsKey("B"));
+        Assert.Equal(1, inv["A"]);
+    }
 }

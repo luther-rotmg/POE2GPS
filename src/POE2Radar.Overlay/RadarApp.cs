@@ -854,14 +854,39 @@ public sealed class RadarApp : IDisposable
                              itemFilters: _itemFilterEngine,
                               itemFilterMatchesProvider: () =>
                               {
+                                  var invSnap = _lastInventoryForFilters;
+
                                   var groundCount = 0;
                                   foreach (var e in _entities)
                                       if (e.ItemAffixes is { Count: > 0 } affs
                                           && _itemFilterEngine.Match(Array.Empty<Poe2Live.RawAffix>(), affs).Count > 0)
                                           groundCount++;
 
-                                  var (equippedCount, inventoryCount) = CountInventoryFilterMatches(_lastInventoryForFilters, _itemFilterEngine);
-                                  return new { ground = groundCount, equipped = equippedCount, inventory = inventoryCount, stash = 0 };
+                                  var (equippedCount, inventoryCount) = CountInventoryFilterMatches(invSnap, _itemFilterEngine);
+
+                                  var (perFilterGround, perFilterEq, perFilterInv) =
+                                      CountPerFilterMatches(_entities, invSnap, _itemFilterEngine);
+                                  var ids = new HashSet<string>(perFilterGround.Keys);
+                                  foreach (var k in perFilterEq.Keys)  ids.Add(k);
+                                  foreach (var k in perFilterInv.Keys) ids.Add(k);
+                                  var byFilter = new Dictionary<string, object>(ids.Count);
+                                  foreach (var id in ids)
+                                      byFilter[id] = new
+                                      {
+                                          ground    = perFilterGround.TryGetValue(id, out var g)  ? g  : 0,
+                                          equipped  = perFilterEq.TryGetValue(id, out var e2)     ? e2 : 0,
+                                          inventory = perFilterInv.TryGetValue(id, out var i2)    ? i2 : 0,
+                                          stash     = 0,
+                                      };
+
+                                  return new
+                                  {
+                                      ground    = groundCount,
+                                      equipped  = equippedCount,
+                                      inventory = inventoryCount,
+                                      stash     = 0,
+                                      byFilter,
+                                  };
                               });
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
@@ -3985,6 +4010,49 @@ public sealed class RadarApp : IDisposable
             else                     eq++;
         }
         return (eq, inv);
+    }
+
+    /// <summary>v0.32 Panorama per-filter counters. Each returned dict is keyed by
+    /// <see cref="FilterRule.Id"/> → count. An item matching N enabled filters bumps N
+    /// counters (not just the winner) so a filter's count reads as "how many items would
+    /// this filter highlight if it were the only enabled one." Disabled filters are
+    /// excluded upstream by <see cref="ItemFilterEngine.Match"/>.</summary>
+    internal static (Dictionary<string, int> ground, Dictionary<string, int> equipped, Dictionary<string, int> inventory)
+        CountPerFilterMatches(
+            IReadOnlyList<Poe2Live.EntityDot> entities,
+            IReadOnlyList<Poe2Live.InventoryItem>? invSnap,
+            ItemFilterEngine engine)
+    {
+        var gr  = new Dictionary<string, int>();
+        var eq  = new Dictionary<string, int>();
+        var inv = new Dictionary<string, int>();
+
+        static void Bump(Dictionary<string, int> d, string id)
+        {
+            d.TryGetValue(id, out var c);
+            d[id] = c + 1;
+        }
+
+        foreach (var e in entities)
+        {
+            if (e.ItemAffixes is not { Count: > 0 } affs) continue;
+            foreach (var m in engine.Match(Array.Empty<Poe2Live.RawAffix>(), affs))
+                Bump(gr, m.Rule.Id);
+        }
+
+        if (invSnap != null)
+        {
+            foreach (var it in invSnap)
+            {
+                if (it.Affixes is not { Count: > 0 } affs) continue;
+                var matches = engine.Match(Array.Empty<Poe2Live.RawAffix>(), affs);
+                if (matches.Count == 0) continue;
+                var bucket = it.InventoryId == 1 ? inv : eq;
+                foreach (var m in matches) Bump(bucket, m.Rule.Id);
+            }
+        }
+
+        return (gr, eq, inv);
     }
 
     public void Dispose()
