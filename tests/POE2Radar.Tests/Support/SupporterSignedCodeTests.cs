@@ -11,10 +11,11 @@ namespace POE2Radar.Tests.Support;
 /// </summary>
 public class SupporterSignedCodeTests
 {
-    // A signed code minted against the shipped public key (99392f...). Payload:
+    // A signed code minted against the shipped public key (ac8da1...). Payload:
     //   {"email":"donor@example.com","issued":1783717239,"tier":"gold"}
+    // Keypair rotated 2026-07-12 for v0.31.1 production deploy (LO PMS-16).
     private const string ValidCode =
-        "poe2gps.eyJlbWFpbCI6ImRvbm9yQGV4YW1wbGUuY29tIiwiaXNzdWVkIjoxNzgzNzE3MjM5LCJ0aWVyIjoiZ29sZCJ9.2hMuGwwmbqmdZRxGTjFLBa0gGfOG9pkaGKJM_rguWvBq0lfgVAZJ7jQfZU8wtFgM0nkiZm9uzXvaYnpheU95Cg";
+        "poe2gps.eyJlbWFpbCI6ImRvbm9yQGV4YW1wbGUuY29tIiwiaXNzdWVkIjoxNzgzNzE3MjM5LCJ0aWVyIjoiZ29sZCJ9.4URJewMH_67LDYw9X8j-QIvUeoJXvcU3t_YJA61xirRD0oJpVrQKI8HirJV7XQVZHgXj_G_pXmUAZAqoLmJnDw";
 
     [Fact]
     public void Verifies_valid_signed_code_and_extracts_claims()
