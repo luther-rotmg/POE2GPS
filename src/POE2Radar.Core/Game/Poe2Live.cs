@@ -1295,7 +1295,7 @@ public sealed class Poe2Live
         return TryFindPanelByShape(uiRoot, PanelKind.Stash);
     }
 
-    private enum PanelKind { Character, Inventory, Stash }
+    internal enum PanelKind { Character, Inventory, Stash }
 
     private nint TryFindPanelByShape(nint uiRoot, PanelKind kind)
     {
@@ -1337,6 +1337,17 @@ public sealed class Poe2Live
         if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.SizeW, out var w)) return false;
         if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.SizeH, out var h)) return false;
 
+        // Check if it has stash bottom bar for stash panel detection
+        bool hasStashBottomBar = HasStashBottomBar(el);
+
+        return MatchesPanelShape(kind, flags, x, y, w, h, hasStashBottomBar);
+    }
+
+    internal static bool MatchesPanelShape(PanelKind kind, uint flags, float x, float y, float w, float h, bool hasStashBottomBar)
+    {
+        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
+        if ((flags & visBit) == 0) return false;
+
         // All three panels share the 986x1600 rect. Reject anything else immediately.
         if (System.Math.Abs(w - Poe2.Panels.PanelWidthUnscaled)  > 4f) return false;
         if (System.Math.Abs(h - Poe2.Panels.PanelHeightUnscaled) > 4f) return false;
@@ -1345,9 +1356,9 @@ public sealed class Poe2Live
         {
             PanelKind.Inventory => x > 100f && System.Math.Abs(y) < 4f, // right-anchored
             PanelKind.Character => System.Math.Abs(x) < 4f && System.Math.Abs(y) < 4f
-                                   && !HasStashBottomBar(el),           // left-anchored, no stash bar
+                                   && !hasStashBottomBar,           // left-anchored, no stash bar
             PanelKind.Stash     => System.Math.Abs(x) < 4f && System.Math.Abs(y) < 4f
-                                   && HasStashBottomBar(el),            // left-anchored, has stash bar
+                                   && hasStashBottomBar,            // left-anchored, has stash bar
             _ => false
         };
     }
@@ -1355,17 +1366,25 @@ public sealed class Poe2Live
     private bool HasStashBottomBar(nint panel)
     {
         if (!ChildSpan(panel, out var first, out var n)) return false;
-        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
+        var children = new List<(uint flags, float ry, float rw)>();
         for (long i = 0; i < n && i < 60; i++)
         {
             var child = Ptr(first + (nint)(i * 8));
             if (child == 0) continue;
             if (!_reader.TryReadStruct<uint>(child + Poe2.UiElement.Flags, out var f)) continue;
-            if ((f & visBit) == 0) continue;
             if (!_reader.TryReadStruct<float>(child + Poe2.UiElement.RelativePos + 4, out var cy)) continue;
             if (!_reader.TryReadStruct<float>(child + Poe2.UiElement.SizeW,        out var cw)) continue;
-            var ry = cy / Poe2.Panels.PanelHeightUnscaled;
-            var rw = cw / Poe2.Panels.PanelWidthUnscaled;
+            children.Add((f, cy / Poe2.Panels.PanelHeightUnscaled, cw / Poe2.Panels.PanelWidthUnscaled));
+        }
+        return HasStashBottomBar(children);
+    }
+
+    internal static bool HasStashBottomBar(IReadOnlyList<(uint flags, float ry, float rw)> children)
+    {
+        const uint visBit = 1u << Poe2.UiElement.FlagVisibleBit;
+        foreach (var (f, ry, rw) in children)
+        {
+            if ((f & visBit) == 0) continue;
             if (ry >= Poe2.Panels.StashBottomBarRyMin && ry <= Poe2.Panels.StashBottomBarRyMax
                 && rw >= Poe2.Panels.StashBottomBarRwMin && rw <= Poe2.Panels.StashBottomBarRwMax)
                 return true;
