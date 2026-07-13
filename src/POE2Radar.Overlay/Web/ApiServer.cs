@@ -106,6 +106,7 @@ public sealed class ApiServer : IDisposable
     private readonly ItemFilterEngine? _itemFilters;   // v0.31 Prospector: /api/item-filters engine
     private readonly Func<object>? _itemFilterMatches; // v0.31 Prospector: /api/item-filters/matches counter
     private readonly Func<object>? _panelState;              // v0.32 Panorama: /api/panels provider (character/inventory/stash open state)
+    private readonly Func<object>? _dropsProvider;           // v0.33 Drop Timeline: /api/drops payload
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -151,7 +152,8 @@ public sealed class ApiServer : IDisposable
         // any filter on the ground / equipped / inventory surfaces for the dashboard card display.
         ItemFilterEngine? itemFilters = null,
         Func<object>? itemFilterMatchesProvider = null,
-        Func<object>? panelStateProvider = null)
+        Func<object>? panelStateProvider = null,
+        Func<object>? dropsProvider = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -189,6 +191,7 @@ public sealed class ApiServer : IDisposable
         _itemFilters = itemFilters;
         _itemFilterMatches = itemFilterMatchesProvider;
         _panelState = panelStateProvider;
+        _dropsProvider = dropsProvider;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1345,6 +1348,15 @@ public sealed class ApiServer : IDisposable
                 // Empty envelope (all-false) when the provider isn't wired.
                 object panelPayload = _panelState?.Invoke() ?? new { character = false, inventory = false, stash = false };
                 WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(panelPayload, Json), "application/json; charset=utf-8");
+                break;
+            }
+
+            case "/api/drops":
+            {
+                // v0.33 Drop Timeline: current snapshot of recorded ground drops. Empty envelope
+                // (drops:[]) when the provider isn't wired.
+                object dropsPayload = _dropsProvider?.Invoke() ?? new { drops = Array.Empty<object>() };
+                WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(dropsPayload, Json), "application/json; charset=utf-8");
                 break;
             }
 

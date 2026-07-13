@@ -753,5 +753,108 @@
     }
   });
 
+  // --------- Session Recap PNG (obs-only) ---------
+
+  function setupSessionRecap() {
+    if (!document.body.classList.contains('obs')) return;   // /map view: skip entirely
+    const btn = document.createElement('button');
+    btn.id = 'sessRecapBtn';
+    btn.textContent = '\u{1F4F8} Save Session PNG';
+    btn.className = 'session-recap-btn';
+    btn.title = 'Render a 1920\u00D71080 PNG of the current session and download';
+    btn.onclick = generateSessionRecap;
+    document.body.appendChild(btn);
+  }
+
+  async function generateSessionRecap() {
+    // Fetch freshest session stats from /state.
+    let s = {};
+    try {
+      const resp = await fetch('/state');
+      if (resp.ok) {
+        const data = await resp.json();
+        s = data.session || {};
+      }
+    } catch (e) { /* use empty object */ }
+
+    const W = 1920, H = 1080;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+
+    // Backdrop.
+    ctx.fillStyle = '#0d0f14';
+    ctx.fillRect(0, 0, W, H);
+
+    // Header stripe.
+    ctx.fillStyle = '#1a1e28';
+    ctx.fillRect(0, 0, W, 130);
+    ctx.fillStyle = '#e6d99c';
+    ctx.font = 'bold 56px sans-serif';
+    ctx.fillText('POE2GPS \u00B7 Session Recap', 60, 88);
+
+    // Wall of stats (2-column grid).
+    const totalKills = (s.killsNormal ?? 0) + (s.killsMagic ?? 0) + (s.killsRare ?? 0) + (s.killsUnique ?? 0);
+    const rows = [
+      ['Total Kills',     totalKills || '\u2014'],
+      ['Rare Kills',      s.killsRare ?? '\u2014'],
+      ['Unique Kills',    s.killsUnique ?? '\u2014'],
+      ['Deaths',          s.deaths ?? '\u2014'],
+      ['Maps / hr',       fmtNum(s.mapsPerHour, 2)],
+      ['XP Efficiency',   fmtNum(s.xpEfficiency, 2)],
+      ['Zones Entered',   s.zonesEntered ?? '\u2014'],
+      ['Session Length',  s.sessionElapsed ?? '\u2014'],
+    ];
+
+    ctx.font = '28px sans-serif';
+    const col1X = 100, col2X = 640;
+    const startY = 250, rowH = 66;
+    rows.forEach((r, i) => {
+      const half = Math.ceil(rows.length / 2);
+      const row = i % half;
+      const col = i < half ? 0 : 1;
+      const x = col === 0 ? col1X : col1X + 900;
+      const y = startY + row * rowH;
+      ctx.fillStyle = '#8890a0';
+      ctx.fillText(r[0], x, y);
+      ctx.fillStyle = '#f0e8d0';
+      ctx.fillText(String(r[1]), x + 340, y);
+    });
+
+    // Footer wordmark.
+    ctx.fillStyle = '#6a7080';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('github.com/luther-rotmg/POE2GPS', 60, H - 40);
+
+    // Trigger download.
+    c.toBlob(blob => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'poe2gps-session-' + Date.now() + '.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, 'image/png');
+  }
+
+  function fmtNum(n, digits) {
+    if (n == null || n === '' || isNaN(n)) return '\u2014';
+    return Number(n).toFixed(digits);
+  }
+
+  function fmtDurSec(sec) {
+    if (sec == null || isNaN(sec)) return '\u2014';
+    sec = Math.max(0, Math.floor(sec));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return (h > 0 ? h + 'h ' : '') + (m + 'm ') + s + 's';
+  }
+
+  setupSessionRecap();
+
   window.__poe2gpsBuildEdges = buildEdges;
 })();

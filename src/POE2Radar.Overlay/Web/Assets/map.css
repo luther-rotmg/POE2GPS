@@ -55,3 +55,22 @@ body.gps-mode .gps-toggle { background: rgba(255, 232, 180, 0.2); color: #ffe8b4
 /* /obs — transparent for OBS Browser Source, no chrome. */
 body.obs { background: transparent; }
 body.obs .hud, body.obs .gps-toggle { display: none; }
+
+/* v0.33 Session recap PNG button — only ever shown on /obs (see .obs body class) */
+.session-recap-btn {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  padding: 8px 14px;
+  background: rgba(20, 20, 30, 0.75);
+  color: #e0e0e0;
+  border: 1px solid #444;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  z-index: 9999;
+  transition: background 0.15s ease;
+}
+.session-recap-btn:hover { background: rgba(40, 40, 60, 0.85); border-color: #666; }
+.session-recap-btn:active { background: rgba(60, 60, 90, 0.9); }

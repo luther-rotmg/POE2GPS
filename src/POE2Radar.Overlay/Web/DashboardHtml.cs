@@ -492,6 +492,7 @@ internal static class DashboardHtml
             <button class="tab" data-tab="bosses">Bosses</button>
             <button class="tab" data-tab="waystone">Waystone</button>
             <button class="tab" data-tab="itemfilters">Item Filters</button>
+            <button class="tab" data-tab="drops">Drops</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -1281,6 +1282,18 @@ internal static class DashboardHtml
             </div>
           </div>
           <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsgIf">&#10003; saved</span></div>
+        </section>
+
+        <section class="view" data-view="drops" hidden>
+          <div class="panel-grid">
+            <div class="card" style="grid-column:1/-1">
+              <h3>&#128230; Drops <span class="tag">&middot; per-session record of ground drops you observed</span></h3>
+              <div class="row"><div class="rl hint-row">Persistent per-session drop log (name / rarity / zone / timestamp). Local file only - no telemetry, no pricing egress. Enable in Settings by flipping <code>EnableDropTimeline</code>. Ring-buffered at 1000 entries.</div></div>
+              <div id="dropsList" style="display:flex;flex-direction:column;gap:4px;margin-top:8px">
+                <div class="hint-row" style="opacity:.6">Loading drops...</div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
@@ -3235,6 +3248,52 @@ document.getElementById('ifRestore')?.addEventListener('click', async () => {
   loadItemFilters();
 });
 document.querySelectorAll('.tab[data-tab="itemfilters"]').forEach(t => t.addEventListener('click', loadItemFilters));
+
+/* v0.33 Drop Timeline — recent-drops list rendered on the Drops tab. Reads /api/drops
+   (populated by DropTimeline.Snapshot). Reuses ifEsc from the Item Filters block. */
+let __drops = { drops: [] };
+async function loadDrops(){
+  const list = document.getElementById('dropsList');
+  if (!list) return;
+  try {
+    const r = await fetch('/api/drops');
+    __drops = await r.json();
+    renderDrops();
+  } catch { list.innerHTML = '<div class="hint-row" style="opacity:.6">Failed to load drops.</div>'; }
+}
+function dropRarityColor(r) {
+  switch (r) {
+    case 'Unique': return '#af6025';
+    case 'Rare':   return '#ffff77';
+    case 'Magic':  return '#8888ff';
+    default:       return '#c8c8c8';
+  }
+}
+function dropFmtAgo(ts) {
+  const secs = Math.max(0, Math.floor(Date.now()/1000 - ts));
+  if (secs < 60) return secs + 's ago';
+  if (secs < 3600) return Math.floor(secs/60) + 'm ago';
+  if (secs < 86400) return Math.floor(secs/3600) + 'h ago';
+  return Math.floor(secs/86400) + 'd ago';
+}
+function renderDrops(){
+  const host = document.getElementById('dropsList');
+  if (!host) return;
+  const rows = (__drops.drops || []).slice().reverse();
+  if (!rows.length) {
+    host.innerHTML = '<div class="hint-row" style="opacity:.7">No drops recorded yet. Enable <code>EnableDropTimeline</code> in settings and play a bit.</div>';
+    return;
+  }
+  host.innerHTML = rows.map(d => `
+    <div class="card" style="padding:6px 10px;display:flex;gap:10px;align-items:center;border-left:3px solid ${dropRarityColor(d.rarity)}">
+      <div style="min-width:60px;font-weight:bold;color:${dropRarityColor(d.rarity)}">${ifEsc(d.rarity)}</div>
+      <div style="flex:1">${ifEsc(d.name)}</div>
+      <div style="opacity:.6;min-width:100px">${ifEsc(d.zone || '-')}</div>
+      <div style="opacity:.6;min-width:80px;text-align:right">${dropFmtAgo(d.ts)}</div>
+    </div>
+  `).join('');
+}
+document.querySelectorAll('.tab[data-tab="drops"]').forEach(t => t.addEventListener('click', loadDrops));
 
 /* ── Support — v0.27 (LO ask, expanded): supporters roll v2 ────────────────────────────────────
    Reads /api/supporters. Renders:

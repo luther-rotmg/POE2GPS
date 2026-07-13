@@ -906,7 +906,8 @@ public sealed class RadarApp : IDisposable
                                      inventory = _live.TryFindInventoryPanel() != 0,
                                      stash     = _live.TryFindStashPanel()     != 0,
                                  };
-                             });
+                             },
+                             dropsProvider: () => new { drops = _dropTimeline.Snapshot() });
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
