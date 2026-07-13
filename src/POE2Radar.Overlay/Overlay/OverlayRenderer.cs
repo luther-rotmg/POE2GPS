@@ -140,6 +140,7 @@ public sealed class OverlayRenderer : IDisposable
                 DrawNameplates(rt, ctx);                   // world-space HP bars over hostile mobs
                 DrawEntityArrows(rt, ctx);                 // off-screen entity edge arrows (uniques/bosses/etc.)
                 DrawItemLabels(rt, ctx);                   // priced unique drops over their loot icons
+                DrawPanelHighlights(rt, ctx);              // v0.32 Panorama: colored borders on filter-matched inventory cells
                 DrawAffixNameplates(rt, ctx);              // tiered affix text above elite mobs
                 DrawBuffNameplates(rt, ctx);               // tier-colored buff tags below elite mobs
                 if (ctx.Map.IsVisible)
@@ -699,6 +700,25 @@ public sealed class OverlayRenderer : IDisposable
 
     private static readonly Color4 ColItemHi   = new(1.00f, 0.80f, 0.20f, 1.0f);  // gold — above-threshold name + border
     private static readonly Color4 ColItemText = new(0.92f, 0.92f, 0.92f, 1.0f);  // off-white — below-threshold label
+
+    /// <summary>v0.32 Panorama: draw colored border rectangles over inventory-panel cells whose
+    /// contained items match an enabled ItemFilter. Rects arrive in unscaled UI base (2560×1600);
+    /// scale to pixel coords per the current window size.</summary>
+    private void DrawPanelHighlights(ID2D1RenderTarget rt, RenderContext ctx)
+    {
+        if (ctx.PanelHighlights is not { Count: > 0 } highlights) return;
+        float W = ctx.WindowWidth, H = ctx.WindowHeight;
+        float sx = W / 2560f, sy = H / 1600f;
+        foreach (var h in highlights)
+        {
+            var left   = h.UnscaledX * sx;
+            var top    = h.UnscaledY * sy;
+            var right  = (h.UnscaledX + h.UnscaledW) * sx;
+            var bottom = (h.UnscaledY + h.UnscaledH) * sy;
+            _bStyle!.Color = ColorFromU(h.Color);
+            rt.DrawRectangle(new Vortice.RawRectF(left, top, right, bottom), _bStyle, 2.5f);
+        }
+    }
 
     /// <summary>
     /// Tiered affix labels drawn above each elite mob's head. World-projected via the same camera

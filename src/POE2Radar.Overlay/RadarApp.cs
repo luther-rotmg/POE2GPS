@@ -75,6 +75,9 @@ public sealed class RadarApp : IDisposable
     // ReadInventory call so the itemFilterMatchesProvider closure can match them against
     // enabled filters without a per-request memory hop.
     private IReadOnlyList<Poe2Live.InventoryItem>? _lastInventoryForFilters;
+    // v0.32 Panorama inventory highlights: refreshed on the same 30-tick cadence as
+    // _lastInventoryForFilters. Renderer publishes this list via RenderContext.PanelHighlights.
+    private volatile IReadOnlyList<PanelHighlight>? _panelHighlightsSnapshot;
     // ── Session HUD tracker + published snapshot (render thread reads _sessionSnapshot lock-free). ──
     private readonly SessionTracker  _session = new();
     private volatile SessionStats?   _sessionSnapshot;
@@ -1789,6 +1792,7 @@ public sealed class RadarApp : IDisposable
             HpBarTargets: hpTargets,
             TerrainStyle: _settings.Terrain,
             ItemLabels: itemLabels,
+            PanelHighlights: _panelHighlightsSnapshot,
             Resolve: _resolveEntity,
             ResolveTile: _resolveTileDraw,
             AtlasOpen: ar.Open,
@@ -1996,9 +2000,24 @@ public sealed class RadarApp : IDisposable
                     }
                     _gearSnapshot = new GearSnapshot(scored);
                 }
+
+                // v0.32 Panorama: refresh inventory panel highlights on the same tick.
+                if (_settings.EnableInventoryHighlights && _settings.EnableItemFilterLiveCounters)
+                {
+                    var panel = _live.TryFindInventoryPanel();
+                    if (panel != 0
+                        && _live.TryGetPanelUnscaledRect(panel, out var px, out var py, out _, out _)
+                        && _live.TryGetInventoryGridDims(areaInstance, 1, out var gcols, out var grows))
+                        _panelHighlightsSnapshot = BuildInventoryHighlights(
+                            _lastInventoryForFilters, _itemFilterEngine, px, py, gcols, grows);
+                    else
+                        _panelHighlightsSnapshot = null;
+                }
+                else _panelHighlightsSnapshot = null;
             }
         }
-        else if (_gearSnapshot != null) { _gearSnapshot = null; _lastInventoryForFilters = null; }
+        else if (_gearSnapshot != null || _lastInventoryForFilters != null || _panelHighlightsSnapshot != null)
+        { _gearSnapshot = null; _lastInventoryForFilters = null; _panelHighlightsSnapshot = null; }
         // Drop the local player's own entity — it lives in the AwakeEntities map like any
         // other Player, but the dedicated center blip already represents "you" (gated by
         // ShowPlayerBlip). Without this, a Player-category dot renders at map-center even with
@@ -4053,6 +4072,39 @@ public sealed class RadarApp : IDisposable
         }
 
         return (gr, eq, inv);
+    }
+
+    /// <summary>v0.32 Panorama: build the PanelHighlight list for the Main-bag inventory.
+    /// Iterates the cached inventory snapshot, matches each item against enabled filters,
+    /// and for matching items, computes the unscaled cell rect + packs the winning filter's
+    /// hex color into 0xAARRGGBB. Empty snap / zero panel dims / zero grid dims → empty list.
+    /// Pure: no memory reads.</summary>
+    internal static IReadOnlyList<PanelHighlight> BuildInventoryHighlights(
+        IReadOnlyList<Poe2Live.InventoryItem>? snap,
+        ItemFilterEngine engine,
+        float panelUnscaledX, float panelUnscaledY,
+        int gridCols, int gridRows)
+    {
+        if (snap == null || snap.Count == 0) return Array.Empty<PanelHighlight>();
+        if (gridCols <= 0 || gridRows <= 0)  return Array.Empty<PanelHighlight>();
+
+        var result = new List<PanelHighlight>();
+        foreach (var it in snap)
+        {
+            if (it.InventoryId != 1) continue;                      // Main bag only
+            if (it.Affixes is not { Count: > 0 } affs) continue;
+            var matches = engine.Match(Array.Empty<Poe2Live.RawAffix>(), affs);
+            if (matches.Count == 0) continue;
+            var winner = matches[0];                                // Match() returns priority-sorted DESC — index 0 wins
+            var color = PackColor(winner.Rule.Color);
+            var (x, y, w, h) = Poe2Live.ComputeInventoryCellRect(
+                panelUnscaledX, panelUnscaledY,
+                it.SlotStartX, it.SlotStartY, it.SlotEndX, it.SlotEndY,
+                gridCols, gridRows,
+                2560f, 1600f);                                      // Base-res winW/winH → returned rect IS unscaled
+            result.Add(new PanelHighlight(x, y, w, h, color));
+        }
+        return result;
     }
 
     public void Dispose()

@@ -308,6 +308,14 @@ public sealed class RadarSettings
     /// (Stash counter stays at 0 until a stash reader ships.)</summary>
     public bool EnableItemFilterLiveCounters { get; set; } = false;
 
+    /// <summary>v0.32 Panorama: when true (and EnableItemFilterLiveCounters is also true so
+    /// inventory is being read), draw colored borders in-game on Main-bag inventory cells
+    /// whose contained items match an enabled ItemFilter. Winning filter's color (highest
+    /// priority, ties broken by list order) supplies the border color. Refreshed at the
+    /// same ~1 Hz cadence as the counters — closing the panel leaves stale highlights up
+    /// briefly (<1s). Default false.</summary>
+    public bool EnableInventoryHighlights { get; set; } = false;
+
     // ── Audio alerts. Master gate defaults OFF — nothing plays out of the box. Individual sub-toggles
     //    are pre-enabled so turning on EnableAudioAlerts immediately activates all three cue types. ──
     public bool EnableAudioAlerts { get; set; } = false;     // master gate — default OFF

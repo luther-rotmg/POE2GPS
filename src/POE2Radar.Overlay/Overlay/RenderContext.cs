@@ -54,6 +54,12 @@ public readonly record struct BuffNameplateTarget(Vector3 World, POE2Radar.Core.
 /// essences, currency…) only the value is drawn in a compact chip. <see cref="Highlight"/> adds a border.</summary>
 public readonly record struct ItemLabel(Vector3 World, string Name, string Value, bool Highlight, bool ShowName, uint? BorderColor = null);
 
+/// <summary>v0.32 Panorama: a single screen-highlight rect for a panel cell (currently
+/// Main-bag inventory; extendable to CharacterPanel/StashPanel in later beads). Coords
+/// are UNSCALED UI base (2560×1600); the renderer scales to pixels via winW/winH.
+/// Color is packed 0xAARRGGBB (call <c>RadarApp.PackColor(hex)</c> at aggregation time).</summary>
+public readonly record struct PanelHighlight(float UnscaledX, float UnscaledY, float UnscaledW, float UnscaledH, uint Color);
+
 /// <summary>One atlas node to highlight. <see cref="X"/>/<see cref="Y"/> are the canvas-space CENTER of
 /// the node (RelativePos top-left + half node dimension), via <c>AtlasGeometry.AtlasCentre</c>; the
 /// renderer projects them to screen via the atlas transform (scale + offset).</summary>
@@ -203,6 +209,10 @@ public sealed record RenderContext(
     TerrainSettings TerrainStyle,
     // Priced ground-item labels (unique drops) to draw over their in-world loot icons. Null/empty → none.
     IReadOnlyList<ItemLabel>? ItemLabels = null,
+    // v0.32 Panorama: panel item highlights (inventory-panel cells whose contained items
+    // match an enabled ItemFilter). Null/empty → nothing to draw. Coords are unscaled UI
+    // base (2560×1600); renderer scales.
+    IReadOnlyList<PanelHighlight>? PanelHighlights = null,
     // ── Unified display-rule engine (Phase 1). Resolves an entity to the first matching display rule
     // (or null → not drawn); the rule says hide or how to draw (shape/color/size/label). Replaces the
     // watched/mechanic/category dot decision in DrawMap. Null only if not wired (defensive). ──
