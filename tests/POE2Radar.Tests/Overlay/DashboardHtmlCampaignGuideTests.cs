@@ -10,7 +10,9 @@ namespace POE2Radar.Tests.Overlay;
 // copy), 7.1 (attribution bottom) are all pinned here.
 public class DashboardHtmlCampaignGuideTests
 {
-    private const string Html = DashboardHtml.Page;
+    // v0.33 #29a: DashboardHtml.Page is now `static string` (was `const string`) — the CSS
+    // is spliced in at runtime from an embedded asset. Static-readonly captures the value once.
+    private static readonly string Html = DashboardHtml.Page;
 
     [Fact]
     public void ZonePlanCard_ContainsGuideStepContainer()

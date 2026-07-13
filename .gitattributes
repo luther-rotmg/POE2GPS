@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# v0.33 #29 dashboard extraction: preserve exact bytes (CRLF from source) so AssemblePage
+# produces a byte-identical Page across all CI runners. -text disables ALL line-ending
+# normalisation. Rules for #29b/#29c assets added up-front (belt-and-suspenders).
+src/POE2Radar.Overlay/Web/Assets/dashboard.css -text
+src/POE2Radar.Overlay/Web/Assets/dashboard.js -text
+src/POE2Radar.Overlay/Web/Assets/dashboard.html -text
