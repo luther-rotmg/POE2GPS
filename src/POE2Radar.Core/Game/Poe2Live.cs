@@ -180,7 +180,8 @@ public sealed class Poe2Live
     /// Name is the rendered base-type display name (e.g. "Greater Orb of Augmentation"), empty if unavailable.
     /// InventoryId is the Inventories.dat index (1=Main, 2=BodyArmour, 3=Weapon1, etc.).</summary>
     public sealed record InventoryItem(string Name, string Rarity, bool Identified, int InventoryId,
-        IReadOnlyList<RawAffix> Affixes);
+        IReadOnlyList<RawAffix> Affixes,
+        int SlotStartX = 0, int SlotStartY = 0, int SlotEndX = 0, int SlotEndY = 0);
 
     /// <summary>A static tile-based landmark: a notable terrain feature and its grid centroid.
     /// <paramref name="CuratedName"/> is an optional curated friendly label (null when none matches);
@@ -1489,6 +1490,53 @@ public sealed class Poe2Live
         return (ppx + rel.X, ppy + rel.Y);
     }
 
+    /// <summary>v0.32 Panorama pure math: given the InventoryPanel's UNSCALED screen origin
+    /// + a cell's grid coordinates (SlotStartX/Y..EndX/Y), return the screen-pixel rect for
+    /// that cell. Uses Poe2.Panels.InventoryGrid* fingerprint constants for the grid-area
+    /// rect within the panel, and BaseResW/BaseResH for unscaled→pixel scaling.
+    ///
+    /// The panel's unscaled origin is what the resolver reads off the panel UiElement's
+    /// RelativePos field. Grid dimensions (gridCols x gridRows) come from the InventoryStruct
+    /// TotalBoxesX/Y (Poe2Offsets.cs Inventory section) — pass them in explicitly so this
+    /// stays pure. Reasonable defaults for PoE2's Main bag are 12x5 (60 slots).
+    ///
+    /// Returned rect is in screen pixels — plug straight into the overlay renderer.</summary>
+    public static (float x, float y, float w, float h) ComputeInventoryCellRect(
+        float panelUnscaledX, float panelUnscaledY,
+        int slotStartX, int slotStartY, int slotEndX, int slotEndY,
+        int gridCols, int gridRows,
+        float winW, float winH)
+    {
+        // Panel span in unscaled coords is fixed (from the P1 probe): 986x1600.
+        var panelW = Poe2.Panels.PanelWidthUnscaled;
+        var panelH = Poe2.Panels.PanelHeightUnscaled;
+
+        // Grid-area rect within the panel (unscaled).
+        var gridX = panelUnscaledX + Poe2.Panels.InventoryGridRx * panelW;
+        var gridY = panelUnscaledY + Poe2.Panels.InventoryGridRy * panelH;
+        var gridW = Poe2.Panels.InventoryGridRw * panelW;
+        var gridH = Poe2.Panels.InventoryGridRh * panelH;
+
+        // Cell size (unscaled). Guard against zero grid dims — return degenerate rect.
+        if (gridCols <= 0 || gridRows <= 0) return (0f, 0f, 0f, 0f);
+        var cellW = gridW / gridCols;
+        var cellH = gridH / gridRows;
+
+        // Cell rect in unscaled coords. slotEnd may equal slotStart for single-cell items,
+        // or extend for multi-cell items — width/height uses (end - start + 1) cells.
+        var spanX = System.Math.Max(1, slotEndX - slotStartX + 1);
+        var spanY = System.Math.Max(1, slotEndY - slotStartY + 1);
+        var cellUnscaledX = gridX + slotStartX * cellW;
+        var cellUnscaledY = gridY + slotStartY * cellH;
+        var cellUnscaledW = spanX * cellW;
+        var cellUnscaledH = spanY * cellH;
+
+        // Scale to screen pixels. Base is 2560x1600 per Poe2.UiElement.BaseResW/H.
+        var sx = winW / (float)Poe2.UiElement.BaseResW;
+        var sy = winH / (float)Poe2.UiElement.BaseResH;
+        return (cellUnscaledX * sx, cellUnscaledY * sy, cellUnscaledW * sx, cellUnscaledH * sy);
+    }
+
     /// <summary>One offered reward in the post-ritual TRIBUTE SHOP: the reward item's identity (for pricing —
     /// uniques key off <see cref="Art"/>, everything else off the base-type <see cref="Name"/>) and its tile's
     /// SCREEN rect (already scaled). Value lookup + drawing happen overlay-side.</summary>
@@ -1919,7 +1967,14 @@ public sealed class Poe2Live
                         ReadRawAffixesInto(modsComp + Poe2.ModsComponent.ExplicitMods, affixes);
                     }
 
-                    result.Add(new InventoryItem(name ?? "", rarStr, identified, invId, affixes));
+                    // Read slot coordinates from the InventoryItemStruct
+                    _reader.TryReadStruct<int>(iiPtr + Poe2.InventoryItem.SlotStartX, out var slotX);
+                    _reader.TryReadStruct<int>(iiPtr + Poe2.InventoryItem.SlotStartY, out var slotY);
+                    _reader.TryReadStruct<int>(iiPtr + Poe2.InventoryItem.SlotEndX,   out var slotEx);
+                    _reader.TryReadStruct<int>(iiPtr + Poe2.InventoryItem.SlotEndY,   out var slotEy);
+
+                    result.Add(new InventoryItem(name ?? "", rarStr, identified, invId, affixes,
+                        slotX, slotY, slotEx, slotEy));
                 }
             }
         }
