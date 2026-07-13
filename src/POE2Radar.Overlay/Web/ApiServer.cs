@@ -105,6 +105,7 @@ public sealed class ApiServer : IDisposable
     private readonly Func<object>? _wipeLog;   // v0.30 Instinct: /api/wipe-log payload provider
     private readonly ItemFilterEngine? _itemFilters;   // v0.31 Prospector: /api/item-filters engine
     private readonly Func<object>? _itemFilterMatches; // v0.31 Prospector: /api/item-filters/matches counter
+    private readonly Func<object>? _panelState;              // v0.32 Panorama: /api/panels provider (character/inventory/stash open state)
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -149,7 +150,8 @@ public sealed class ApiServer : IDisposable
         // Null → the endpoint returns an empty envelope. The matches provider counts items matching
         // any filter on the ground / equipped / inventory surfaces for the dashboard card display.
         ItemFilterEngine? itemFilters = null,
-        Func<object>? itemFilterMatchesProvider = null)
+        Func<object>? itemFilterMatchesProvider = null,
+        Func<object>? panelStateProvider = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -186,6 +188,7 @@ public sealed class ApiServer : IDisposable
         _wipeLog = wipeLogProvider;
         _itemFilters = itemFilters;
         _itemFilterMatches = itemFilterMatchesProvider;
+        _panelState = panelStateProvider;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1333,6 +1336,15 @@ public sealed class ApiServer : IDisposable
                 // Empty envelope when the provider isn't wired.
                 object matchesPayload = _itemFilterMatches?.Invoke() ?? new { ground = 0, equipped = 0, inventory = 0 };
                 WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(matchesPayload, Json), "application/json; charset=utf-8");
+                break;
+            }
+
+            case "/api/panels":
+            {
+                // v0.32 Panorama: which of the three main panels are currently open (visible + resolved).
+                // Empty envelope (all-false) when the provider isn't wired.
+                object panelPayload = _panelState?.Invoke() ?? new { character = false, inventory = false, stash = false };
+                WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(panelPayload, Json), "application/json; charset=utf-8");
                 break;
             }
 

@@ -1348,13 +1348,17 @@ public sealed class Poe2Live
         if (!_reader.TryReadStruct<uint>(el + Poe2.UiElement.Flags, out var flags)) return false;
         if ((flags & visBit) == 0) return false;
 
-        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos, out var x)) return false;
-        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos + 4, out var y)) return false;
         if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.SizeW, out var w)) return false;
+        if (System.Math.Abs(w - Poe2.Panels.PanelWidthUnscaled) > 4f) return false;
         if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.SizeH, out var h)) return false;
+        if (System.Math.Abs(h - Poe2.Panels.PanelHeightUnscaled) > 4f) return false;
 
-        // Check if it has stash bottom bar for stash panel detection
-        bool hasStashBottomBar = HasStashBottomBar(el);
+        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos,     out var x)) return false;
+        if (!_reader.TryReadStruct<float>(el + Poe2.UiElement.RelativePos + 4, out var y)) return false;
+
+        // Bar-fingerprint walk only for Character/Stash (both anchor at 0,0 and can't be told
+        // apart by rect alone). Inventory is right-anchored — skip the walk.
+        bool hasStashBottomBar = kind != PanelKind.Inventory && HasStashBottomBar(el);
 
         return MatchesPanelShape(kind, flags, x, y, w, h, hasStashBottomBar);
     }

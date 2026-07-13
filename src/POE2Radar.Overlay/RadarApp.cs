@@ -890,7 +890,19 @@ public sealed class RadarApp : IDisposable
                                       stash     = 0,
                                       byFilter,
                                   };
-                              });
+                              },
+                             panelStateProvider: () =>
+                             {
+                                 // v0.32 Panorama: check each of the three panel resolvers. Cheap read
+                                 // (shape verify + one flags-bit test per candidate); acceptable at
+                                 // dashboard-poll rate (a few times per second on tab-open).
+                                 return new
+                                 {
+                                     character = _live.TryFindCharacterPanel() != 0,
+                                     inventory = _live.TryFindInventoryPanel() != 0,
+                                     stash     = _live.TryFindStashPanel()     != 0,
+                                 };
+                             });
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();

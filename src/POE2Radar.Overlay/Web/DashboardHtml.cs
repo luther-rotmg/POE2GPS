@@ -3096,13 +3096,22 @@ document.querySelectorAll('.tab[data-tab="bosses"]').forEach(t => t.addEventList
    name/color/priority/enabled edits, add/remove requirements, and delete/duplicate. */
 let __ifData = { filters: [] };
 let __ifMatches = { ground: 0, equipped: 0, inventory: 0, stash: 0, byFilter: {} };
+let __panelState = { character: false, inventory: false, stash: false };
+let __ifSort = (typeof localStorage !== 'undefined' && localStorage.getItem('ifSort')) || 'name';
+let __ifHideZero = (typeof localStorage !== 'undefined' && localStorage.getItem('ifHideZero')) === '1';
+
 function ifEsc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function ifTotalCount(id) {
+  const c = (__ifMatches.byFilter && __ifMatches.byFilter[id]) || {};
+  return (c.ground || 0) + (c.equipped || 0) + (c.inventory || 0);
+}
 async function loadItemFilters(){
   const list = document.getElementById('ifList');
   if (!list) return;
   try {
     const r = await fetch('/api/item-filters'); __ifData = await r.json();
     const m = await fetch('/api/item-filters/matches'); __ifMatches = await m.json();
+    try { const p = await fetch('/api/panels'); __panelState = await p.json(); } catch { __panelState = { character: false, inventory: false, stash: false }; }
     renderItemFilters();
   } catch { list.innerHTML = '<div class="hint-row" style="opacity:.6">Failed to load item filters.</div>'; }
 }
@@ -3113,9 +3122,29 @@ function renderItemFilters(){
     host.innerHTML = '<div class="hint-row" style="opacity:.7">No filters yet. Click <b>+ New filter</b> or <b>Restore starter presets</b>.</div>';
     return;
   }
+  const panelIcon = (open) => open ? '🟢' : '⚫';
+  const panelStrip = `<div class="hint-row" style="margin-bottom:8px;opacity:.75;font-size:12px">
+    Panels open: ${panelIcon(__panelState.character)} Character · ${panelIcon(__panelState.inventory)} Inventory · ${panelIcon(__panelState.stash)} Stash
+  </div>`;
   const summary = `<div class="hint-row" style="margin-bottom:8px;opacity:.75">🎯 total matches — ground: ${__ifMatches.ground || 0}${__ifMatches.equipped ? ' · equipped: ' + __ifMatches.equipped : ''}${__ifMatches.inventory ? ' · inventory: ' + __ifMatches.inventory : ''}</div>`;
-  const html = filters.map((f, i) => `
-    <div class="card" data-fi="${i}" style="padding:12px">
+  const controls = `<div class="hint-row" style="margin-bottom:8px;display:flex;gap:12px;align-items:center;font-size:12px">
+    <label>Sort:
+      <select id="ifSortSel" style="margin-left:4px">
+        <option value="name"${__ifSort==='name'?' selected':''}>Name</option>
+        <option value="priority"${__ifSort==='priority'?' selected':''}>Priority (high → low)</option>
+        <option value="matches"${__ifSort==='matches'?' selected':''}>Most matches now</option>
+      </select>
+    </label>
+    <label style="margin-left:8px"><input type="checkbox" id="ifHideZeroChk"${__ifHideZero?' checked':''}> Hide 0-match filters</label>
+  </div>`;
+  const raw = __ifData.filters || [];
+  let filtersToRender = raw.map((f, origIdx) => ({ ...f, __origIdx: origIdx }));
+  if (__ifHideZero) filtersToRender = filtersToRender.filter(f => ifTotalCount(f.id) > 0);
+  if (__ifSort === 'priority') filtersToRender.sort((a, b) => (b.priority ?? 100) - (a.priority ?? 100));
+  else if (__ifSort === 'matches') filtersToRender.sort((a, b) => ifTotalCount(b.id) - ifTotalCount(a.id));
+  // 'name' → keep insertion order (already sensible: alphabetical by convention in the preset seed)
+  const html = filtersToRender.map((f, i) => `
+    <div class="card" data-fi="${f.__origIdx}" style="padding:12px">
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
         <input type="color" class="if-color" value="${ifEsc(f.color || '#FFFFFF')}" title="Border color">
         <input class="if-name" value="${ifEsc(f.name || 'Untitled')}" style="flex:1;font-weight:bold" placeholder="Filter name">
@@ -3140,7 +3169,7 @@ function renderItemFilters(){
       <div style="font-size:11px;color:var(--ink-faint)">🎯 ground: ${(__ifMatches.byFilter?.[f.id]?.ground) || 0}${(__ifMatches.byFilter?.[f.id]?.equipped) ? ' · equipped: ' + __ifMatches.byFilter[f.id].equipped : ''}${(__ifMatches.byFilter?.[f.id]?.inventory) ? ' · inventory: ' + __ifMatches.byFilter[f.id].inventory : ''}</div>
     </div>
   `).join('');
-  host.innerHTML = summary + html;
+  host.innerHTML = controls + panelStrip + summary + html;
   host.querySelectorAll('[data-fi]').forEach(card => {
     const i = +card.dataset.fi;
     const f = __ifData.filters[i]; if (!f) return;
@@ -3166,6 +3195,19 @@ function renderItemFilters(){
       reqEl.querySelector('.if-req-del').onclick = () => { f.requirements.splice(ri, 1); saveItemFilters(); renderItemFilters(); };
     });
   });
+  
+  const sortSel = document.getElementById('ifSortSel');
+  if (sortSel) sortSel.onchange = () => {
+    __ifSort = sortSel.value;
+    try { localStorage.setItem('ifSort', __ifSort); } catch {}
+    renderItemFilters();
+  };
+  const hzChk = document.getElementById('ifHideZeroChk');
+  if (hzChk) hzChk.onchange = () => {
+    __ifHideZero = hzChk.checked;
+    try { localStorage.setItem('ifHideZero', __ifHideZero ? '1' : '0'); } catch {}
+    renderItemFilters();
+  };
 }
 async function saveItemFilters(){
   try {
