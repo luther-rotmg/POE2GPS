@@ -1,8 +1,8 @@
-# POE2Radar — Contributor Guide
+# POE2GPS — Contributor Guide
 
 External memory-reading **map/radar overlay for Path of Exile 2**. .NET 10, Windows, x64 only.
-Reads game state out of process (no injection) and draws an overlay; an opt-in auto-flask feature
-sends keystrokes. Forked from a PoE1 framework, since rewritten around the live PoE2 layout.
+Reads game state out of process (no injection) and draws an overlay — read-only, no keystrokes or
+input sent to the game. Forked from a PoE1 framework, since rewritten around the live PoE2 layout.
 
 ## Non-negotiable rules
 
@@ -12,10 +12,12 @@ sends keystrokes. Forked from a PoE1 framework, since rewritten around the live 
 **Stay external.** Memory access via `OpenProcess` + `ReadProcessMemory`. **Never** inject into the
 PoE2 process — no DLL injection, no function hooking, no packet manipulation.
 
-**Input/automation (opt-in).** The overlay may send keystrokes via `SendInput`
-(`Input/SendInputNative`) for auto-flask only. Rules: foreground-gated (only when PoE2 is focused),
-in-game-gated, per-action cooldowns, master kill-switch hotkey (F8). Keep automation minimal and
-clearly gated — a personal QoL tool, not a headless bot.
+**No input emission.** The overlay never sends keystrokes or input to the game — the auto-flask
+keystroke subsystem was removed on purpose (see README, `scripts/compliance-gate.ps1`). Hotkeys are
+read-only and only fire while PoE2 is focused; the controller reader (`Input/XInputNative.cs`,
+`Input/ControllerCycler.cs`) reads pad state for the HUD, it does not send input. CI's
+`compliance-gate.ps1` fails the build on any input-emission or process-write Win32 symbol
+(`SendInput`, `WriteProcessMemory`, `CreateRemoteThread`, …) in shipped source.
 
 **Offset discovery lives in Research.** The overlay just reads; reverse-engineering/probes live in
 `POE2Radar.Research`. When a patch breaks reads, run the Research probes, re-validate, commit — and
@@ -24,7 +26,7 @@ at-a-glance currency signal stays accurate (if it lags the live patch, users see
 
 **Three-pillar layout.** Exactly three projects:
 - `src/POE2Radar.Core` — memory plumbing + the PoE2 offset table + the live read layer. Read-side.
-- `src/POE2Radar.Overlay` — tick loop, Direct2D overlay, HTTP API, opt-in input. The deliverable `.exe`.
+- `src/POE2Radar.Overlay` — tick loop, Direct2D overlay, HTTP API, read-only controller input. The deliverable `.exe`.
 - `src/POE2Radar.Research` — dev-time discovery/validation tooling. Never linked into the overlay.
 
 ## Architecture
@@ -84,7 +86,8 @@ at-a-glance currency signal stays accurate (if it lags the live patch, users see
 - `Overlay/TerrainBitmap.cs` — bakes the walkable grid into a bitmap, rebuilt per area.
 - `Web/ApiServer.cs` — read-only HTTP API on `localhost:7777` (`/state`, `/entities`, `/landmarks`,
   `/api/icons` — the icon library for the dashboard's SVG-preview shape pickers).
-- `Input/SendInputNative.cs` — scancode `SendInput` for auto-flask.
+- `Input/XInputNative.cs`, `Input/ControllerCycler.cs` — read-only XInput pad state for the HUD; no
+  input is ever sent to the game.
 
 **Research** (`src/POE2Radar.Research/Program.cs`) — probes: `--hp` (value-scan), `--vitals`
 (dump the local player's Life component — what the configured Health/Mana/ES offsets read + every
@@ -136,6 +139,19 @@ is rescaled by liveZoom/calibZoom each frame. See `resources/atlas-research-note
   nameplates via `OverlayRenderer.DrawNameplates`/`DrawItemLabels`/`DrawAffixNameplates` (NOT a perspective
   homography — direct `screen = project(world * M)` with this codebase's exact index layout).
 - **Still TBD:** friendly area Name string.
+
+## Build & run
+
+Solution file is `POE2Radar.slnx` at the repo root (4 projects: Core, Overlay, Research, Tests).
+
+```powershell
+dotnet build POE2Radar.slnx -c Release
+dotnet test tests/POE2Radar.Tests/POE2Radar.Tests.csproj -c Release
+
+# Run a Research probe (PoE2 must be running):
+dotnet run --project src/POE2Radar.Research -c Release -- --devtree
+dotnet run --project src/POE2Radar.Research -c Release -- --hp
+```
 
 ## Dependencies
 - `Vortice.Direct2D1` (overlay rendering). Targets `net10.0-windows`, x64.
