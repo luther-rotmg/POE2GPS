@@ -3,6 +3,45 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.33.0] — 2026-07-13 "Ledger"
+
+### Added — 📒 **Drop Timeline** *(persistent per-session record of your ground drops)*
+
+- 📒 **Every non-white ground drop you observe gets logged** to `config/drop_timeline.json` while `EnableDropTimeline` is on. Name, rarity, zone, character, timestamp. Ring-buffered at 1000 entries — oldest drop off first once you saturate. In-memory dedup by entity id keeps the same drop from being recorded twice per session.
+- 🗂 **New "Drops" dashboard tab** shows the log in reverse-chronological order — each drop is a rarity-colored card (Unique ochre, Rare yellow, Magic blue, Normal grey) with the item name, its zone, and a live "Xs ago / Xm ago / Xh ago" timestamp. Refreshes on tab open.
+- 🔌 **`GET /api/drops` endpoint** exposes the same snapshot as JSON — feeds the dashboard and is available for OBS overlays or scripts. Empty envelope when the tracker isn't running.
+- 🛡 **Compliance-first design** — same posture as the v0.30 Boss Wipe Log: local file only, no telemetry, no market pricing, no egress. Compliance-clean respec of the "historical price sparkline" idea from the v1.0 roadmap.
+- ⚙️ **Off by default.** Flip `EnableDropTimeline` in `settings.json` to opt in for the persistent file — same convention as `EnableGearScorer` and `EnableItemFilterLiveCounters`.
+
+### Added — 📸 **Session Recap PNG** *(one-click shareable 1920×1080 render on /obs)*
+
+- 📸 **Floating "Save Session PNG" button** appears in the bottom-right of the `/obs` view (only there — never on `/map`). Click it and the browser renders a 1920×1080 canvas of your current session — character level, kills / rare kills / unique kills, deaths, maps per hour, XP per hour, zones entered, session length — laid out with a dark backdrop, a header stripe, and the github footer.
+- 🖱 **One-click download** as `poe2gps-session-<timestamp>.png`. Drag into Discord, Twitter, Reddit. Substrate is the SSE session block already flowing — the recap improves automatically as more session stats land upstream.
+- 🎯 **Zero server changes.** Pure client-side canvas render. No new endpoints, no new memory reads.
+
+### Fixed — 🖼 **Per-filter counters + panel-open chip + filter sort/hide** *(v0.32 polish)*
+
+- 🃏 **Per-filter live match counters** — each Item Filters card shows its own ground/equipped/inventory count instead of the same total smeared across every card. New summary strip on top of the tab shows the aggregate totals.
+- 🟢 **Panel-open state chip** — the Item Filters tab now shows which panels are currently open (🟢 Character · 🟢 Inventory · ⚫ Stash), fed by `GET /api/panels` off the P1 panel resolvers. Real-time confirmation the resolvers work in production without needing another probe.
+- 🔀 **Sort dropdown + hide-0-match toggle** on the Item Filters tab. Sort by name (default) / priority DESC / most matches now. Hide filters with zero current matches. Both persist to `localStorage`.
+
+### Under the hood
+
+- **Dashboard extracted from the C# raw-string embed to real asset files** — the ~3500-line inline HTML/CSS/JS in `DashboardHtml.cs` is now three embedded resources under `Web/Assets/dashboard/`: `dashboard.html` (80.6 KB), `dashboard.css` (29.3 KB), `dashboard.js` (140 KB). `DashboardHtml.cs` collapsed from 3541 LOC to a 40-LOC thin wrapper. Byte-for-byte identical output to pre-refactor (SHA256 pinned at every checkpoint during the 3-bead extraction). Unlocks JS lint, browser devtools debugging, editor syntax highlighting, and kills a whole class of encoding bugs that came from the C# raw-string embed. `AssemblePage` lazily loads the three assets on first `/` request and splices them via sentinel-comment replacement.
+- New `Poe2Radar.Core.Session.DropTimeline` — thread-safe tracker mirroring the v0.30 `BossWipeLog` persistence pattern (load-on-construct + append-on-record + `Flush()`-on-dispose). Ring buffer via `LinkedList<T>` for O(1) eviction; in-memory `HashSet<uint>` for per-session dedup.
+- New `/api/panels` endpoint providing character/inventory/stash open state (three `TryFind*Panel() != 0` checks per poll).
+- Tick observation piggybacks the existing `_entities` walk right after `BuildItemLabels()` — no new memory reads, gates on `EnableDropTimeline`.
+- 8 new xUnit facts covering `DropTimeline` (record, dedup, ring buffer cap, load, save, corrupt-file tolerance). Test suite: 739 → 747.
+- `.gitattributes` gets `-text` rules on all three dashboard assets to preserve exact bytes across CI runners (prevents CRLF/LF normalization drift from breaking `Page` byte-parity).
+
+### Deferred to v0.34+
+
+- Highlight on **character equipment slots** — the panel resolver ships (v0.32); needs a one-shot slot fingerprint probe to pin the equipment-slot grid.
+- Highlight on **stash grid tabs** — the stash panel resolver ships (v0.32); needs a stash-side inventory reader (`Poe2Live.ReadStashItems`) plus tab-switch detection.
+- Specialty stash tabs (currency / fragment / essence / delirium / expedition) — each own drop.
+
+---
+
 ## [0.32.0] — 2026-07-13 "Panorama"
 
 ### Added — 🖼 **Colored borders in-game on filter-matched inventory items**
