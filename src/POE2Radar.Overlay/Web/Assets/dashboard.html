@@ -224,6 +224,28 @@
             </h3>
             <div id="atlasGroups"></div>
           </div>
+          <!-- Atlas behavior toggles: route, auto-route, biome border, max hops -->
+          <div class="card">
+            <h3>Atlas behavior</h3>
+            <div class="controls" style="gap:14px;margin:0 0 8px;flex-wrap:wrap;align-items:center">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <label class="sw"><input type="checkbox" data-set="atlasShowRoute"><span class="track"></span><span class="knob"></span></label>
+                Show route
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <label class="sw"><input type="checkbox" data-set="atlasAutoRoute"><span class="track"></span><span class="knob"></span></label>
+                Auto-route
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+                <label class="sw"><input type="checkbox" data-set="atlasShowBiomeBorder"><span class="track"></span><span class="knob"></span></label>
+                Show biome border
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px">
+                Max hops
+                <input type="number" data-set="atlasAutoRouteMaxHops" min="1" max="32" step="1" style="width:54px;padding:2px 4px">
+              </label>
+            </div>
+          </div>
           <div class="card">
             <h3>Dynasty-support maps <small>Anomaly-boss maps that drop Lineage/Dynasty support gems &mdash; enable the highlight in Settings</small></h3>
             <div id="dynastyList" class="znotes" style="display:block"><div class="rl hint-row">Loading&hellip;</div></div>
@@ -885,6 +907,12 @@
             <div class="card" style="grid-column:1/-1">
               <h3>&#128230; Drops <span class="tag">&middot; per-session record of ground drops you observed</span></h3>
               <div class="row"><div class="rl hint-row">Persistent per-session drop log (name / rarity / zone / timestamp). Local file only - no telemetry, no pricing egress. Enable in Settings by flipping <code>EnableDropTimeline</code>. Ring-buffered at 1000 entries.</div></div>
+              <div class="row"><div class="rl">Drop timeline</div>
+                <label class="sw"><input type="checkbox" data-set="enableDropTimeline"><span class="track"></span><span class="knob"></span></label></div>
+              <div class="row"><div class="rl">Item filter live counters</div>
+                <label class="sw"><input type="checkbox" data-set="enableItemFilterLiveCounters"><span class="track"></span><span class="knob"></span></label></div>
+              <div class="row"><div class="rl">Inventory highlights</div>
+                <label class="sw"><input type="checkbox" data-set="enableInventoryHighlights"><span class="track"></span><span class="knob"></span></label></div>
               <div id="dropsList" style="display:flex;flex-direction:column;gap:4px;margin-top:8px">
                 <div class="hint-row" style="opacity:.6">Loading drops...</div>
               </div>

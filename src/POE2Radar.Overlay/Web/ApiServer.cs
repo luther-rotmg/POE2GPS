@@ -1534,6 +1534,9 @@ public sealed class ApiServer : IDisposable
         allowLanAccess = _settings.AllowLanAccess, // opt-in LAN view binding; needs a restart to apply
         enableWebMap = _settings.EnableWebMap,
         enableWebObs = _settings.EnableWebObs,
+        enableDropTimeline = _settings.EnableDropTimeline,
+        enableItemFilterLiveCounters = _settings.EnableItemFilterLiveCounters,
+        enableInventoryHighlights = _settings.EnableInventoryHighlights,
         updateChannel = _settings.UpdateChannel, // stable|preview — restart to apply
         updateUrl = _settings.UpdateUrl,         // null (default) = built-in GitHub API; restart to apply
         styles = _settings.Styles,   // per-item icon shapes/colors/sizes + mechanic overrides
@@ -1594,6 +1597,10 @@ public sealed class ApiServer : IDisposable
         atlasRouteArrowSpacing   = _settings.AtlasRouteArrowSpacing,
         atlasShowContentIcons    = _settings.AtlasShowContentIcons,
         atlasContentIconSize     = _settings.AtlasContentIconSize,
+        atlasShowRoute           = _settings.AtlasShowRoute,
+        atlasAutoRoute           = _settings.AtlasAutoRoute,
+        atlasAutoRouteMaxHops    = _settings.AtlasAutoRouteMaxHops,
+        atlasShowBiomeBorder     = _settings.AtlasShowBiomeBorder,
         // Off-screen entity arrows: whole settings object + seeded flag (so dashboard can read state).
         entityArrows             = _settings.EntityArrows,
         entityArrowsSeeded       = _settings.AppliedMigrations.Contains("seed:entity-arrows"),
@@ -1735,6 +1742,9 @@ public sealed class ApiServer : IDisposable
                 case "allowLanAccess" when TryBool(p.Value, out var lan): _settings.AllowLanAccess = lan; applied.Add(p.Name); break;
                 case "enableWebMap" when TryBool(p.Value, out var em): _settings.EnableWebMap = em; applied.Add(p.Name); break;
                 case "enableWebObs" when TryBool(p.Value, out var eo): _settings.EnableWebObs = eo; applied.Add(p.Name); break;
+                case "enableDropTimeline" when TryBool(p.Value, out var dt): _settings.EnableDropTimeline = dt; applied.Add(p.Name); break;
+                case "enableItemFilterLiveCounters" when TryBool(p.Value, out var lc): _settings.EnableItemFilterLiveCounters = lc; applied.Add(p.Name); break;
+                case "enableInventoryHighlights" when TryBool(p.Value, out var ih): _settings.EnableInventoryHighlights = ih; applied.Add(p.Name); break;
                 // Atlas colour groups (#7): the dashboard re-POSTs the full array on edit.
                 case "atlasGroups" when p.Value.ValueKind == JsonValueKind.Array:
                     if (TryParseAtlasGroups(p.Value, out var atlasGrps)) {
@@ -1747,6 +1757,10 @@ public sealed class ApiServer : IDisposable
                 case "atlasRouteArrowSpacing" when TryFloat(p.Value, out var f): _settings.AtlasRouteArrowSpacing = Math.Clamp(f, 2f, 60f); applied.Add(p.Name); break;
                 case "atlasShowContentIcons" when TryBool(p.Value, out var b): _settings.AtlasShowContentIcons = b; applied.Add(p.Name); break;
                 case "atlasContentIconSize" when TryFloat(p.Value, out var f): _settings.AtlasContentIconSize = Math.Clamp(f, 8f, 64f); applied.Add(p.Name); break;
+                case "atlasShowRoute" when TryBool(p.Value, out var b): _settings.AtlasShowRoute = b; applied.Add(p.Name); break;
+                case "atlasAutoRoute" when TryBool(p.Value, out var b): _settings.AtlasAutoRoute = b; applied.Add(p.Name); break;
+                case "atlasAutoRouteMaxHops" when TryInt(p.Value, out var n): _settings.AtlasAutoRouteMaxHops = Math.Clamp(n, 1, 32); applied.Add(p.Name); break;
+                case "atlasShowBiomeBorder" when TryBool(p.Value, out var b): _settings.AtlasShowBiomeBorder = b; applied.Add(p.Name); break;
                 // Off-screen entity arrows: whole-object write (the dashboard POSTs the full sub-object).
                 case "entityArrows" when p.Value.ValueKind == JsonValueKind.Object:
                     if (TryParseEntityArrows(p.Value, out var ea)) { _settings.EntityArrows = ea; applied.Add(p.Name); }
