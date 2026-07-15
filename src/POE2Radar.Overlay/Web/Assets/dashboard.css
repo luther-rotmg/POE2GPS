@@ -217,6 +217,67 @@
     --line: #206620; --line-soft: #144614;
     --good: #99ff99;
   }
+  /* v0.35 signature palette pack (LO ask): 8 Gold-tier PoE2-lore cosmetic palettes. Same
+     supporter-only gate as kalguuran + terminal — dashboard.js:2144 (s.isSupporter ternary)
+     silently falls back to the default palette when the code is missing. Every block defines
+     all 13 palette vars declared at :root (dashboard.css:2-12) so no default bleeds through.
+     Vitals bars intentionally keep --blood / --magic defaults — do not override. */
+  body[data-palette="ultimatum-red"]{
+    --gold: #d94a4a; --gold-bright: #ff6a6a; --gold-deep: #8a1e1e;
+    --ink: #f2d6d6; --ink-dim: #c99a9a; --ink-faint: #8c6060;
+    --panel: #240a0a; --panel2: #1c0808; --bg: #150505; --bg-alt: #2c0e0e;
+    --line: #4a1919; --line-soft: #380f0f;
+    --good: #ff8080;
+  }
+  body[data-palette="sanctum-cream"]{
+    --gold: #d4b26a; --gold-bright: #f0cf85; --gold-deep: #a1813a;
+    --ink: #f5ecd6; --ink-dim: #c9bd9a; --ink-faint: #8c815c;
+    --panel: #2a2418; --panel2: #1e1a10; --bg: #14100a; --bg-alt: #322a1c;
+    --line: #4a3f24; --line-soft: #38301a;
+    --good: #e0c78a;
+  }
+  body[data-palette="necropolis-amethyst"]{
+    --gold: #b56ad9; --gold-bright: #d29aff; --gold-deep: #6a2a99;
+    --ink: #ecd6f5; --ink-dim: #b89ac9; --ink-faint: #7a5c8c;
+    --panel: #1a0a24; --panel2: #14081c; --bg: #0d0515; --bg-alt: #22102c;
+    --line: #3a1e4a; --line-soft: #2b1438;
+    --good: #c07fe6;
+  }
+  body[data-palette="delirium-static"]{
+    --gold: #7fd8e6; --gold-bright: #a8ecff; --gold-deep: #3a7a8c;
+    --ink: #dceff5; --ink-dim: #9ab8c4; --ink-faint: #5c7580;
+    --panel: #0e1a24; --panel2: #0a141c; --bg: #050d14; --bg-alt: #12222c;
+    --line: #1e3a4a; --line-soft: #142c38;
+    --good: #99e6ff;
+  }
+  body[data-palette="legion-bronze"]{
+    --gold: #c78e4a; --gold-bright: #e6a866; --gold-deep: #7a5220;
+    --ink: #f0ddc0; --ink-dim: #b8a480; --ink-faint: #7a6b4c;
+    --panel: #241a10; --panel2: #1c140a; --bg: #150e08; --bg-alt: #2c2014;
+    --line: #4a3620; --line-soft: #382818;
+    --good: #d9a066;
+  }
+  body[data-palette="ritual-blood"]{
+    --gold: #b83060; --gold-bright: #e04880; --gold-deep: #701830;
+    --ink: #f0d0d8; --ink-dim: #b88c98; --ink-faint: #7a5860;
+    --panel: #180814; --panel2: #10050e; --bg: #0a0308; --bg-alt: #200c1a;
+    --line: #3a1428; --line-soft: #2a0e1c;
+    --good: #cc5588;
+  }
+  body[data-palette="trial-ordeal"]{
+    --gold: #f5d84a; --gold-bright: #ffef88; --gold-deep: #a88820;
+    --ink: #f5edc4; --ink-dim: #c4ba88; --ink-faint: #786e48;
+    --panel: #14120a; --panel2: #0e0c05; --bg: #050403; --bg-alt: #1e1a0c;
+    --line: #38301a; --line-soft: #262010;
+    --good: #ffe066;
+  }
+  body[data-palette="blight-bloom"]{
+    --gold: #a8c748; --gold-bright: #cce866; --gold-deep: #607a20;
+    --ink: #e0e8b8; --ink-dim: #a8b088; --ink-faint: #6c7458;
+    --panel: #14180a; --panel2: #0e1208; --bg: #080a05; --bg-alt: #1c2210;
+    --line: #384418; --line-soft: #283010;
+    --good: #b8dc55;
+  }
   /* Reach — v0.26 (CHOR-7): Settings tab section-header dividers. Full-width row in the settings
      panel-grid, so the cards below it flow into the next row with a clear visual break. */
   .sec-hdr{grid-column:1/-1;border-top:1px solid var(--line-soft);padding:16px 4px 4px;margin-top:4px;
