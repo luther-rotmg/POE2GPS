@@ -8,6 +8,10 @@ using System.Text;
 
 namespace POE2Radar.Overlay.Web;
 
+// v0.35 Stream-Safe Overlay Mode — options passed from ApiServer to AssetHost.ServeObs when
+// ?mode=safe is on. Kept as a record so equality-by-value drives the transform ETag suffix.
+public sealed record SafeModeOptions(int DelaySec, bool MaskZoneName, bool HideoutBlur, bool EntityNameFog);
+
 public sealed class AssetHost
 {
     const string ResourcePrefix = "POE2Radar.Overlay.Web.Assets.";
@@ -19,7 +23,16 @@ public sealed class AssetHost
     // --- Public serve API ---
 
     public void ServeMap(HttpListenerContext ctx)   => WriteAsset(ctx, "map.html", "text/html; charset=utf-8", null);
-    public void ServeObs(HttpListenerContext ctx)   => WriteAsset(ctx, "map.html", "text/html; charset=utf-8", ObsTransform);
+    public void ServeObs(HttpListenerContext ctx) => ServeObs(ctx, null);
+    public void ServeObs(HttpListenerContext ctx, SafeModeOptions? safe)
+    {
+        Func<byte[], byte[]> transform = safe == null ? ObsTransform : SafeObsTransformFactory(safe);
+        // Different transform must produce a different ETag suffix — WriteAsset keys ETag on (name + suffix).
+        string suffix = safe == null ? "@obs" : $"@obs-safe-{safe.DelaySec}-{Bit(safe.MaskZoneName)}{Bit(safe.HideoutBlur)}{Bit(safe.EntityNameFog)}";
+        WriteAssetWithEtagSuffix(ctx, "map.html", "text/html; charset=utf-8", transform, suffix);
+    }
+
+    static int Bit(bool b) => b ? 1 : 0;
 
     public void ServeAsset(HttpListenerContext ctx, string relativeName)
     {
@@ -36,6 +49,14 @@ public sealed class AssetHost
         var replaced = text.Replace("<body>", "<body class=\"obs\">");
         return Encoding.UTF8.GetBytes(replaced);
     }
+
+    static Func<byte[], byte[]> SafeObsTransformFactory(SafeModeOptions o) => original =>
+    {
+        var text = Encoding.UTF8.GetString(original);
+        var attrs = $"class=\"obs safe-mode\" data-safe-delay-sec=\"{o.DelaySec}\" data-safe-mask-zone=\"{Bit(o.MaskZoneName)}\" data-safe-hideout-blur=\"{Bit(o.HideoutBlur)}\" data-safe-entity-name-fog=\"{Bit(o.EntityNameFog)}\"";
+        var replaced = text.Replace("<body>", $"<body {attrs}>");
+        return Encoding.UTF8.GetBytes(replaced);
+    };
 
     static (string? mime, Func<byte[], byte[]>? transform) MimeForAsset(string name) => name switch
     {
@@ -63,12 +84,12 @@ public sealed class AssetHost
         return "\"sha1-" + Convert.ToHexString(sha.ComputeHash(payload)) + "\"";
     });
 
-    void WriteAsset(HttpListenerContext ctx, string name, string mime, Func<byte[], byte[]>? transform)
+    void WriteAssetWithEtagSuffix(HttpListenerContext ctx, string name, string mime, Func<byte[], byte[]>? transform, string etagSuffix)
     {
         var raw = Load(name);
         if (raw == null) { NotFound(ctx); return; }
         var payload = transform == null ? raw : transform(raw);
-        var etag = EtagFor(name + (transform == null ? "" : "@obs"), payload);
+        var etag = EtagFor(name + etagSuffix, payload);
 
         if (ctx.Request.Headers["If-None-Match"] == etag)
         {
@@ -83,6 +104,9 @@ public sealed class AssetHost
         ctx.Response.OutputStream.Write(payload, 0, payload.Length);
         ctx.Response.OutputStream.Close();
     }
+
+    void WriteAsset(HttpListenerContext ctx, string name, string mime, Func<byte[], byte[]>? transform)
+        => WriteAssetWithEtagSuffix(ctx, name, mime, transform, transform == null ? "" : "@obs");
 
     static void NotFound(HttpListenerContext ctx)
     {

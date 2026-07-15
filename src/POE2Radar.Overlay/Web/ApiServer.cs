@@ -261,8 +261,27 @@ public sealed class ApiServer : IDisposable
                 // v0.20.0 T5: gated on EnableWebObs + assetHost — both null when the toggle is off,
                 // so this arm 404s without touching `_assetHost` (the ?. is defence-in-depth for RadarApp
                 // wiring drift, not a null-safety hedge on the runtime contract).
+                // v0.35: ?mode=safe branches into the SafeObsTransform (client-side redaction pipeline);
+                // no server-side data reduction — SseChannel keeps its normal firehose. Optional ?delay=<sec>
+                // overrides RadarSettings.WebObsSafeDelaySec, clamped [0, 600].
                 if (!_settings.EnableWebObs || _assetHost == null) { NotFound(ctx); break; }
-                _assetHost.ServeObs(ctx);
+                var mode = ctx.Request.QueryString["mode"];
+                if (string.Equals(mode, "safe", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    int delaySec = _settings.WebObsSafeDelaySec;
+                    var delayParam = ctx.Request.QueryString["delay"];
+                    if (int.TryParse(delayParam, out var qd)) delaySec = System.Math.Clamp(qd, 0, 600);
+                    var safe = new POE2Radar.Overlay.Web.SafeModeOptions(
+                        DelaySec:       delaySec,
+                        MaskZoneName:   _settings.WebObsSafeMaskZoneName,
+                        HideoutBlur:    _settings.WebObsSafeHideoutBlur,
+                        EntityNameFog:  _settings.WebObsSafeEntityNameFog);
+                    _assetHost.ServeObs(ctx, safe);
+                }
+                else
+                {
+                    _assetHost.ServeObs(ctx);
+                }
                 break;
 
             case "/map":
