@@ -1573,6 +1573,7 @@ public sealed class ApiServer : IDisposable
         // to gate palette + badge UI, no reveal of the actual code or hash list.
         supporterCode      = _settings.SupporterCode,
         dashboardPalette   = _settings.DashboardPalette,
+        paletteColors = POE2Radar.Core.Themes.RecapPaletteMap.Resolve(_settings.DashboardPalette),
         showSupporterBadge = _settings.ShowSupporterBadge,
         isSupporter        = POE2Radar.Core.Support.SupporterCodeValidator.IsSupporter(_settings.SupporterCode),
         highlightDynastyMaps = _settings.HighlightDynastyMaps,
