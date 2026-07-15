@@ -986,14 +986,24 @@ async function loadDynasty(){
 
 /* ── atlas tab (read-only inspection of the map-data we can read) ── */
 async function loadAtlas(){
-  $('#atlasStatus').textContent='reading…';
-  try{ atlasData=await getJSON('/api/atlas'); }catch(e){ atlasData={located:false,note:'request failed'}; }
-  renderAtlas();
+  const st=$('#atlasStatus');
+  st.textContent='reading…';
+  st.classList.remove('err');
+  try{
+    const resp=await fetch('/api/atlas',{cache:'no-store'});
+    if(resp.ok){ atlasData=await resp.json(); renderAtlas(); return; }
+    st.classList.add('err');
+    if(resp.status===404) st.textContent='Atlas API disabled — enable Web Map or Web OBS in Settings, then Refresh.';
+    else st.textContent='Atlas request failed (HTTP '+resp.status+' '+resp.statusText+').';
+  }catch(e){
+    st.classList.add('err');
+    st.textContent='Atlas request failed: '+(e?.message||'network error')+'.';
+  }
 }
 function renderAtlas(){
   const d=atlasData; if(!d){ return; }
   const st=$('#atlasStatus'); const nd=d.nodes;
-  if(!(nd&&nd.total)) st.textContent = d.note ? 'scanning…' : 'atlas closed — open it in-game + Refresh';
+  if(!(nd&&nd.total)) st.textContent = 'atlas closed — open it in-game + Refresh';
   else st.textContent = nd.total+' nodes · '+nd.hasContent+' with content · '
         +(d.allKinds?.length||0)+' kind / '+(d.allTags?.length||0)+' content / '+(d.allMaps?.length||0)+' map filters';
   // Seed active rules from the overlay (once): tracked + arrow sets. Then render the filter table.

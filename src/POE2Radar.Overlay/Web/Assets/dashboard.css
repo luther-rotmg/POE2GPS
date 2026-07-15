@@ -436,3 +436,5 @@
   .gcell{width:52px; height:52px; border-radius:3px; border:1px solid var(--line); display:flex; align-items:center; justify-content:center;
          font-size:13px; font-weight:700; color:#0c0a07; cursor:default; overflow:hidden}
   .gcell small{display:block}
+  /* atlas H1 (2026-07-15): visible error state for /api/atlas failures. */
+  #atlasStatus.err{color:var(--danger);font-weight:600;}
