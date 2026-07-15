@@ -438,3 +438,16 @@
   .gcell small{display:block}
   /* atlas H1 (2026-07-15): visible error state for /api/atlas failures. */
   #atlasStatus.err{color:var(--danger);font-weight:600;}
+
+  /* v0.35 palette preview strip — sibling of the dashboardPalette <select>. Renders one
+     clickable chip per known palette, each showing 4 signature tints. Chip click dispatches
+     a 'change' event on the sibling <select> so the existing applySupporterCosmetics hook
+     handles persistence + supporter-gating — no gate logic is duplicated here. */
+  .palette-preview{ display:flex; flex-wrap:wrap; gap:4px; max-width:220px; }
+  .palette-preview .chip{
+    display:flex; cursor:pointer; padding:2px; border:1px solid var(--line-soft);
+    border-radius:3px; background:var(--panel2);
+  }
+  .palette-preview .chip:hover{ border-color: var(--gold-deep); }
+  .palette-preview .chip.sel{ border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-deep) inset; }
+  .palette-preview .chip .sw{ width:8px; height:14px; }

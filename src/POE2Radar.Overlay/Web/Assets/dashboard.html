@@ -288,20 +288,23 @@
             <div class="row"><div class="rl">Supporter code<small>Paste the code emailed after your Ko&#8209;fi donation. Cosmetic-only unlock &mdash; base tool is identical for everyone. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">Ko&#8209;fi &rarr;</a></small></div>
               <input class="numin" type="text" data-set="supporterCode" placeholder="paste code here" style="width:180px;font-family:monospace">
               <span id="supporterCodeState" style="font-size:11px;color:var(--ink-faint);letter-spacing:.14em;text-transform:uppercase;margin-left:8px"></span></div>
-            <div class="row"><div class="rl">Dashboard palette<small>Supporter-only; falls back to Default when the code is missing.</small></div>
-              <select class="numin" data-set="dashboardPalette" style="width:180px">
-                <option value="">Default</option>
-                <option value="kalguuran">Kalguuran Gold</option>
-                <option value="terminal">Wraeclast Terminal</option>
-                <option value="ultimatum-red">Ultimatum Crimson</option>
-                <option value="sanctum-cream">Sanctum Cream</option>
-                <option value="necropolis-amethyst">Necropolis Amethyst</option>
-                <option value="delirium-static">Delirium Static</option>
-                <option value="legion-bronze">Legion Bronze</option>
-                <option value="ritual-blood">Ritual Blood</option>
-                <option value="trial-ordeal">Trial Ordeal</option>
-                <option value="blight-bloom">Blight Bloom</option>
-              </select></div>
+            <div class="row"><div class="rl">Dashboard palette<small>Supporter-only; click a swatch to preview. Falls back to Default when the code is missing.</small></div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <select class="numin" data-set="dashboardPalette" style="width:180px">
+                  <option value="">Default</option>
+                  <option value="kalguuran">Kalguuran Gold</option>
+                  <option value="terminal">Wraeclast Terminal</option>
+                  <option value="ultimatum-red">Ultimatum Crimson</option>
+                  <option value="sanctum-cream">Sanctum Cream</option>
+                  <option value="necropolis-amethyst">Necropolis Amethyst</option>
+                  <option value="delirium-static">Delirium Static</option>
+                  <option value="legion-bronze">Legion Bronze</option>
+                  <option value="ritual-blood">Ritual Blood</option>
+                  <option value="trial-ordeal">Trial Ordeal</option>
+                  <option value="blight-bloom">Blight Bloom</option>
+                </select>
+                <div id="palettePreview" class="palette-preview" role="listbox" aria-label="Palette preview"></div>
+              </div></div>
             <div class="row"><div class="rl">Show overlay Supporter chip<small>Small &#9749; Supporter chip on the Session HUD when the code validates. Off by default.</small></div>
               <label class="sw"><input type="checkbox" data-set="showSupporterBadge"><span class="track"></span><span class="knob"></span></label></div>
             <!-- Support automation — v0.27.1 (LO ask): maintainer helper. Hidden by default; add ?admin=1 to

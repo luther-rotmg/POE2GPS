@@ -2211,6 +2211,60 @@ document.addEventListener('change', e => {
   }
 });
 
+// v0.35 — palette preview swatches shown below the dashboardPalette <select>. Hardcoded map
+// (slug -> [bg, panel, gold, ink]) rather than runtime CSS parsing; kept byte-for-byte in sync
+// with the body[data-palette="..."] blocks in dashboard.css and locked by the xUnit test
+// DashboardPalettePreviewTests.PalettePreviewsMapCoversEverySlug. Clicking a chip sets
+// sel.value and dispatches a bubbling 'change' event so the existing supporter-gate ternary
+// in applySupporterCosmetics re-runs — the widget itself never gates.
+const PALETTE_PREVIEWS = {
+  '': ['#0d1220', '#141c30', '#f5c94f', '#f0e6cf'],
+  'kalguuran':           ['#150c05', '#241708', '#f5c94f', '#f0e6cf'],
+  'terminal':            ['#030803', '#061006', '#66ff66', '#b0ffb0'],
+  'ultimatum-red':       ['#150505', '#240a0a', '#d94a4a', '#f2d6d6'],
+  'sanctum-cream':       ['#14100a', '#2a2418', '#d4b26a', '#f5ecd6'],
+  'necropolis-amethyst': ['#0d0515', '#1a0a24', '#b56ad9', '#ecd6f5'],
+  'delirium-static':     ['#050d14', '#0e1a24', '#7fd8e6', '#dceff5'],
+  'legion-bronze':       ['#150e08', '#241a10', '#c78e4a', '#f0ddc0'],
+  'ritual-blood':        ['#0a0308', '#180814', '#b83060', '#f0d0d8'],
+  'trial-ordeal':        ['#050403', '#14120a', '#f5d84a', '#f5edc4'],
+  'blight-bloom':        ['#080a05', '#14180a', '#a8c748', '#e0e8b8'],
+};
+
+function renderPalettePreview() {
+  const container = document.getElementById('palettePreview');
+  const sel = document.querySelector('[data-set="dashboardPalette"]');
+  if (!container || !sel) return;
+  const current = sel.value || '';
+  container.innerHTML = '';
+  for (const [slug, tints] of Object.entries(PALETTE_PREVIEWS)) {
+    const chip = document.createElement('div');
+    chip.className = 'chip' + (slug === current ? ' sel' : '');
+    chip.title = slug || 'Default';
+    chip.setAttribute('role', 'option');
+    chip.setAttribute('data-slug', slug);
+    for (const c of tints) {
+      const sw = document.createElement('span');
+      sw.className = 'sw';
+      sw.style.background = c;
+      chip.appendChild(sw);
+    }
+    chip.addEventListener('click', () => {
+      sel.value = slug;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      renderPalettePreview();
+    });
+    container.appendChild(chip);
+  }
+}
+
+// Initial render + refresh on any dashboardPalette change (covers both the native <select>
+// and our own chip-click paths — both dispatch the same 'change' event on the <select>).
+document.addEventListener('DOMContentLoaded', renderPalettePreview);
+document.addEventListener('change', e => {
+  if (e.target?.matches?.('[data-set="dashboardPalette"]')) renderPalettePreview();
+});
+
 /* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
    The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered
    mod list, combo hits, total score, and skip recommendation. */
