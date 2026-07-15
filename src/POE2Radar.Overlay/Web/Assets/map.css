@@ -74,3 +74,9 @@ body.obs .hud, body.obs .gps-toggle { display: none; }
 }
 .session-recap-btn:hover { background: rgba(40, 40, 60, 0.85); border-color: #666; }
 .session-recap-btn:active { background: rgba(60, 60, 90, 0.9); }
+
+/* v0.35 Stream-Safe Overlay Mode. Applied when <body class="obs safe-mode" data-safe-*>. */
+body.safe-mode #hud { filter: contrast(0.9); }
+body.safe-mode .zone-label-masked { font-family: monospace; opacity: 0.7; letter-spacing: 0.05em; }
+body.safe-mode[data-safe-mask-zone="1"] .zone-label-clear { display: none; }
+body.safe-mode[data-safe-hideout-blur="1"] .player-coord-readout { visibility: hidden; }

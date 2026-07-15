@@ -40,6 +40,8 @@
   const _safeOn      = document.body.classList.contains('safe-mode');
   const _safeDelayMs = _safeOn ? Math.max(0, parseInt(document.body.dataset.safeDelaySec || '30', 10) * 1000) : 0;
   const _safeBuf     = _safeOn ? new DelayRingBuffer(_safeDelayMs) : null;
+  const _safeMaskZone    = _safeOn && document.body.dataset.safeMaskZone === '1';
+  const _safeHideoutBlur = _safeOn && document.body.dataset.safeHideoutBlur === '1';
 
   // --------- Persistent state ---------
   const state = {
@@ -67,6 +69,8 @@
     atlasIcons: {},                        // name → HTMLImageElement (already decoded)
     // T8: persistent entity map, merged from full/delta frames.
     entities: new Map(),                   // id -> { id, x, y, cat, rar, hp, hpMax }
+    isHideout:   false,
+    hideoutHits: 0,
   };
 
   // Restore gps-mode class from either URL param (?gps=1) or last-session localStorage.
@@ -153,6 +157,30 @@
     }
 
     if (snap.area !== state.currentArea) onZoneChange(snap.area);
+
+    isHideoutArea(snap); // updates state.isHideout via the 3-full hysteresis
+  }
+
+  function zoneDisplayName(area) {
+    if (_safeMaskZone) return '<area>';
+    return area; // upstream renderers may prefer a friendly name; keep as area hex for now.
+  }
+
+  function isHideoutArea(snap) {
+    // Heuristic: no monoliths, no paths, tiny entity population. Three consecutive fulls to commit.
+    const looksLikeHideout =
+      (!snap.monoliths || snap.monoliths.length === 0) &&
+      (!snap.paths || snap.paths.length === 0) &&
+      (!snap.entities || snap.entities.length <= 4);
+    if (snap.full !== true) return state.isHideout; // only fulls advance/reset the counter
+    state.hideoutHits = looksLikeHideout ? Math.min(3, state.hideoutHits + 1) : 0;
+    state.isHideout   = state.hideoutHits >= 3;
+    return state.isHideout;
+  }
+
+  function maybeBlurHideoutPose(pose) {
+    if (_safeHideoutBlur && state.isHideout) return { x: 0, y: 0 };
+    return pose;
   }
 
   function onMessage(evt) {
@@ -232,7 +260,7 @@
     const renderTime = performance.now() + state.serverOffset - RENDER_DELAY_MS;
     const bracket = findBracket(renderTime);
     let pose;
-    if (bracket) pose = lerpPose(bracket[0], bracket[1], renderTime);
+    if (bracket) pose = maybeBlurHideoutPose(lerpPose(bracket[0], bracket[1], renderTime));
     else pose = { player: state.ring[state.ring.length - 1].snap.player, snap: state.ring[state.ring.length - 1].snap };
 
     // Defensive (v0.20.1): if pose.player.x/y is non-finite, skip the frame instead of
@@ -677,7 +705,8 @@
 
     if (!document.body.classList.contains('obs')) {
       const ec = state.entities.size;
-      state.hud.textContent = `${state.currentArea || '—'} · ${ec} dots · ${state.isoMode ? 'iso' : 'top'} · z${state.zoom.toFixed(1)} · ${currentFps()} fps`;
+      state.hud.textContent = `${zoneDisplayName(state.currentArea || '—')} · ${ec} dots · ${state.isoMode ? 'iso' : 'top'} · z${state.zoom.toFixed(1)} · ${currentFps()} fps`;
+      state.hud.classList.toggle('zone-label-masked', _safeMaskZone);
     }
   }
 
