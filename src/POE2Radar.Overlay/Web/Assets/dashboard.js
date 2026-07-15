@@ -1216,6 +1216,14 @@ function renderSessionPanel() {
 
 /* ── Session Recap PNG (dashboard) ── */
 async function saveSessionRecapPng() {
+  // Themed palette hex (from /api/settings paletteColors, R1). Fallbacks are the pre-theming defaults.
+  let _pc = null;
+  try { const _s = await fetch('/api/settings'); if (_s.ok) _pc = (await _s.json())?.paletteColors ?? null; } catch { /* offline fallback */ }
+  const PANEL  = _pc?.panel  ?? '#1a1e28';
+  const ACCENT = _pc?.accent ?? '#e6d99c';
+  const TEXT   = _pc?.text   ?? '#f0e8d0';
+  const BORDER = _pc?.border ?? '#6a7080';
+
   // Fetch freshest session stats from /state.
   let s = {};
   try {
@@ -1236,9 +1244,9 @@ async function saveSessionRecapPng() {
   ctx.fillRect(0, 0, W, H);
 
   // Header stripe.
-  ctx.fillStyle = '#1a1e28';
+  ctx.fillStyle = PANEL;
   ctx.fillRect(0, 0, W, 130);
-  ctx.fillStyle = '#e6d99c';
+  ctx.fillStyle = ACCENT;
   ctx.font = 'bold 56px sans-serif';
   ctx.fillText('POE2GPS \u00B7 Session Recap', 60, 88);
 
@@ -1271,7 +1279,7 @@ async function saveSessionRecapPng() {
   });
 
   // Footer wordmark.
-  ctx.fillStyle = '#6a7080';
+  ctx.fillStyle = BORDER;
   ctx.font = '20px sans-serif';
   ctx.fillText('github.com/luther-rotmg/POE2GPS', 60, H - 40);
 
