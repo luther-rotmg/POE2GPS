@@ -1771,7 +1771,7 @@ public sealed class ApiServer : IDisposable
                 case "atlasContentIconSize" when TryFloat(p.Value, out var f): _settings.AtlasContentIconSize = Math.Clamp(f, 8f, 64f); applied.Add(p.Name); break;
                 case "atlasShowRoute" when TryBool(p.Value, out var b): _settings.AtlasShowRoute = b; applied.Add(p.Name); break;
                 case "atlasAutoRoute" when TryBool(p.Value, out var b): _settings.AtlasAutoRoute = b; applied.Add(p.Name); break;
-                case "atlasAutoRouteMaxHops" when TryInt(p.Value, out var n): _settings.AtlasAutoRouteMaxHops = Math.Clamp(n, 1, 32); applied.Add(p.Name); break;
+                case "atlasAutoRouteMaxHops" when TryInt(p.Value, out var n): _settings.AtlasAutoRouteMaxHops = Math.Clamp(n, 0, 32); applied.Add(p.Name); break;
                 case "atlasShowBiomeBorder" when TryBool(p.Value, out var b): _settings.AtlasShowBiomeBorder = b; applied.Add(p.Name); break;
                 // Off-screen entity arrows: whole-object write (the dashboard POSTs the full sub-object).
                 case "entityArrows" when p.Value.ValueKind == JsonValueKind.Object:
