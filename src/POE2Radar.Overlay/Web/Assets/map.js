@@ -12,8 +12,34 @@
   const SIN = 0.625243;
   const OFFSET_EMA_ALPHA = 0.2;
 
+  // --------- v0.35 Stream-Safe Overlay Mode: DelayRingBuffer ---------
+  // Strict FIFO with time-based dequeue. Never drops mid-sequence — the ordering guarantee is
+  // what makes the full/delta interleave safe: SseChannel emits `full=true` as the first frame
+  // after any AreaHash change (see SseChannel.cs:84-89), so a preserved-order dequeue always
+  // seeds a new zone with a full snapshot before any deltas for that zone arrive at applyFrameToState.
+  class DelayRingBuffer {
+    constructor(delayMs) { this._delayMs = Math.max(0, delayMs|0); this._queue = []; }
+    setDelayMs(ms) { this._delayMs = Math.max(0, ms|0); }
+    getDelayMs()  { return this._delayMs; }
+    push(frame, receivedAt) { this._queue.push({ receivedAt, frame }); }
+    drainReady(now) {
+      const out = [];
+      while (this._queue.length && this._queue[0].receivedAt + this._delayMs <= now) {
+        out.push(this._queue.shift().frame);
+      }
+      return out;
+    }
+    size() { return this._queue.length; }
+    clear() { this._queue.length = 0; }
+  }
+
   // --------- Query-param handling for /obs?gps=1 ---------
   const params = new URLSearchParams(location.search);
+
+  // v0.35: bootstrap safe-mode delay buffer from <body class="obs safe-mode" data-safe-delay-sec="30">
+  const _safeOn      = document.body.classList.contains('safe-mode');
+  const _safeDelayMs = _safeOn ? Math.max(0, parseInt(document.body.dataset.safeDelaySec || '30', 10) * 1000) : 0;
+  const _safeBuf     = _safeOn ? new DelayRingBuffer(_safeDelayMs) : null;
 
   // --------- Persistent state ---------
   const state = {
@@ -103,10 +129,7 @@
     state.es = null;
   }
 
-  function onMessage(evt) {
-    let snap;
-    try { snap = JSON.parse(evt.data); }
-    catch { return; }
+  function applyFrameToState(snap) {
     const clientT = performance.now();
     const rawOffset = snap.t - clientT;
     state.serverOffset = state.serverOffset === 0
@@ -130,6 +153,28 @@
     }
 
     if (snap.area !== state.currentArea) onZoneChange(snap.area);
+  }
+
+  function onMessage(evt) {
+    let snap;
+    try { snap = JSON.parse(evt.data); }
+    catch { return; }
+    // v0.35 safe-mode: wire frames are queued; the raf pump dequeues + re-clocks + applies.
+    if (_safeBuf) { _safeBuf.push(snap, performance.now()); return; }
+    applyFrameToState(snap);
+  }
+
+  function pumpSafeBuffer() {
+    if (!_safeBuf) return;
+    const now = performance.now();
+    const ready = _safeBuf.drainReady(now);
+    if (ready.length === 0) return;
+    // Re-clock each dequeued frame so state.ring + findBracket + renderTime stay well-formed.
+    // See spec DelayRingBuffer note: without this the interp bracket never resolves after 30 s.
+    for (const frame of ready) {
+      frame.t = now + state.serverOffset;
+      applyFrameToState(frame);
+    }
   }
 
   function findBracket(renderTime) {
@@ -174,6 +219,7 @@
   // --------- rAF loop ---------
 
   function frame(now) {
+    pumpSafeBuffer();
     state.rafId = requestAnimationFrame(frame);
     updateFps(now);
     if (state.ring.length === 0) return;
