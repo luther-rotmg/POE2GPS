@@ -271,6 +271,16 @@ public sealed class RadarSettings
     /// <summary>Opt-in OBS Browser Source view at http://localhost:{ApiPort}/obs (transparent, in-game skin, 30 Hz SSE push). Default off; needs an app restart to apply.</summary>
     public bool EnableWebObs { get; set; } = false;
 
+    // v0.35 Stream-Safe Overlay Mode — /obs?mode=safe redaction pipeline (client-side).
+    // Delay in seconds for the frame ring buffer; clamped [0, 600] on ApplySettings ingest.
+    public int WebObsSafeDelaySec { get; set; } = 30;
+    // When true, safe-mode HTML rewrites zone-name UI strings to '<area>'.
+    public bool WebObsSafeMaskZoneName { get; set; } = true;
+    // When true, safe-mode snaps the player marker to zone-center inside hideouts.
+    public bool WebObsSafeHideoutBlur { get; set; } = true;
+    // OFF by default per v0.35 spec — opt-in fog over entity/monolith name labels.
+    public bool WebObsSafeEntityNameFog { get; set; } = false;
+
     // ── Stealth / footprint. ──
     // Hide the overlay from screen capture / screenshots / OBS (SetWindowDisplayAffinity). On by default
     // for the lowest footprint; turn OFF if you want to screenshot/stream the overlay itself. The overlay

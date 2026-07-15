@@ -1534,6 +1534,10 @@ public sealed class ApiServer : IDisposable
         allowLanAccess = _settings.AllowLanAccess, // opt-in LAN view binding; needs a restart to apply
         enableWebMap = _settings.EnableWebMap,
         enableWebObs = _settings.EnableWebObs,
+        webObsSafeDelaySec       = _settings.WebObsSafeDelaySec,
+        webObsSafeMaskZoneName   = _settings.WebObsSafeMaskZoneName,
+        webObsSafeHideoutBlur    = _settings.WebObsSafeHideoutBlur,
+        webObsSafeEntityNameFog  = _settings.WebObsSafeEntityNameFog,
         enableDropTimeline = _settings.EnableDropTimeline,
         enableItemFilterLiveCounters = _settings.EnableItemFilterLiveCounters,
         enableInventoryHighlights = _settings.EnableInventoryHighlights,
@@ -1742,6 +1746,14 @@ public sealed class ApiServer : IDisposable
                 case "allowLanAccess" when TryBool(p.Value, out var lan): _settings.AllowLanAccess = lan; applied.Add(p.Name); break;
                 case "enableWebMap" when TryBool(p.Value, out var em): _settings.EnableWebMap = em; applied.Add(p.Name); break;
                 case "enableWebObs" when TryBool(p.Value, out var eo): _settings.EnableWebObs = eo; applied.Add(p.Name); break;
+                case "webObsSafeDelaySec" when TryInt(p.Value, out var wsd):
+                    _settings.WebObsSafeDelaySec = System.Math.Clamp(wsd, 0, 600); applied.Add(p.Name); break;
+                case "webObsSafeMaskZoneName" when TryBool(p.Value, out var wsm):
+                    _settings.WebObsSafeMaskZoneName = wsm; applied.Add(p.Name); break;
+                case "webObsSafeHideoutBlur" when TryBool(p.Value, out var wsh):
+                    _settings.WebObsSafeHideoutBlur = wsh; applied.Add(p.Name); break;
+                case "webObsSafeEntityNameFog" when TryBool(p.Value, out var wsf):
+                    _settings.WebObsSafeEntityNameFog = wsf; applied.Add(p.Name); break;
                 case "enableDropTimeline" when TryBool(p.Value, out var dt): _settings.EnableDropTimeline = dt; applied.Add(p.Name); break;
                 case "enableItemFilterLiveCounters" when TryBool(p.Value, out var lc): _settings.EnableItemFilterLiveCounters = lc; applied.Add(p.Name); break;
                 case "enableInventoryHighlights" when TryBool(p.Value, out var ih): _settings.EnableInventoryHighlights = ih; applied.Add(p.Name); break;
