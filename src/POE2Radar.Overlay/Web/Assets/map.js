@@ -42,6 +42,7 @@
   const _safeBuf     = _safeOn ? new DelayRingBuffer(_safeDelayMs) : null;
   const _safeMaskZone    = _safeOn && document.body.dataset.safeMaskZone === '1';
   const _safeHideoutBlur = _safeOn && document.body.dataset.safeHideoutBlur === '1';
+  const _safeEntityNameFog = _safeOn && document.body.dataset.safeEntityNameFog === '1';
 
   // --------- Persistent state ---------
   const state = {
@@ -182,6 +183,8 @@
     if (_safeHideoutBlur && state.isHideout) return { x: 0, y: 0 };
     return pose;
   }
+
+  function fogName(s) { return _safeEntityNameFog ? '???' : s; }
 
   function onMessage(evt) {
     let snap;
@@ -557,11 +560,11 @@
       c.font = '10px Consolas, monospace';
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.fillText(String(m.holes ?? '?'), dx, dy);
-      if (!dimmed && m.bestName) {
+      if (!dimmed && fogName(m.bestName)) {
         c.fillStyle = PAL.monolithLabel;
         c.font = '11px Consolas, monospace';
         c.textAlign = 'center'; c.textBaseline = 'top';
-        c.fillText(m.bestName, dx, dy + 11);
+        c.fillText(fogName(m.bestName), dx, dy + 11);
         if (m.bestEx > 0) {
           c.fillStyle = PAL.monolithRing;
           c.font = '10px Consolas, monospace';

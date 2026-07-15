@@ -80,3 +80,6 @@ body.safe-mode #hud { filter: contrast(0.9); }
 body.safe-mode .zone-label-masked { font-family: monospace; opacity: 0.7; letter-spacing: 0.05em; }
 body.safe-mode[data-safe-mask-zone="1"] .zone-label-clear { display: none; }
 body.safe-mode[data-safe-hideout-blur="1"] .player-coord-readout { visibility: hidden; }
+
+body.safe-mode[data-safe-entity-name-fog="1"] .entity-name,
+body.safe-mode[data-safe-entity-name-fog="1"] .monolith-name { filter: blur(3px); user-select: none; }
