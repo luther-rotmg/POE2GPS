@@ -3,6 +3,43 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.37.0] — 2026-07-16 "Book of the Exile"
+
+*Every character's story, written as it happens.*
+
+### Added — 📓 **Character Codex** *(per-character auto-written journal)*
+
+- 📓 **Every character keeps a running book.** POE2GPS quietly writes four event kinds to `config/codex/<character>.jsonl` in real time as you play: 🌟 level-ups (captured at the exact tick your character advances), 🐉 boss kills (attributed via `BossEncounterCatalog` with strict allowlist — unknown uniques never logged), 💀 deaths (with zone + area level + character level at moment of death), 💎 notable drops (unique-rarity items on first sighting per character).
+- 🛡 **Character-name stability gate** — 30 ticks of unchanged `PlayerName` at 30 Hz world-tick cadence before a codex file opens. Prevents opening for the wrong character during the login/character-swap flicker window. Swap characters mid-session and the codex swaps files cleanly after the new name settles.
+- 🧭 **Strict allowlist attribution** — the boss observer only logs a `BossKillEvent` when the dying entity's `Metadata` (or its zone `AreaCode`) resolves via `BossEncounterCatalog.Shared`. Unknown uniques are silently dropped rather than logged as "unknown boss," keeping the codex clean of noise.
+- ♻ **Per-character dedup for drops** — the same unique dropping twice in one session for one character is logged once. A different character on the same account gets its own first-sighting entry.
+
+### Added — 📚 **Dashboard Codex tab**
+
+- 📚 **New Codex tab in the dashboard.** Renders your character's book with per-day chapter groupings, per-kind filter chips (level / boss / death / drop), and jump-to-date shortcuts (Today / Yesterday / This Week).
+- 🔌 **New `GET /api/codex?character=<name>` endpoint** — loopback-Host-gated because the character-name query parameter would otherwise leak past your machine. `/state` continues to strip character identity, preserving the existing privacy posture. Returns 400 on missing `character`, 403 for non-loopback, 200 with `{ events: [] }` for unknown characters.
+
+### Under the hood
+
+- New `POE2Radar.Core.Session.CodexEvent` polymorphic type hierarchy with JSONL round-trip via `System.Text.Json` `[JsonPolymorphic]` (abstract base + `LevelUpEvent`, `BossKillEvent`, `DeathEvent`, `NotableDropEvent` sealed records).
+- New `SessionEventLog` mirrors DropTimeline's mature load-on-construct + append + flush-on-dispose seams, adds character-name stability gating and stateless per-character reads (`SnapshotForCharacter`) for cross-character API queries without disturbing live tracking.
+- New `CodexBossObserver` hooks the render-thread world-tick per-entity walk next to `ObserveKill`, using an alive→dead edge detector on unique-rarity mobs plus `BossEncounterCatalog.ByMetadata` / `ByZoneCode` for gating.
+- New `CodexDropForwarder` subscribes to a new `DropTimeline.Recorded` event (fires after each `DropEntry` add, outside the lock to avoid reentrancy). Existing `DropTimeline` consumers unaffected.
+- `SessionTracker` gains a public `event Action<CodexEvent>? CodexEmit`, fires `LevelUpEvent` on player-level delta and `DeathEvent` at the HP-observed-above-zero + `!_awaitingRespawn` edge (same site as `_deaths++`). Null-sink default so existing tests / production paths behave byte-identically.
+- `RadarApp` wires all four sinks + observers into runtime state; feeds `snap.PlayerName` into `SessionEventLog.ObservePlayerName` each fresh world tick.
+
+### Tests
+
+- 57 new xUnit facts across `CodexEventTests` (polymorphic serialization + JSONL contract), `SessionEventLogTests` (stability-gate + character swap + ring cap + corrupt-line recovery + polymorphic round-trip), `SessionTrackerCodexEmitTests`, `CodexBossObserverTests`, `CodexDropForwarderTests`, `ApiCodexEndpointTests`, and `CodexDashboardMarkupTests`. Full suite grows from 861 to 918 (all green).
+
+### Known limitation
+
+The **boss-attribution validation test** (D1 — a playtest-derived xUnit theory that asserts zero false positives on ~30 non-boss uniques against `BossEncounterCatalog`) will ship in **v0.37.1** once metadata paths are captured from a live PoE2 session. The runtime attribution logic is already strict-allowlist (unknown uniques dropped silently), so the risk of false-positive boss entries in codex writes is low; the follow-up formalizes the guarantee.
+
+### Upgrade
+
+Fully additive — no config migration, nothing you have to change. Existing installs upgrade cleanly. The codex starts writing the moment your character name stabilizes; if you don't want it, ignore the new dashboard tab and never look in `config/codex/`.
+
 ## [0.36.1] — 2026-07-16 "First Light"
 
 *The starter pack lights itself on first run — the v0.36.0 promise, delivered.*
