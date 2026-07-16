@@ -452,6 +452,17 @@
   .palette-preview .chip.sel{ border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-deep) inset; }
   .palette-preview .chip .sw{ width:8px; height:14px; }
 
+  /* v0.38 Color Forge — preset gallery cards.
+     Swatch values are read live from the body[data-palette="…"] blocks above via CSSStyleSheet API.
+     DO NOT hardcode hex here — the gallery must stay in lock-step with the palette blocks. */
+  .forge-preset-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:6px}
+  .forge-preset-card{display:flex;flex-direction:column;gap:4px;padding:6px 8px;background:var(--panel);border:1px solid var(--line-soft);border-radius:4px;cursor:pointer;user-select:none}
+  .forge-preset-card:hover{border-color:var(--gold);background:var(--panel2)}
+  .forge-preset-card:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .forge-preset-card .fp-swatches{display:flex;gap:2px}
+  .forge-preset-card .fp-sw{flex:1;height:18px;border-radius:2px}
+  .forge-preset-card .fp-name{font-size:11px;color:var(--ink-dim);text-align:center}
+
   /* v0.38 (F3) — Color Forge: 13-var slider designer + live sample preview. The forge
      panel is hidden by default; the .forge-body grid is 2 columns (sliders | 260px preview).
      Live preview vars are scoped to #forgePreview as --fp-<varname-without-leading-dashes>

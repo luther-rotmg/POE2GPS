@@ -2457,6 +2457,80 @@ document.addEventListener('user-palettes-changed', () => {
   renderPalettePreview();
 });
 
+// v0.38 Color Forge — preset gallery ---------------------------------------
+// The 10 built-in palettes shown as clone-source cards. Kalguuran + terminal
+// first (v0.34 OG), then the 8 v0.35 signature palettes in CSS order.
+const FORGE_BUILTIN_SLUGS = [
+  'kalguuran','terminal',
+  'ultimatum-red','sanctum-cream','necropolis-amethyst','delirium-static',
+  'legion-bronze','ritual-blood','trial-ordeal','blight-bloom'
+];
+const FORGE_DISPLAY_NAMES = {
+  'kalguuran':'Kalguuran Gold','terminal':'Wraeclast Terminal',
+  'ultimatum-red':'Ultimatum Crimson','sanctum-cream':'Sanctum Cream',
+  'necropolis-amethyst':'Necropolis Amethyst','delirium-static':'Delirium Static',
+  'legion-bronze':'Legion Bronze','ritual-blood':'Ritual Blood',
+  'trial-ordeal':'Trial Ordeal','blight-bloom':'Blight Bloom'
+};
+const FORGE_VAR_NAMES = ['--gold','--gold-bright','--gold-deep','--ink','--ink-dim','--ink-faint','--panel','--panel2','--bg','--bg-alt','--line','--line-soft','--good'];
+const FORGE_PREVIEW_VARS = ['--bg','--panel','--gold','--ink'];
+
+// Read all 13 palette vars for `slug` by walking the loaded stylesheets and
+// finding the `body[data-palette="<slug>"]` rule. Returns null if not found
+// or blocked by CORS. Never hardcodes a hex — CSS is source of truth.
+function readPaletteVarsFromCss(slug){
+  if(!slug) return null;
+  const target = 'body[data-palette="' + slug + '"]';
+  for(const sheet of document.styleSheets){
+    let rules;
+    try{ rules = sheet.cssRules; }catch(_){ continue; } // cross-origin
+    if(!rules) continue;
+    for(const rule of rules){
+      if(rule.type !== 1) continue; // CSSStyleRule
+      if(rule.selectorText !== target) continue;
+      const out = {};
+      for(const v of FORGE_VAR_NAMES){
+        const val = rule.style.getPropertyValue(v).trim();
+        if(val) out[v] = val;
+      }
+      return Object.keys(out).length ? out : null;
+    }
+  }
+  return null;
+}
+
+function renderForgePresetGallery(){
+  const host = document.getElementById('forgePresetGallery');
+  if(!host) return;
+  host.innerHTML = '';
+  for(const slug of FORGE_BUILTIN_SLUGS){
+    const vars = readPaletteVarsFromCss(slug);
+    if(!vars) continue; // silently skip if CSS missing — test-gated at build
+    const card = document.createElement('div');
+    card.className = 'forge-preset-card';
+    card.setAttribute('role','listitem');
+    card.setAttribute('tabindex','0');
+    card.dataset.sourceSlug = slug;
+    card.title = FORGE_DISPLAY_NAMES[slug] || slug;
+    const strip = document.createElement('div');
+    strip.className = 'fp-swatches';
+    for(const v of FORGE_PREVIEW_VARS){
+      const sw = document.createElement('span');
+      sw.className = 'fp-sw';
+      sw.style.background = vars[v] || '#000';
+      strip.appendChild(sw);
+    }
+    const name = document.createElement('div');
+    name.className = 'fp-name';
+    name.textContent = FORGE_DISPLAY_NAMES[slug] || slug;
+    card.appendChild(strip);
+    card.appendChild(name);
+    host.appendChild(card);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', renderForgePresetGallery);
+
 /* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
    The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered
    mod list, combo hits, total score, and skip recommendation. */
