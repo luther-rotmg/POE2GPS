@@ -10,6 +10,7 @@ using POE2Radar.Core.Input;
 using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Audio;
 using POE2Radar.Overlay.Config;
+using POE2Radar.Overlay.Icons;
 using POE2Radar.Overlay.Native;
 using POE2Radar.Overlay.Navigation;
 using POE2Radar.Overlay.Overlay;
@@ -524,6 +525,9 @@ public sealed class RadarApp : IDisposable
         _window = OverlayWindow.Create();
         _window.SetCaptureExclusion(_settings.ExcludeFromCapture);   // stealth: hide from screen capture by default
         _appliedExcludeFromCapture = _settings.ExcludeFromCapture;
+        // v0.36.1: ensure the bundled starter icon pack is on disk before the renderer loads it.
+        var iconsDir = System.IO.Path.Combine(AppContext.BaseDirectory, "config", "icons");
+        EmbeddedStarterIconExtractor.EnsureExtracted(iconsDir);
         _renderer = new OverlayRenderer(_window);
         // Clicking a legend row toggles that landmark in the path selection. Purely local UI — the
         // click lands on our own overlay window (never forwarded to the game). See UpdateClickThrough.
