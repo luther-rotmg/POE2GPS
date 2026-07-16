@@ -2245,6 +2245,22 @@ document.querySelectorAll('.tab[data-tab="settings"]').forEach(t => t.addEventLi
 // Also try to load immediately in case Settings is the initial view.
 loadSupporters();
 
+/* Palette — v0.38 (F2): load user-created palette CSS blocks from /api/palettes and inject
+   them into #user-palette-styles as body[data-palette="user-<slug>"] blocks. Invoked at module load
+   BEFORE applySupporterCosmetics so a persisted user palette renders on first paint. Silently
+   swallows errors so a failing /api/palettes never breaks the page. */
+async function loadUserPalettesCss(){
+  try {
+    const r = await fetch('/api/palettes');
+    if (!r.ok) return;
+    const d = await r.json();
+    const styleEl = document.getElementById('user-palette-styles');
+    if (!styleEl) return;
+    const VARS = ['--gold','--gold-bright','--gold-deep','--ink','--ink-dim','--ink-faint','--panel','--panel2','--bg','--bg-alt','--line','--line-soft','--good'];
+    styleEl.textContent = (d.palettes||[]).map(p => 'body[data-palette="user-'+p.slug+'"]{'+VARS.map(v=>v+':'+p.vars[v]+';').join('')+'}').join('\n');
+  } catch (err) { /* non-fatal — retry-safe, never clears an already-populated styleEl */ }
+}
+
 /* Support — v0.27 (LO ask): apply the supporter cosmetic palette and reveal chip state.
    Reads /api/settings (whole payload) to grab the isSupporter flag + palette + code state, applies
    the data-palette attribute on <body>, and lights the "VALID" chip next to the code input. Silently
@@ -2271,7 +2287,8 @@ async function applySupporterCosmetics(){
     document.body.setAttribute('data-palette', effectivePalette);
   } catch (err) { /* silent */ }
 }
-applySupporterCosmetics();
+window.__reloadUserPalettes = loadUserPalettesCss;
+loadUserPalettesCss().then(applySupporterCosmetics);
 
 /* Support automation — v0.27.1 (LO ask): maintainer helper.
    Unhides on ?admin=1 URL param. Live-computes SHA-256 (WebCrypto) as LO types.
