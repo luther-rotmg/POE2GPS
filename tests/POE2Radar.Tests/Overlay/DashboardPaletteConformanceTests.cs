@@ -97,8 +97,10 @@ public class DashboardPaletteConformanceTests
     {
         // Regression guard — this is the ONLY runtime enforcement of the supporter-only
         // palette rule. If it moves or is removed, non-supporters could apply supporter
-        // palettes. Substring lifted verbatim from dashboard.js:2144.
+        // palettes. Regex allows the v0.38 S2 patch that prefers an imported-palette slug
+        // when localStorage has one, as long as `s.isSupporter ?` still guards the whole
+        // expression and s.dashboardPalette is still consulted.
         var js = Read("src/POE2Radar.Overlay/Web/Assets/dashboard.js");
-        Assert.Contains("s.isSupporter ? (s.dashboardPalette", js);
+        Assert.Matches(new Regex(@"s\.isSupporter\s*\?\s*\([^:]*s\.dashboardPalette", RegexOptions.Singleline), js);
     }
 }
