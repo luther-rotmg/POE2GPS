@@ -1546,6 +1546,7 @@ public sealed class ApiServer : IDisposable
         hpBarMagic = _settings.HpBarMagic,
         hpBarRare = _settings.HpBarRare,
         hpBarUnique = _settings.HpBarUnique,
+        iconTintByRarity = _settings.IconTintByRarity,
         scaleMul = _settings.ScaleMul,
         offX = _settings.OffX,
         offY = _settings.OffY,
@@ -1694,6 +1695,7 @@ public sealed class ApiServer : IDisposable
                 case "hpBarMagic" when TryBool(p.Value, out var b): _settings.HpBarMagic = b; applied.Add(p.Name); break;
                 case "hpBarRare" when TryBool(p.Value, out var b): _settings.HpBarRare = b; applied.Add(p.Name); break;
                 case "hpBarUnique" when TryBool(p.Value, out var b): _settings.HpBarUnique = b; applied.Add(p.Name); break;
+                case "iconTintByRarity" when TryBool(p.Value, out var b): _settings.IconTintByRarity = b; applied.Add(p.Name); break;
                 // Whole-object writes (the dashboard re-POSTs the full sub-object on edit). Parsed,
                 // sanitized/clamped, then swapped in. A malformed sub-object is skipped, not fatal.
                 case "styles" when p.Value.ValueKind == JsonValueKind.Object:

@@ -158,6 +158,13 @@ public sealed class RadarSettings
     public bool HpBarRare { get; set; } = true;
     public bool HpBarUnique { get; set; } = true;
 
+    /// <summary>
+    /// When true, custom entity icons are overpainted with a translucent rarity-colored
+    /// backdrop ellipse so the rarity channel remains legible even with monochrome PNGs.
+    /// When false, PNGs render untinted. Default: true.
+    /// </summary>
+    public bool IconTintByRarity { get; set; } = true;
+
     // ── Projection calibration (PageUp/Down = scale, arrows = offset, Home = reset). ──
     public float ScaleMul { get; set; } = 1.0f;
     public float OffX { get; set; } = 0f;
