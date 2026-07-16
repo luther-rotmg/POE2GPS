@@ -49,17 +49,26 @@ public sealed class DropTimeline
     /// recorded this session (in-memory dedup — the persistent file is NOT consulted, so
     /// the same drop across restarts would be recorded again; that matches user expectation
     /// since each session is a distinct play window).</summary>
+    /// <summary>v0.37 C4: fires after a DropEntry has been added to the ring (still under _gate).
+    /// Subscribers (e.g. CodexDropForwarder) filter for unique-rarity + first-seen-per-character
+    /// and forward as a NotableDropEvent. Additive — existing consumers unaffected.</summary>
+    public event System.Action<DropEntry>? Recorded;
+
     public void Record(long timestampSec, string rarity, string? name, string areaCode, string characterName, uint entityId)
     {
         if (string.IsNullOrEmpty(name)) return;
+        DropEntry? recorded = null;
         lock (_gate)
         {
             if (!_seenEntityIds.Add(entityId)) return;
-            _entries.AddLast(new DropEntry(timestampSec, rarity ?? "Normal", name, areaCode ?? "", characterName ?? "", entityId));
+            recorded = new DropEntry(timestampSec, rarity ?? "Normal", name, areaCode ?? "", characterName ?? "", entityId);
+            _entries.AddLast(recorded);
             while (_entries.Count > MaxEntries) _entries.RemoveFirst();
             _generation++;
             _dirty = true;
         }
+        // Fire event outside the lock to avoid reentrant deadlocks with subscribers.
+        if (recorded != null) Recorded?.Invoke(recorded);
     }
 
     /// <summary>Snapshot of the current entries in insertion order (oldest → newest).
