@@ -307,6 +307,32 @@
                 </select>
                 <div id="palettePreview" class="palette-preview" role="listbox" aria-label="Palette preview"></div>
               </div></div>
+            <div class="row" id="colorForgeRow">
+              <div class="lbl">Color Forge</div>
+              <div class="col" style="flex:1">
+                <button type="button" id="forgeToggle" class="btn">Open Color Forge</button>
+                <div id="forgePanel" class="forge-panel" hidden>
+                  <div class="forge-header">
+                    <input type="text" id="forgeName" class="numin" placeholder="Preset name (e.g. midnight-forge)" maxlength="32" style="width:220px">
+                    <select id="forgeLoad" class="numin" style="width:200px"><option value="">Load from&hellip;</option></select>
+                    <button type="button" id="forgeSave" class="btn">Save Preset</button>
+                    <button type="button" id="forgeDelete" class="btn">Delete</button>
+                    <span id="forgeStatus" class="forge-status"></span>
+                  </div>
+                  <div class="forge-body">
+                    <div id="forgeSliders" class="forge-sliders"></div>
+                    <div id="forgePreview" class="forge-preview">
+                      <div class="fp-killcard"><span class="fp-name">Grinning Kelpie</span><span class="fp-val">+12ex</span></div>
+                      <div class="fp-dropcard"><span class="fp-name">Divine Orb</span><span class="fp-val">1</span></div>
+                      <div class="fp-vitals"><div class="fp-hp"></div><div class="fp-mp"></div></div>
+                      <div class="fp-chart"><div class="fp-bar" style="height:40%"></div><div class="fp-bar" style="height:70%"></div><div class="fp-bar" style="height:55%"></div><div class="fp-bar" style="height:85%"></div></div>
+                      <button type="button" class="fp-btn">Sample Button</button>
+                      <div class="fp-tooltip">Sample tooltip text</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="row"><div class="rl">Show overlay Supporter chip<small>Small &#9749; Supporter chip on the Session HUD when the code validates. Off by default.</small></div>
               <label class="sw"><input type="checkbox" data-set="showSupporterBadge"><span class="track"></span><span class="knob"></span></label></div>
             <!-- Support automation — v0.27.1 (LO ask): maintainer helper. Hidden by default; add ?admin=1 to

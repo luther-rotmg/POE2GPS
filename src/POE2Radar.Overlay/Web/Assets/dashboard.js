@@ -2493,3 +2493,258 @@ function flashSaved(msg, ms){
 
 /* ── Session Recap PNG button (dashboard) ── */
 document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSessionRecapPng);
+
+/* ── Color Forge — v0.38 (F3): 13-var slider designer with live sample preview ──────────────────
+   13-row HSL/hex slider grid (one row per palette CSS var) with a live sample panel whose
+   colors are scoped entirely to #forgePreview as --fp-<varname-without-leading-dashes> — so
+   authoring never touches the applied <body> palette until Save. Save/Load/Delete persist
+   user palettes via POST/DELETE /api/palettes (F1); on success it calls
+   window.__reloadUserPalettes (F2) and dispatches 'user-palettes-changed' so F4 can refresh.
+   The toggle wires #forgePanel.hidden and swaps the button label. buildRows() + initFromComputed
+   run lazily on first open so the sliders pre-load the currently effective palette. */
+(() => {
+  const VAR_NAMES = ['--gold','--gold-bright','--gold-deep','--ink','--ink-dim','--ink-faint','--panel','--panel2','--bg','--bg-alt','--line','--line-soft','--good'];
+
+  // Built-in palette hex maps — transcribed byte-for-byte from the body[data-palette="..."]
+  // blocks in dashboard.css (lines 206-280). Used to populate sliders on Load-from-<select>.
+  const BUILTIN_PALETTES = {
+    'kalguuran':           {'--gold':'#f5c94f','--gold-bright':'#ffdb6a','--gold-deep':'#b98a1e','--ink':'#f0e6cf','--ink-dim':'#c9b995','--ink-faint':'#8c7d5b','--panel':'#241708','--panel2':'#1c1207','--bg':'#150c05','--bg-alt':'#2c1e0e','--line':'#4a3319','--line-soft':'#38260f','--good':'#ffd66a'},
+    'terminal':            {'--gold':'#66ff66','--gold-bright':'#99ff99','--gold-deep':'#339933','--ink':'#b0ffb0','--ink-dim':'#7fc17f','--ink-faint':'#4d724d','--panel':'#061006','--panel2':'#050c05','--bg':'#030803','--bg-alt':'#0a1a0a','--line':'#206620','--line-soft':'#144614','--good':'#99ff99'},
+    'ultimatum-red':       {'--gold':'#d94a4a','--gold-bright':'#ff6a6a','--gold-deep':'#8a1e1e','--ink':'#f2d6d6','--ink-dim':'#c99a9a','--ink-faint':'#8c6060','--panel':'#240a0a','--panel2':'#1c0808','--bg':'#150505','--bg-alt':'#2c0e0e','--line':'#4a1919','--line-soft':'#380f0f','--good':'#ff8080'},
+    'sanctum-cream':       {'--gold':'#d4b26a','--gold-bright':'#f0cf85','--gold-deep':'#a1813a','--ink':'#f5ecd6','--ink-dim':'#c9bd9a','--ink-faint':'#8c815c','--panel':'#2a2418','--panel2':'#1e1a10','--bg':'#14100a','--bg-alt':'#322a1c','--line':'#4a3f24','--line-soft':'#38301a','--good':'#e0c78a'},
+    'necropolis-amethyst': {'--gold':'#b56ad9','--gold-bright':'#d29aff','--gold-deep':'#6a2a99','--ink':'#ecd6f5','--ink-dim':'#b89ac9','--ink-faint':'#7a5c8c','--panel':'#1a0a24','--panel2':'#14081c','--bg':'#0d0515','--bg-alt':'#22102c','--line':'#3a1e4a','--line-soft':'#2b1438','--good':'#c07fe6'},
+    'delirium-static':     {'--gold':'#7fd8e6','--gold-bright':'#a8ecff','--gold-deep':'#3a7a8c','--ink':'#dceff5','--ink-dim':'#9ab8c4','--ink-faint':'#5c7580','--panel':'#0e1a24','--panel2':'#0a141c','--bg':'#050d14','--bg-alt':'#12222c','--line':'#1e3a4a','--line-soft':'#142c38','--good':'#99e6ff'},
+    'legion-bronze':       {'--gold':'#c78e4a','--gold-bright':'#e6a866','--gold-deep':'#7a5220','--ink':'#f0ddc0','--ink-dim':'#b8a480','--ink-faint':'#7a6b4c','--panel':'#241a10','--panel2':'#1c140a','--bg':'#150e08','--bg-alt':'#2c2014','--line':'#4a3620','--line-soft':'#382818','--good':'#d9a066'},
+    'ritual-blood':        {'--gold':'#b83060','--gold-bright':'#e04880','--gold-deep':'#701830','--ink':'#f0d0d8','--ink-dim':'#b88c98','--ink-faint':'#7a5860','--panel':'#180814','--panel2':'#10050e','--bg':'#0a0308','--bg-alt':'#200c1a','--line':'#3a1428','--line-soft':'#2a0e1c','--good':'#cc5588'},
+    'trial-ordeal':        {'--gold':'#f5d84a','--gold-bright':'#ffef88','--gold-deep':'#a88820','--ink':'#f5edc4','--ink-dim':'#c4ba88','--ink-faint':'#786e48','--panel':'#14120a','--panel2':'#0e0c05','--bg':'#050403','--bg-alt':'#1e1a0c','--line':'#38301a','--line-soft':'#262010','--good':'#ffe066'},
+    'blight-bloom':        {'--gold':'#a8c748','--gold-bright':'#cce866','--gold-deep':'#607a20','--ink':'#e0e8b8','--ink-dim':'#a8b088','--ink-faint':'#6c7458','--panel':'#14180a','--panel2':'#0e1208','--bg':'#080a05','--bg-alt':'#1c2210','--line':'#384418','--line-soft':'#283010','--good':'#b8dc55'},
+  };
+
+  // hex <-> hsl utilities. Standard algorithms (reference: hexToHsl('#f5c94f') ≈ {h:44,s:89,l:63}).
+  function hexToHsl(hex){
+    const h = hex.replace('#','');
+    const r = parseInt(h.slice(0,2),16)/255, g = parseInt(h.slice(2,4),16)/255, b = parseInt(h.slice(4,6),16)/255;
+    const max = Math.max(r,g,b), min = Math.min(r,g,b);
+    let hue, s, l = (max+min)/2;
+    if (max === min) { hue = 0; s = 0; }
+    else {
+      const d = max - min;
+      s = l > 0.5 ? d/(2-max-min) : d/(max+min);
+      switch(max){
+        case r: hue = (g-b)/d + (g<b?6:0); break;
+        case g: hue = (b-r)/d + 2; break;
+        default: hue = (r-g)/d + 4; break;
+      }
+      hue /= 6;
+    }
+    return { h: Math.round(hue*360), s: Math.round(s*100), l: Math.round(l*100) };
+  }
+  function hslToHex(h, s, l){
+    h = ((h%360)+360)%360; s /= 100; l /= 100;
+    const c = (1 - Math.abs(2*l - 1)) * s;
+    const x = c * (1 - Math.abs(((h/60)%2) - 1));
+    const m = l - c/2;
+    let r,g,b;
+    if (h < 60) { r=c; g=x; b=0; }
+    else if (h < 120) { r=x; g=c; b=0; }
+    else if (h < 180) { r=0; g=c; b=x; }
+    else if (h < 240) { r=0; g=x; b=c; }
+    else if (h < 300) { r=x; g=0; b=c; }
+    else { r=c; g=0; b=x; }
+    const toHex = v => Math.round((v+m)*255).toString(16).padStart(2,'0');
+    return '#'+toHex(r)+toHex(g)+toHex(b);
+  }
+
+  const $ = id => document.getElementById(id);
+  const rows = new Map(); // varName -> { h, s, l, hex, els:{label,hIn,sIn,lIn,hexIn,swatch} }
+
+  function applyPreview(varName, hex){
+    const el = $('forgePreview');
+    if (!el) return;
+    el.style.setProperty('--fp-' + varName.slice(2), hex);
+  }
+
+  function setRow(varName, hex){
+    const entry = rows.get(varName); if (!entry) return;
+    const hsl = hexToHsl(hex);
+    entry.hex = hex;
+    entry.h = hsl.h; entry.s = hsl.s; entry.l = hsl.l;
+    entry.els.hIn.value = hsl.h;
+    entry.els.sIn.value = hsl.s;
+    entry.els.lIn.value = hsl.l;
+    entry.els.hexIn.value = hex;
+    entry.els.hexIn.classList.remove('invalid');
+    entry.els.swatch.style.background = hex;
+    applyPreview(varName, hex);
+  }
+
+  function buildRows(){
+    const container = $('forgeSliders');
+    if (!container) return;
+    container.innerHTML = '';
+    rows.clear();
+    for (const name of VAR_NAMES){
+      const rowEl = document.createElement('div');
+      rowEl.className = 'forge-row';
+      const label = document.createElement('label');
+      label.textContent = name;
+      const hIn = document.createElement('input'); hIn.type='range'; hIn.min='0'; hIn.max='360'; hIn.dataset.ch='h';
+      const sIn = document.createElement('input'); sIn.type='range'; sIn.min='0'; sIn.max='100'; sIn.dataset.ch='s';
+      const lIn = document.createElement('input'); lIn.type='range'; lIn.min='0'; lIn.max='100'; lIn.dataset.ch='l';
+      const hexIn = document.createElement('input'); hexIn.type='text'; hexIn.maxLength=7; hexIn.dataset.ch='hex';
+      const swatch = document.createElement('div'); swatch.className='forge-swatch';
+      rowEl.append(label, hIn, sIn, lIn, hexIn, swatch);
+      container.appendChild(rowEl);
+
+      const entry = { hex:'', h:0, s:0, l:0, els:{ label, hIn, sIn, lIn, hexIn, swatch } };
+      rows.set(name, entry);
+
+      const onHsl = () => {
+        entry.h = +hIn.value; entry.s = +sIn.value; entry.l = +lIn.value;
+        const hex = hslToHex(entry.h, entry.s, entry.l);
+        entry.hex = hex;
+        hexIn.value = hex;
+        hexIn.classList.remove('invalid');
+        swatch.style.background = hex;
+        applyPreview(name, hex);
+      };
+      hIn.addEventListener('input', onHsl);
+      sIn.addEventListener('input', onHsl);
+      lIn.addEventListener('input', onHsl);
+      hexIn.addEventListener('input', () => {
+        const v = hexIn.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)){
+          hexIn.classList.remove('invalid');
+          const hsl = hexToHsl(v);
+          entry.hex = v; entry.h = hsl.h; entry.s = hsl.s; entry.l = hsl.l;
+          hIn.value = hsl.h; sIn.value = hsl.s; lIn.value = hsl.l;
+          swatch.style.background = v;
+          applyPreview(name, v);
+        } else {
+          hexIn.classList.add('invalid');
+        }
+      });
+    }
+  }
+
+  function initFromComputed(){
+    for (const name of VAR_NAMES){
+      const v = getComputedStyle(document.body).getPropertyValue(name).trim();
+      if (v) setRow(name, v);
+    }
+  }
+
+  async function populateLoadSelect(){
+    const sel = $('forgeLoad'); if (!sel) return;
+    sel.innerHTML = '<option value="">Load from&hellip;</option>';
+    for (const slug of Object.keys(BUILTIN_PALETTES)){
+      const opt = document.createElement('option');
+      opt.value = 'builtin:' + slug;
+      opt.textContent = slug;
+      sel.appendChild(opt);
+    }
+    try {
+      const r = await fetch('/api/palettes');
+      if (r.ok){
+        const d = await r.json();
+        for (const p of (d.palettes||[])){
+          const opt = document.createElement('option');
+          opt.value = 'user:' + p.slug;
+          opt.textContent = p.slug;
+          sel.appendChild(opt);
+        }
+      }
+    } catch (err) { /* non-fatal — select simply omits user palettes on a failed fetch */ }
+  }
+
+  function loadVarsIntoRows(vars){
+    for (const name of VAR_NAMES){
+      const v = vars && vars[name];
+      if (v) setRow(name, v);
+    }
+  }
+
+  async function onForgeLoadChange(){
+    const sel = $('forgeLoad'); if (!sel) return;
+    const val = sel.value; if (!val) return;
+    const kind = val.slice(0, val.indexOf(':'));
+    const slug = val.slice(val.indexOf(':') + 1);
+    if (kind === 'builtin'){
+      loadVarsIntoRows(BUILTIN_PALETTES[slug]);
+    } else if (kind === 'user'){
+      try {
+        const r = await fetch('/api/palettes/' + encodeURIComponent(slug));
+        if (r.ok){ const d = await r.json(); loadVarsIntoRows(d.vars); }
+      } catch (err) { /* non-fatal */ }
+    }
+    sel.value = '';
+  }
+
+  async function onForgeSave(){
+    const status = $('forgeStatus'); if (!status) return;
+    const nameIn = $('forgeName'); if (!nameIn) return;
+    const slug = nameIn.value.trim();
+    if (!/^[a-z0-9-]{1,32}$/.test(slug)){ status.textContent = 'invalid slug'; return; }
+    const vars = {};
+    for (const name of VAR_NAMES){ const entry = rows.get(name); if (entry) vars[name] = entry.hex; }
+    try {
+      const r = await fetch('/api/palettes', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ slug, displayName: slug, vars }) });
+      if (r.ok){
+        status.textContent = 'saved';
+        window.__reloadUserPalettes?.();
+        document.dispatchEvent(new CustomEvent('user-palettes-changed'));
+      } else if (r.status === 409){
+        status.textContent = 'name already exists';
+      } else {
+        status.textContent = 'save failed (HTTP ' + r.status + ')';
+      }
+    } catch (err) { status.textContent = 'save failed (network)'; }
+  }
+
+  async function onForgeDelete(){
+    const status = $('forgeStatus'); if (!status) return;
+    const nameIn = $('forgeName'); if (!nameIn) return;
+    const slug = nameIn.value.trim();
+    if (!slug){ status.textContent = 'enter a preset name to delete'; return; }
+    if (!confirm('Delete palette "' + slug + '"?')) return;
+    try {
+      const r = await fetch('/api/palettes/' + encodeURIComponent(slug), { method:'DELETE' });
+      if (r.ok){
+        status.textContent = 'deleted';
+        window.__reloadUserPalettes?.();
+        document.dispatchEvent(new CustomEvent('user-palettes-changed'));
+      } else if (r.status === 404){
+        status.textContent = 'not found';
+      } else {
+        status.textContent = 'delete failed (HTTP ' + r.status + ')';
+      }
+    } catch (err) { status.textContent = 'delete failed (network)'; }
+  }
+
+  let inited = false;
+  function initOnce(){
+    if (inited) return; inited = true;
+    buildRows();
+    initFromComputed();
+    populateLoadSelect();
+  }
+
+  const toggle = $('forgeToggle');
+  const panel = $('forgePanel');
+  if (toggle && panel){
+    toggle.addEventListener('click', () => {
+      const open = panel.hasAttribute('hidden');
+      if (open){
+        initOnce();
+        panel.removeAttribute('hidden');
+        toggle.textContent = 'Close Color Forge';
+      } else {
+        panel.setAttribute('hidden', '');
+        toggle.textContent = 'Open Color Forge';
+      }
+    });
+  }
+  $('forgeSave')?.addEventListener('click', onForgeSave);
+  $('forgeDelete')?.addEventListener('click', onForgeDelete);
+  $('forgeLoad')?.addEventListener('change', onForgeLoadChange);
+})();

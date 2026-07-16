@@ -451,3 +451,31 @@
   .palette-preview .chip:hover{ border-color: var(--gold-deep); }
   .palette-preview .chip.sel{ border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold-deep) inset; }
   .palette-preview .chip .sw{ width:8px; height:14px; }
+
+  /* v0.38 (F3) — Color Forge: 13-var slider designer + live sample preview. The forge
+     panel is hidden by default; the .forge-body grid is 2 columns (sliders | 260px preview).
+     Live preview vars are scoped to #forgePreview as --fp-<varname-without-leading-dashes>
+     so authoring never touches the applied <body> palette until Save. */
+  .forge-panel { display:block; background:var(--panel); border:1px solid var(--line); padding:12px; margin-top:8px; border-radius:4px; }
+  .forge-panel[hidden] { display:none; }
+  .forge-header { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  .forge-status { font-size:11px; color:var(--ink-dim); }
+  .forge-body { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  .forge-sliders { display:flex; flex-direction:column; gap:6px; }
+  .forge-row { display:grid; grid-template-columns:110px 1fr 1fr 1fr 90px 24px; gap:6px; align-items:center; font-size:11px; }
+  .forge-row label { color:var(--ink-dim); font-family:monospace; }
+  .forge-row input[type=range] { width:100%; }
+  .forge-row input[type=text] { width:100%; font-family:monospace; font-size:11px; padding:2px 4px; background:var(--bg); color:var(--ink); border:1px solid var(--line); }
+  .forge-swatch { width:24px; height:20px; border:1px solid var(--line); }
+  .forge-preview { background:var(--fp-bg,#0d1220); padding:12px; display:flex; flex-direction:column; gap:6px; border:1px solid var(--fp-line,#333); }
+  .forge-preview .fp-killcard,.forge-preview .fp-dropcard { display:flex; justify-content:space-between; background:var(--fp-panel,#141c30); padding:6px 8px; color:var(--fp-ink,#f0e6cf); }
+  .forge-preview .fp-name { color:var(--fp-gold,#f5c94f); }
+  .forge-preview .fp-val { color:var(--fp-ink,#f0e6cf); }
+  .forge-preview .fp-vitals { display:flex; gap:4px; height:10px; }
+  .forge-preview .fp-hp { flex:1; background:#b83030; }
+  .forge-preview .fp-mp { flex:1; background:#3060b8; }
+  .forge-preview .fp-chart { display:flex; align-items:flex-end; gap:4px; height:60px; background:var(--fp-panel2,#1c2438); padding:4px; }
+  .forge-preview .fp-bar { flex:1; background:var(--fp-gold,#f5c94f); }
+  .forge-preview .fp-btn { background:var(--fp-panel2,#1c2438); color:var(--fp-gold,#f5c94f); border:1px solid var(--fp-gold-deep,#805830); padding:4px 8px; cursor:pointer; }
+  .forge-preview .fp-tooltip { background:var(--fp-panel,#141c30); color:var(--fp-ink-dim,#c0b090); padding:4px 6px; font-size:11px; border-left:2px solid var(--fp-good,#7fd8a0); }
+  .forge-row input.invalid { border-color:#d94a4a; }
