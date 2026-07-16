@@ -510,6 +510,8 @@
   .rules-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .rules-header .btn { background: var(--panel2); color: var(--gold-bright); border: 1px solid var(--gold-deep); padding: 7px 14px; cursor: pointer; border-radius: 2px; font-family: inherit; font-size: 12px; }
   .rules-header .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-migrate { background: transparent; color: var(--gold-bright); border: 1px solid var(--gold); padding: 7px 14px; cursor: pointer; border-radius: 2px; font-family: inherit; font-size: 12px; white-space: nowrap; }
+  .btn-migrate:hover { background: rgba(200, 160, 73, 0.12); }
   #ruleCapChip.chip { font-size: 11px; letter-spacing: .08em; padding: 4px 10px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel); color: var(--ink-dim); }
   #ruleCapChip.chip.warn { color: var(--gold-bright); border-color: var(--gold-deep); }
   #ruleCapChip.chip.full { color: #d94a4a; border-color: #d94a4a; }

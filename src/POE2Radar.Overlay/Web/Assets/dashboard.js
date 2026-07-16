@@ -860,6 +860,62 @@ $('#prContribute')?.addEventListener('click', async()=>{
     if(r.ok){ flashPr(); piggybackTraceContribute(); } else { showToast('Contribute failed (HTTP '+r.status+').'); } }catch(e){ showToast('Contribute failed (network error).'); }
 });
 
+/* ── Migrate-to-Rule-Engine buttons (R7): stash a partial RuleRecord to sessionStorage
+     and dispatch an event that the Rules Engine tab picks up. ── */
+function stashMigrationPrefill(prefill){
+  try {
+    sessionStorage.setItem('rules-engine-prefill', JSON.stringify(prefill));
+  } catch(e) { showToast('Could not save migration prefill.'); return; }
+  document.dispatchEvent(new CustomEvent('switch-to-rules-engine-with-prefill', {bubbles:true}));
+}
+
+document.getElementById('btnMigrateAffix')?.addEventListener('click', () => {
+  const first = (an && an.alwaysShow && an.alwaysShow.length) ? an.alwaysShow[0] : null;
+  let label = 'affix';
+  if (first && anCatalog.length) {
+    const entry = anCatalog.find(a => a.modId === first);
+    if (entry) label = entry.name || entry.modId;
+  }
+  stashMigrationPrefill({
+    Name: label + ' — migrated',
+    Priority: 100,
+    Enabled: true,
+    When: { Metadata: '^Metadata/Items' },
+    Then: [{ kind: 'label', Text: '{name}' }]
+  });
+});
+
+document.getElementById('btnMigrateBuff')?.addEventListener('click', () => {
+  const tier = (bn && bn.tier) || 'Deadly';
+  stashMigrationPrefill({
+    Name: (tier || 'buff') + ' — migrated',
+    Priority: 100,
+    Enabled: true,
+    When: { HasBuff: '' },
+    Then: [{ kind: 'ring', Color: '#ff8000' }]
+  });
+});
+
+document.getElementById('btnMigrateFilter')?.addEventListener('click', () => {
+  if (!drules || !drules.length) { showToast('No display rules to migrate.'); return; }
+  const src = drules.find(r => r._open) || drules[0];
+  const when = {};
+  if (src.match && src.match.length) when.Metadata = src.match.map(m => '\\b' + m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').join('|');
+  if (src.rarity) when.Rarity = (src.rarity || '').toLowerCase();
+  const then = [];
+  if (src.hide) then.push({ kind: 'hide' });
+  if (src.label) then.push({ kind: 'label', Text: src.label });
+  if (src.color && !src.hide) then.push({ kind: 'tint', Color: src.color });
+  if (!then.length) then.push({ kind: 'tint', Color: '#ffd926' });
+  stashMigrationPrefill({
+    Name: (src.name || 'rule') + ' — migrated',
+    Priority: 100,
+    Enabled: src.enabled !== false,
+    When: when,
+    Then: then
+  });
+});
+
 /* v0.22 PROBE-UI: Contribute-trace + reset-install-id + one-shot onboarding toast.
    Zero-cost-when-off: #tpContribute hidden via syncContribVisibility when EnableCampaignProbe=false;
    onboarding toast only fires when EnableCampaignProbe && !ProbeOnboardingSeen (one-shot, latches on
@@ -3457,6 +3513,31 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
     document.querySelectorAll('.tab[data-tab="rules"]').forEach(t => t.addEventListener('click', () => {
       if (!__loaded) { __loaded = true; loadRules(); }
     }));
+
+    // R7: listen for migration prefill from legacy-tab "Migrate to Rule Engine" buttons.
+    document.addEventListener('switch-to-rules-engine-with-prefill', () => {
+      const raw = sessionStorage.getItem('rules-engine-prefill');
+      if (!raw) return;
+      sessionStorage.removeItem('rules-engine-prefill');
+      // If editor is open with unsaved changes, confirm first.
+      const pane = document.getElementById('rulesEditor');
+      if (pane && !pane.hidden && __editing) {
+        if (!confirm('Discard your current edit and load the migration prefill?')) return;
+      }
+      // Activate the Rules tab.
+      const rulesTab = document.querySelector('.tab[data-tab="rules"]');
+      if (rulesTab) rulesTab.click();
+      // Open editor with the parsed prefill.
+      try {
+        const prefill = JSON.parse(raw);
+        openEditor(prefill);
+        setStatus('Migration prefill loaded — review and save.', '');
+      } catch (e) {
+        // If prefill is malformed, open blank + show message.
+        openEditor(null);
+        setStatus('Migration attempted — please review and fill in the missing fields.', '');
+      }
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

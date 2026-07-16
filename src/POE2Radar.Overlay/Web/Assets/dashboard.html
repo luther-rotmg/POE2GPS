@@ -121,6 +121,10 @@
             </div>
           </div>
         </div>
+        <div class="row" style="margin-top:14px;padding:8px 0;border-top:1px dotted var(--line-soft)">
+          <div class="rl">Migrate rule to Rule Engine<small>opens the Rules Engine with the current rule pre-filled as a starting point</small></div>
+          <button type="button" class="btn btn-migrate" id="btnMigrateFilter">Migrate to Rule Engine →</button>
+        </div>
         <div style="margin-top:18px; height:14px"><span class="saved" id="savedMsgF">&#10003; saved to config</span></div>
       </section>
 
@@ -659,6 +663,10 @@
             <div class="row"><div class="rl">Per-affix overrides<small>search the masterlist; mark Always-show or Hide</small></div></div>
             <input id="anSearch" class="numin" placeholder="filter affixes…" style="width:100%">
             <div id="anOverrides" style="max-height:240px;overflow:auto"></div>
+            <div class="row" style="margin-top:8px;border-top:1px dotted var(--line-soft);padding-top:11px">
+              <div class="rl">Migrate to Rule Engine<small>opens the Rules Engine with the first "Always show" pre-filled as a starting point</small></div>
+              <button type="button" class="btn btn-migrate" id="btnMigrateAffix">Migrate to Rule Engine →</button>
+            </div>
           </div>
           <div class="card collapsed" data-card="buff-nameplates">
             <h3>Buff icons <small class="tag">opt-in</small></h3>
@@ -677,6 +685,10 @@
             <div class="row">
               <button class="numin" id="bnContribute" title="Contribute your observed buff ids + tiers to the community master list (one click). With no Contribute URL set, shows a Restore-default toast — never opens an external tab silently.">Contribute buffs &rarr;</button>
               <span class="saved" id="savedMsgBn">&#10003; contributed &mdash; thank you!</span>
+            </div>
+            <div class="row" style="border-top:1px dotted var(--line-soft);padding-top:11px">
+              <div class="rl">Migrate to Rule Engine<small>opens the Rules Engine with the first "Always show" buff pre-filled as a starting point</small></div>
+              <button type="button" class="btn btn-migrate" id="btnMigrateBuff">Migrate to Rule Engine →</button>
             </div>
           </div>
           <div class="card collapsed" data-card="entity-arrows">
