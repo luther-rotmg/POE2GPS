@@ -930,6 +930,14 @@ public sealed class RadarApp : IDisposable
                               dropsProvider: () => new { drops = _dropTimeline.Snapshot() },
                               codexProvider: (character) => new { events = _sessionEventLog.SnapshotForCharacter(character) },
                               rulesConfigDir: ConfigDir);
+        // v0.39 R3: load + compile rules engine ruleset at startup.
+        // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
+        try
+        {
+            var rulesFile = POE2Radar.Core.Rules.RulesFileStore.Load(ConfigDir);
+            _renderer.Rules = POE2Radar.Core.Rules.RuleEngine.Compile(rulesFile);
+        }
+        catch { /* silent — malformed rules.json shouldn't crash startup */ }
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();

@@ -4,6 +4,7 @@ using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Icons;
 using POE2Radar.Core.Pathfinding;
+using POE2Radar.Core.Rules;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Overlay;   // Threshold — THR-XP-RENDER: SessionHudXpFormatter (sub-namespace).
 using Vortice.Direct2D1;
@@ -57,6 +58,10 @@ public sealed class OverlayRenderer : IDisposable
     /// </summary>
     public IReadOnlyList<(Vortice.RawRectF Rect, string Action)> LegendRowRects => _legendRowRects;
     private readonly List<(Vortice.RawRectF Rect, string Action)> _legendRowRects = new();
+
+    /// <summary>Compiled Rules Engine ruleset, loaded at startup. Defaults to empty.
+    /// The entity draw loop applies hide/tint effects from matched rules.</summary>
+    public CompiledRuleSet Rules { get; set; } = RuleEngine.Empty;
 
     private readonly OverlayWindow _window;
     private TerrainBitmap? _terrain;
@@ -1645,8 +1650,34 @@ public sealed class OverlayRenderer : IDisposable
                 var rule = ctx.Resolve?.Invoke(e);
                 if (rule is null || rule.Hide) continue;
 
+                // Rules Engine effects (v0.39 R3): apply hide + tint from the CompiledRuleSet.
+                // Build an EntityView from the dot for TryMatch, then apply matched effects.
+                var entityView = new EntityView(
+                    e.Metadata ?? "",
+                    string.IsNullOrEmpty(e.Metadata) ? "" : e.Metadata.Split('/').LastOrDefault() ?? "",
+                    e.Rarity is Poe2Live.Rarity.NonMonster ? "" : e.Rarity.ToString().ToLowerInvariant(),
+                    0,                                        // EntityDot doesn't expose Level
+                    Array.Empty<string>());                   // Buffs not available at render time
+                var snapView = new WorldSnapshotView(
+                    ctx.AreaCode,
+                    POE2Radar.Core.Game.Poe2Live.IsHideoutAreaCode(ctx.AreaCode));
+                var reEffects = Rules.TryMatch(entityView, snapView);
+                // HideEffect → skip this entity entirely (before any draw work)
+                bool hide = false;
+                Color4? tint = null;
+                foreach (var fx in reEffects)
+                {
+                    if (fx is HideEffect)
+                        hide = true;
+                    else if (fx is TintEffect tintFx && tint is null)
+                        tint = RuleEffectApplier.HexToColor4(tintFx.Color);
+                }
+                if (hide) continue;
+
                 var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale);
-                _bStyle!.Color = GetRuleColor(rule);   // D2: memoized
+                _bStyle!.Color = GetRuleColor(rule);   // D2: memoized (base color)
+                if (tint.HasValue)
+                    _bStyle.Color = tint.Value;         // TintEffect overrides base color
                 var iconEntry = _entityIconRegistry?.Resolve(e.Category, e.Rarity, e.Metadata);
                 ID2D1Bitmap? iconBmp = null;
                 if (iconEntry is not null)
