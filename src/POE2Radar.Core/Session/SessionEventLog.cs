@@ -101,6 +101,32 @@ public sealed class SessionEventLog : IDisposable
         lock (_gate) return _entries.ToArray();
     }
 
+    /// <summary>Stateless read of the on-disk jsonl file for an arbitrary character name.
+    /// Does NOT touch the currently-open character; safe to call from /api/codex handlers
+    /// serving cross-character requests. Returns empty list if the file is missing or corrupt.</summary>
+    public IReadOnlyList<CodexEvent> SnapshotForCharacter(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return Array.Empty<CodexEvent>();
+        var path = PathFor(name);
+        if (!File.Exists(path)) return Array.Empty<CodexEvent>();
+        var result = new List<CodexEvent>();
+        try
+        {
+            foreach (var line in File.ReadLines(path))
+            {
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try
+                {
+                    var ev = JsonSerializer.Deserialize<CodexEvent>(line, Json);
+                    if (ev != null) result.Add(ev);
+                }
+                catch { /* skip malformed line */ }
+            }
+        }
+        catch { /* corrupt file → empty result */ }
+        return result;
+    }
+
     public void Flush()
     {
         lock (_gate) FlushLocked();

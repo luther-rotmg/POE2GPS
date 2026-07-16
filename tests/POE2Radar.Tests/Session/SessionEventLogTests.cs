@@ -200,6 +200,39 @@ public class SessionEventLogTests : IDisposable
     }
 
     [Fact]
+    public void SnapshotForCharacter_reads_arbitrary_character_without_swapping_open()
+    {
+        // Preload Alice's file
+        var log1 = new SessionEventLog(_root);
+        for (int i = 0; i < SessionEventLog.NameStabilityTicks; i++) log1.ObservePlayerName("Alice");
+        log1.Record(new LevelUpEvent(1, 0x1, "Zone", 80));
+        log1.Record(new DeathEvent(2, 0x1, "Zone", 80, 96));
+        log1.Flush();
+
+        // A different log instance opens Bob; SnapshotForCharacter("Alice") reads Alice's file
+        // WITHOUT changing Bob's open state.
+        var log2 = new SessionEventLog(_root);
+        for (int i = 0; i < SessionEventLog.NameStabilityTicks; i++) log2.ObservePlayerName("Bob");
+        Assert.Equal("Bob", log2.OpenCharacter);
+
+        var alice = log2.SnapshotForCharacter("Alice");
+        Assert.Equal(2, alice.Count);
+        Assert.IsType<LevelUpEvent>(alice[0]);
+        Assert.IsType<DeathEvent>(alice[1]);
+
+        // Bob is still open, no crosstalk
+        Assert.Equal("Bob", log2.OpenCharacter);
+    }
+
+    [Fact]
+    public void SnapshotForCharacter_missing_file_returns_empty()
+    {
+        var log = new SessionEventLog(_root);
+        Assert.Empty(log.SnapshotForCharacter("NoSuch"));
+        Assert.Empty(log.SnapshotForCharacter(""));
+    }
+
+    [Fact]
     public void Dispose_flushes()
     {
         var path = PathFor(_root, "Alice");
