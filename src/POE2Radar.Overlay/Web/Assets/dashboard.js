@@ -2283,7 +2283,9 @@ async function applySupporterCosmetics(){
     }
     // Apply the palette only when the code validates — non-supporters see the default palette
     // even if they somehow POSTed a palette value.
-    const effectivePalette = s.isSupporter ? (s.dashboardPalette || '') : '';
+    const _imp = (function(){ try { return JSON.parse(localStorage.getItem('poe2gps.importedPalette') || 'null'); } catch(e) { return null; } })();
+    const effectivePalette = s.isSupporter ? ((_imp && _imp.slug) || s.dashboardPalette || '') : '';
+    if (_imp && _imp.slug) { try { window.__paletteInjectImportedStyle && window.__paletteInjectImportedStyle(_imp); } catch(e){} }
     document.body.setAttribute('data-palette', effectivePalette);
   } catch (err) { /* silent */ }
 }
@@ -2804,4 +2806,101 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   $('forgeSave')?.addEventListener('click', onForgeSave);
   $('forgeDelete')?.addEventListener('click', onForgeDelete);
   $('forgeLoad')?.addEventListener('change', onForgeLoadChange);
+})();
+
+// v0.38 Forge — theme code share/import wiring (paletteCodec.js provides encode/decode)
+(function(){
+  var STORAGE_KEY = 'poe2gps.importedPalette';
+  var STYLE_ID = 'importedPaletteStyles';
+  var KEYS = (window.__paletteCodec && window.__paletteCodec.KEYS) || [];
+
+  function camelToCssVar(k){ return '--' + k.replace(/[A-Z]/g, function(m){ return '-' + m.toLowerCase(); }); }
+
+  function readLivePalette(){
+    var cs = getComputedStyle(document.body);
+    var vars = {};
+    for (var i = 0; i < KEYS.length; i++){
+      var v = cs.getPropertyValue(camelToCssVar(KEYS[i])).trim().toLowerCase();
+      // normalize 3-digit shorthand to 6-digit
+      if (/^#[0-9a-f]{3}$/.test(v)) v = '#' + v[1]+v[1]+v[2]+v[2]+v[3]+v[3];
+      if (!/^#[0-9a-f]{6}$/.test(v)) v = '#000000';
+      vars[KEYS[i]] = v;
+    }
+    var sel = document.querySelector('[data-set="dashboardPalette"]');
+    var slug = document.body.getAttribute('data-palette') || '';
+    var name = 'Imported Palette';
+    if (sel && !/^imported-/.test(slug)) {
+      var opt = sel.options[sel.selectedIndex];
+      if (opt && opt.text) name = opt.text;
+    }
+    return { name: name, vars: vars };
+  }
+
+  function injectImportedStyle(imp){
+    if (!imp || !imp.slug || !imp.vars) return;
+    var css = 'body[data-palette="' + imp.slug + '"]{';
+    for (var i = 0; i < KEYS.length; i++){
+      css += camelToCssVar(KEYS[i]) + ':' + imp.vars[KEYS[i]] + ';';
+    }
+    css += '}';
+    var tag = document.getElementById(STYLE_ID);
+    if (!tag){ tag = document.createElement('style'); tag.id = STYLE_ID; document.head.appendChild(tag); }
+    tag.textContent = css;
+  }
+  window.__paletteInjectImportedStyle = injectImportedStyle;
+
+  function slugFromCode(code){
+    // reuse the checksum tail from the code itself (6 chars, url-safe) — deterministic per palette
+    var parts = String(code).split('-');
+    return 'imported-' + (parts[2] || 'xxxxxx').toLowerCase().replace(/[^a-z0-9]/g, 'x');
+  }
+
+  function setStatus(el, msg, cls){
+    if (!el) return;
+    el.textContent = msg || '';
+    el.classList.remove('ok','err');
+    if (cls) el.classList.add(cls);
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var ta   = document.getElementById('paletteShareCode');
+    var bC   = document.getElementById('btnPaletteCopy');
+    var bI   = document.getElementById('btnPaletteImport');
+    var stat = document.getElementById('paletteShareStatus');
+    if (!ta || !bC || !bI || !window.__paletteCodec) return;
+
+    bC.addEventListener('click', function(){
+      try {
+        var live = readLivePalette();
+        var code = window.__paletteCodec.encode(live);
+        ta.value = code;
+        ta.select();
+        var copied = false;
+        try { copied = document.execCommand && document.execCommand('copy'); } catch(e){}
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).then(function(){ setStatus(stat, 'Copied to clipboard', 'ok'); }, function(){ setStatus(stat, copied ? 'Copied' : 'Code ready — press Ctrl+C', 'ok'); });
+        } else {
+          setStatus(stat, copied ? 'Copied' : 'Code ready — press Ctrl+C', 'ok');
+        }
+      } catch(e){ setStatus(stat, 'Copy failed: ' + (e && e.message || e), 'err'); }
+    });
+
+    bI.addEventListener('click', function(){
+      var code = (ta.value || '').trim();
+      if (!code){ setStatus(stat, 'Paste a RUNE1-... code first', 'err'); return; }
+      var pal = window.__paletteCodec.decode(code);
+      if (!pal){ setStatus(stat, 'Invalid or corrupted code', 'err'); return; }
+      var imp = { slug: slugFromCode(code), name: pal.name || 'Imported Palette', vars: pal.vars, code: code };
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(imp)); } catch(e){}
+      injectImportedStyle(imp);
+      document.body.setAttribute('data-palette', imp.slug);
+      setStatus(stat, 'Imported "' + imp.name + '" (live)', 'ok');
+    });
+
+    // Re-hydrate on load in case applySupporterCosmetics hasn't run yet
+    try {
+      var stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (stored) injectImportedStyle(stored);
+    } catch(e){}
+  });
 })();

@@ -479,3 +479,17 @@
   .forge-preview .fp-btn { background:var(--fp-panel2,#1c2438); color:var(--fp-gold,#f5c94f); border:1px solid var(--fp-gold-deep,#805830); padding:4px 8px; cursor:pointer; }
   .forge-preview .fp-tooltip { background:var(--fp-panel,#141c30); color:var(--fp-ink-dim,#c0b090); padding:4px 6px; font-size:11px; border-left:2px solid var(--fp-good,#7fd8a0); }
   .forge-row input.invalid { border-color:#d94a4a; }
+
+  /* v0.38 Forge — theme code share/import (paletteCodec.js) */
+  .palette-share { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+  .palette-share-row { display: flex; align-items: center; gap: 6px; }
+  .palette-share-code {
+    flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px; line-height: 1.35; padding: 4px 6px;
+    background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft);
+    border-radius: 3px; resize: vertical; max-height: 140px; word-break: break-all;
+  }
+  .palette-share-code:focus { outline: 1px solid var(--gold); outline-offset: 1px; }
+  .palette-share-status { font-size: 11px; color: var(--ink-dim); min-height: 14px; }
+  .palette-share-status.ok  { color: var(--good); }
+  .palette-share-status.err { color: #d94a4a; }

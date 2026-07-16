@@ -306,6 +306,16 @@
                   <option value="blight-bloom">Blight Bloom</option>
                 </select>
                 <div id="palettePreview" class="palette-preview" role="listbox" aria-label="Palette preview"></div>
+                <div class="palette-share" data-forge-share>
+                  <div class="palette-share-row">
+                    <textarea id="paletteShareCode" class="palette-share-code" spellcheck="false" autocomplete="off" rows="2" placeholder="RUNE1-...-...  (paste a code here to import, or click Copy to share the current palette)" aria-label="Palette share code"></textarea>
+                  </div>
+                  <div class="palette-share-row">
+                    <button type="button" id="btnPaletteCopy" class="btn-mini">Copy current</button>
+                    <button type="button" id="btnPaletteImport" class="btn-mini">Import pasted</button>
+                    <span id="paletteShareStatus" class="palette-share-status" aria-live="polite"></span>
+                  </div>
+                </div>
               </div></div>
             <div class="row" id="colorForgeRow">
               <div class="lbl">Color Forge</div>
