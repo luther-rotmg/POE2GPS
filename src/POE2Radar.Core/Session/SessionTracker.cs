@@ -27,6 +27,8 @@ public sealed class SessionTracker
     private readonly KillTracker _kills = new();
     private int    _mapZonesEntered;
     private int    _xpEfficiency;
+    public event System.Action<CodexEvent>? CodexEmit;
+    private int _lastPlayerLevel;
 
     // ---- XP ring buffer (Threshold — THR-XP-TRACKER) -----------------------------------------
     // Fixed-slot (nowTicks, cumulativeXp) samples for the XP/hour session HUD chip. Zero per-tick
@@ -185,6 +187,15 @@ public sealed class SessionTracker
         _currentZoneName  = areaCode;
         _currentAreaLevel = areaLevel;
         _xpEfficiency     = playerLevel - areaLevel;
+        if (playerLevel > _lastPlayerLevel && _lastPlayerLevel > 0)
+        {
+            CodexEmit?.Invoke(new LevelUpEvent(
+                System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                _lastAreaHash,
+                _currentZoneName ?? string.Empty,
+                playerLevel));
+        }
+        _lastPlayerLevel = playerLevel;
 
         if (!_firstAreaSeen)
         {
@@ -222,6 +233,12 @@ public sealed class SessionTracker
         {
             _deaths++;
             _deathsThisZone++;
+            CodexEmit?.Invoke(new DeathEvent(
+                System.DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                _lastAreaHash,
+                _currentZoneName ?? string.Empty,
+                _currentAreaLevel,
+                playerLevel));
             _awaitingRespawn = true;
         }
         else if (_awaitingRespawn && hpPct > 0f)
