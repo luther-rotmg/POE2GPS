@@ -2364,7 +2364,32 @@ const PALETTE_PREVIEWS = {
   'blight-bloom':        ['#080a05', '#14180a', '#a8c748', '#e0e8b8'],
 };
 
-function renderPalettePreview() {
+// Shared in-flight promise for GET /api/palettes — serves both refreshUserPaletteOptions()
+// and renderPalettePreview() on page load; invalidated on user-palettes-changed event.
+let _userPalettesPromise = null;
+function _fetchUserPalettes() {
+  if (!_userPalettesPromise) _userPalettesPromise = fetch('/api/palettes').then(r => r.ok ? r.json() : {palettes:[]}).then(d => d.palettes||[]).catch(() => []);
+  return _userPalettesPromise;
+}
+
+// Populate <select data-set="dashboardPalette"> with user-forge palette options.
+async function refreshUserPaletteOptions() {
+  const sel = document.querySelector('[data-set="dashboardPalette"]');
+  if (!sel) return;
+  const palettes = await _fetchUserPalettes();
+  // Remove existing user-* options (preserving the 11 built-in options).
+  const existing = sel.querySelectorAll('option[value^="user-"]');
+  for (const opt of existing) opt.remove();
+  // Append after built-in options.
+  for (const p of palettes) {
+    const opt = document.createElement('option');
+    opt.value = 'user-' + p.slug;
+    opt.textContent = 'Forge: ' + (p.displayName || p.slug);
+    sel.appendChild(opt);
+  }
+}
+
+async function renderPalettePreview() {
   const container = document.getElementById('palettePreview');
   const sel = document.querySelector('[data-set="dashboardPalette"]');
   if (!container || !sel) return;
@@ -2389,13 +2414,45 @@ function renderPalettePreview() {
     });
     container.appendChild(chip);
   }
+  // User forge palettes — chips rendered after built-ins, with data-slug="user-<slug>".
+  const userPalettes = await _fetchUserPalettes();
+  for (const palette of userPalettes) {
+    const chip = document.createElement('div');
+    const slug = 'user-' + palette.slug;
+    chip.className = 'chip' + (slug === current ? ' sel' : '');
+    chip.title = 'Forge: ' + (palette.displayName || palette.slug);
+    chip.setAttribute('role', 'option');
+    chip.setAttribute('data-slug', slug);
+    const tints = palette.preview || ['#333', '#555', '#aaa', '#ddd'];
+    for (const c of tints) {
+      const sw = document.createElement('span');
+      sw.className = 'sw';
+      sw.style.background = c;
+      chip.appendChild(sw);
+    }
+    chip.addEventListener('click', () => {
+      sel.value = slug;
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      renderPalettePreview();
+    });
+    container.appendChild(chip);
+  }
 }
 
 // Initial render + refresh on any dashboardPalette change (covers both the native <select>
 // and our own chip-click paths — both dispatch the same 'change' event on the <select>).
-document.addEventListener('DOMContentLoaded', renderPalettePreview);
+document.addEventListener('DOMContentLoaded', async () => {
+  await refreshUserPaletteOptions();
+  renderPalettePreview();
+});
 document.addEventListener('change', e => {
   if (e.target?.matches?.('[data-set="dashboardPalette"]')) renderPalettePreview();
+});
+// F3 dispatches user-palettes-changed after Save/Delete — refresh select + chip strip.
+document.addEventListener('user-palettes-changed', () => {
+  _userPalettesPromise = null;
+  refreshUserPaletteOptions();
+  renderPalettePreview();
 });
 
 /* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────

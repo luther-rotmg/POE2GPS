@@ -35,15 +35,34 @@ public class DashboardPalettePreviewTests
         Assert.Contains("PALETTE_PREVIEWS", Js());
     }
 
-    [Theory]
-    [MemberData(nameof(SlugData))]
-    public void PalettePreviewsMapCoversEverySlug(string slug)
+    [Fact]
+    public void PalettePreviewsMapCoversEverySlug()
     {
         var js = Js();
-        // Accept either 'slug': [ or "slug": [ as an object key form.
-        var pattern = new Regex("['\"]" + Regex.Escape(slug) + "['\"]\\s*:\\s*\\[");
-        Assert.True(pattern.IsMatch(js),
-            $"PALETTE_PREVIEWS map is missing an entry for slug '{slug}'.");
+        // Extract all keys from PALETTE_PREVIEWS object.
+        var pattern = new Regex("['\"]([^'\"]*?)['\"]\\s*:\\s*\\[");
+        var matches = pattern.Matches(js);
+        var actualKeys = new HashSet<string>();
+        foreach (Match m in matches) actualKeys.Add(m.Groups[1].Value);
+
+        // Built-in slugs: 10 named + empty-string Default.
+        var expectedBuiltins = new HashSet<string>(Slugs) { "" };
+
+        // (a) All 11 built-in slugs must be present.
+        foreach (var slug in expectedBuiltins)
+        {
+            Assert.True(actualKeys.Contains(slug),
+                $"PALETTE_PREVIEWS map is missing an entry for slug '{slug}'.");
+        }
+
+        // (b) Any additional keys must match user-<slug> format (future-proofing
+        //     for when the fixture is regenerated from a live dashboard with forge presets).
+        var extraKeys = new HashSet<string>(actualKeys);
+        extraKeys.ExceptWith(expectedBuiltins);
+        foreach (var key in extraKeys)
+        {
+            Assert.Matches(new Regex("^user-[a-z0-9-]{1,32}$"), key);
+        }
     }
 
     [Fact]
