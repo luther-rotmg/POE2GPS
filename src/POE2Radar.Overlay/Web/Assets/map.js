@@ -68,6 +68,7 @@
     atlas: null,                           // /api/atlas response
     landmarks: null,                       // /landmarks response
     atlasIcons: {},                        // name → HTMLImageElement (already decoded)
+    userIcons: new Map(),                  // v0.36 W2: iconKey -> HTMLImageElement (already decoded from /api/user-icons)
     // T8: persistent entity map, merged from full/delta frames.
     entities: new Map(),                   // id -> { id, x, y, cat, rar, hp, hpMax }
     isHideout:   false,
@@ -90,6 +91,56 @@
         img.src = dataUri;
       });
     }
+  }
+
+  // v0.36 W2: precedence-string used as the state.userIcons Map key.
+  // Manifest entries are indexed under EVERY key they can match, so
+  // resolveEntityIcon is a plain Map lookup at frame time — no scanning.
+  function iconKey(entry) {
+    // Prefer the most specific key; a single manifest entry can be
+    // reachable via metadataGlob OR cat.rar OR cat depending on which
+    // fields it populates.
+    if (entry.metadataGlob) return 'meta:' + entry.metadataGlob;
+    if (entry.category && entry.rarity) return entry.category + '.' + entry.rarity;
+    if (entry.category) return entry.category;
+    return entry.name;
+  }
+
+  async function loadUserIcons() {
+    const r = await fetch('/api/user-icons');
+    if (!r.ok) return;
+    const list = await r.json();
+    if (!Array.isArray(list)) return;
+    for (const entry of list) {
+      if (!entry || !entry.dataUri) continue;
+      await new Promise((res, rej) => {
+        const img = new Image();
+        img.onload  = () => { state.userIcons.set(iconKey(entry), img); res(); };
+        img.onerror = rej;
+        img.src = entry.dataUri;
+      });
+    }
+  }
+
+  // v0.36 W2: precedence-matching lookup. Order matches the C# overlay's
+  // DisplayRule resolve order: metadata substring first, then cat.rar, then cat.
+  // Returns an already-decoded HTMLImageElement or null (caller must fall back).
+  function resolveEntityIcon(e) {
+    if (state.userIcons.size === 0) return null;
+    if (e.metadata) {
+      for (const [k, img] of state.userIcons) {
+        if (k.startsWith('meta:') && e.metadata.indexOf(k.slice(5)) >= 0) return img;
+      }
+    }
+    if (e.cat && e.rar) {
+      const hit = state.userIcons.get(e.cat + '.' + e.rar);
+      if (hit) return hit;
+    }
+    if (e.cat) {
+      const hit = state.userIcons.get(e.cat);
+      if (hit) return hit;
+    }
+    return null;
   }
 
   function resizeCanvas() {
@@ -489,14 +540,20 @@
         continue;
       }
 
-      c.fillStyle = col.fill;
-      c.beginPath();
-      c.arc(drawX, drawY, r, 0, Math.PI * 2);
-      c.fill();
-      if (col.ring) {
-        c.strokeStyle = col.ring;
-        c.lineWidth = 1;
-        c.stroke();
+      const icon = resolveEntityIcon(e);
+      if (icon && icon.width > 0) {
+        const w = 2 * r, h = 2 * r;
+        c.drawImage(icon, drawX - w / 2, drawY - h / 2, w, h);
+      } else {
+        c.fillStyle = col.fill;
+        c.beginPath();
+        c.arc(drawX, drawY, r, 0, Math.PI * 2);
+        c.fill();
+        if (col.ring) {
+          c.strokeStyle = col.ring;
+          c.lineWidth = 1;
+          c.stroke();
+        }
       }
       if (e.cat === 'poi') {
         // Crosshair overlay.
@@ -755,6 +812,7 @@
   window.addEventListener('load', () => {
     resizeCanvas();
     loadAtlasIcons().catch(() => {}); // best-effort; empty bundle in v0.20.0 RC1
+    loadUserIcons().catch(() => {});    // v0.36 W2: best-effort preload of /api/user-icons
     openStream();
     state.rafId = requestAnimationFrame(frame);
     
