@@ -504,3 +504,52 @@
   .palette-share-status { font-size: 11px; color: var(--ink-dim); min-height: 14px; }
   .palette-share-status.ok  { color: var(--good); }
   .palette-share-status.err { color: #d94a4a; }
+
+  /* v0.39 R5 Rules Engine dashboard tab: list + editor + selector/effect builders. */
+  .rules-tab { display: flex; flex-direction: column; gap: 14px; }
+  .rules-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .rules-header .btn { background: var(--panel2); color: var(--gold-bright); border: 1px solid var(--gold-deep); padding: 7px 14px; cursor: pointer; border-radius: 2px; font-family: inherit; font-size: 12px; }
+  .rules-header .btn:disabled { opacity: .45; cursor: not-allowed; }
+  #ruleCapChip.chip { font-size: 11px; letter-spacing: .08em; padding: 4px 10px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel); color: var(--ink-dim); }
+  #ruleCapChip.chip.warn { color: var(--gold-bright); border-color: var(--gold-deep); }
+  #ruleCapChip.chip.full { color: #d94a4a; border-color: #d94a4a; }
+
+  .rule-card { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--line-soft); border-radius: 3px; background: var(--panel); flex-wrap: wrap; }
+  .rule-card .rc-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; }
+  .rule-card .rc-prio { display: flex; flex-direction: column; gap: 0; }
+  .rule-card .rc-prio button { background: var(--bg-alt); color: var(--ink-dim); border: 1px solid var(--line-soft); cursor: pointer; font-size: 10px; line-height: 1; padding: 2px 6px; }
+  .rule-card .rc-prio button:hover { color: var(--gold-bright); }
+  .rule-card .rc-name { font-weight: 600; color: var(--ink); }
+  .rule-card .rc-summary { color: var(--ink-dim); font-size: 12px; flex: 1; min-width: 160px; }
+  .rule-card .rc-actions { display: flex; gap: 6px; }
+  .rule-card .rc-actions button { background: transparent; color: var(--ink-dim); border: 1px solid var(--line-soft); cursor: pointer; padding: 3px 8px; font-size: 11px; border-radius: 2px; }
+  .rule-card .rc-actions button:hover { color: var(--gold-bright); border-color: var(--gold-deep); }
+  .rule-card .rc-actions .rc-del:hover { color: #d94a4a; border-color: #d94a4a; }
+  .rule-card.disabled .rc-name { color: var(--ink-faint); text-decoration: line-through; }
+
+  .rules-empty { padding: 18px; border: 1px dashed var(--line-soft); border-radius: 4px; color: var(--ink-dim); background: var(--bg2); line-height: 1.6; }
+  .rules-error { color: #d94a4a; padding: 8px 10px; border: 1px solid #d94a4a; border-radius: 3px; background: rgba(217,74,74,.08); }
+
+  .rules-editor { border: 1px solid var(--line); border-radius: 4px; background: var(--panel); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .rules-editor .controls input[type="text"], .rules-editor .controls input[type="number"] { background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft); padding: 5px 8px; border-radius: 2px; font-family: inherit; font-size: 12px; }
+  .rules-section-title { margin: 6px 0 2px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--gold-bright); font-weight: 600; }
+
+  .selector-rows { display: flex; flex-direction: column; gap: 6px; }
+  .selector-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 5px 8px; border: 1px solid var(--line-soft); border-radius: 2px; background: var(--bg2); }
+  .selector-row .sr-enable { display: flex; align-items: center; gap: 6px; min-width: 150px; font-size: 12px; cursor: pointer; }
+  .selector-row .sr-enable input { cursor: pointer; }
+  .selector-row .sr-input { background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft); padding: 4px 8px; border-radius: 2px; font-family: inherit; font-size: 12px; }
+  .selector-row .sr-hint { color: var(--ink-faint); font-size: 11px; }
+  .selector-row.disabled .sr-input, .selector-row.disabled select { opacity: .5; }
+
+  .effect-chips { display: flex; flex-direction: column; gap: 6px; }
+  .effect-chip { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--line-soft); border-radius: 2px; background: var(--bg2); flex-wrap: wrap; }
+  .effect-chip .ec-kind { font-weight: 600; color: var(--gold-bright); min-width: 56px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  .effect-chip .ec-config { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 140px; }
+  .effect-chip .ec-config input, .effect-chip .ec-config select { background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft); padding: 4px 8px; border-radius: 2px; font-family: inherit; font-size: 12px; }
+  .effect-chip .ec-config input[type="color"] { padding: 1px; width: 38px; height: 26px; cursor: pointer; }
+  .effect-chip .ec-reorder { display: flex; flex-direction: column; gap: 0; }
+  .effect-chip .ec-reorder button { background: var(--bg-alt); color: var(--ink-dim); border: 1px solid var(--line-soft); cursor: pointer; font-size: 10px; line-height: 1; padding: 2px 6px; }
+  .effect-chip .ec-reorder button:hover { color: var(--gold-bright); }
+  .effect-chip .ec-remove { background: transparent; color: #d94a4a; border: 1px solid var(--line-soft); cursor: pointer; padding: 2px 8px; border-radius: 2px; font-size: 13px; }
+  .effect-chip .ec-remove:hover { border-color: #d94a4a; }

@@ -96,6 +96,7 @@
             <button class="tab" data-tab="itemfilters">Item Filters</button>
             <button class="tab" data-tab="drops">Drops</button>
             <button class="tab" data-tab="codex">Codex</button>
+            <button class="tab" data-tab="rules">Rule Engine</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -999,6 +1000,53 @@
           <div id="codex-status" class="codex-status" role="status"></div>
         </section>
         <!-- CODEX-PANEL-END -->
+
+        <!-- v0.39 R5 Rules Engine dashboard tab: author display rules (selector + effects)
+             via /api/rules CRUD. R6 serves the endpoints; R1 owns the on-disk shape. -->
+        <section class="view" data-view="rules" hidden>
+          <div class="rules-tab">
+            <div class="rules-header">
+              <button id="btnNewRule" class="btn">+ New rule</button>
+              <span id="ruleCapChip" class="chip"></span>
+            </div>
+            <div id="rulesList"></div>
+            <div id="rulesEditor" hidden>
+              <div class="rules-editor">
+                <div class="controls" style="gap:10px;align-items:center;flex-wrap:wrap">
+                  <label>Name <input type="text" id="ruleNameInput" maxlength="80" style="min-width:220px"></label>
+                  <label>Priority <input type="number" id="rulePriorityInput" value="0" step="1" style="width:72px"></label>
+                  <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                    <input type="checkbox" id="ruleEnabledInput" checked> Enabled
+                  </label>
+                </div>
+
+                <h4 class="rules-section-title">When (selector) &middot; check the predicates to enable</h4>
+                <div id="selectorRows" class="selector-rows"></div>
+
+                <h4 class="rules-section-title">Then (effects) &middot; at least one required</h4>
+                <div class="controls" style="gap:8px;align-items:center;flex-wrap:wrap">
+                  <select id="effectKindSelect" class="btn" style="width:auto;padding:6px 10px">
+                    <option value="">+ Add effect&hellip;</option>
+                    <option value="hide">Hide</option>
+                    <option value="tint">Tint</option>
+                    <option value="ring">Ring</option>
+                    <option value="label">Label</option>
+                    <option value="sound">Sound</option>
+                    <option value="pulse">Pulse</option>
+                  </select>
+                  <button id="btnAddEffect" class="btn" type="button">Add</button>
+                </div>
+                <div id="effectChips" class="effect-chips"></div>
+
+                <div class="controls" style="gap:10px;margin-top:12px">
+                  <button id="btnSaveRule" class="btn" type="button">Save</button>
+                  <button id="btnCancelRule" class="btn" type="button">Cancel</button>
+                  <span id="ruleEditorStatus" class="palette-share-status" style="flex:1"></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
 
         <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
         <section class="view" data-view="bosses" hidden>

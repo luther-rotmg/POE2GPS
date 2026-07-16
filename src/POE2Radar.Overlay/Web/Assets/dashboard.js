@@ -3040,3 +3040,425 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
     } catch(e){}
   });
 })();
+
+/* ── v0.39 R5 Rules Engine dashboard tab: list + editor + selector/effect builders.
+     Consumes R6's /api/rules CRUD endpoints; R1 owns the on-disk RuleRecord shape.
+     Fires a 'rules-changed' CustomEvent on save/delete so future R3/R4 can recompile
+     without a page reload. PRESERVE ALL OTHER BEHAVIOR — this is an additive IIFE. */
+(() => {
+  const RULE_CAP = 100;
+  const WARN_CAP = 50;
+  const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
+
+  // 8 predicates mirror R1's Selector record (all optional, AND-ed).
+  const PREDICATE_DEFS = [
+    { key: 'Metadata',  label: 'metadata',  type: 'text',   hint: 'regex on entity metadata path' },
+    { key: 'Token',     label: 'token',     type: 'text',   hint: 'regex on entity token' },
+    { key: 'Rarity',    label: 'rarity',    type: 'select', options: ['unique','rare','magic','normal'] },
+    { key: 'ZoneCode',  label: 'zoneCode',  type: 'text',   hint: 'regex on area zone code' },
+    { key: 'InHideout', label: 'inHideout', type: 'bool' },
+    { key: 'MinLevel',  label: 'minLevel',  type: 'number' },
+    { key: 'MaxLevel',  label: 'maxLevel',  type: 'number' },
+    { key: 'HasBuff',   label: 'hasBuff',   type: 'text',   hint: 'regex on active buff id' },
+  ];
+
+  const EFFECT_KINDS = ['hide','tint','ring','label','sound','pulse'];
+
+  // editor state
+  let __editing = null;      // null = closed, {} = new, or the rule being edited
+  let __effects = [];        // array of effect state objects { kind, ...fields }
+  let __rulesCache = [];     // last loaded list (for priority swaps)
+
+  function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  function setStatus(msg, cls){
+    const el = document.getElementById('ruleEditorStatus');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'palette-share-status' + (cls ? ' ' + cls : '');
+  }
+
+  async function loadRules(){
+    const list = document.getElementById('rulesList');
+    const chip = document.getElementById('ruleCapChip');
+    try {
+      const r = await fetch('/api/rules', { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      const data = await r.json();
+      __rulesCache = (data && data.rules) ? data.rules : [];
+      renderRules(__rulesCache);
+      if (chip) {
+        const n = __rulesCache.length;
+        chip.textContent = n + '/' + RULE_CAP;
+        chip.classList.remove('warn','full');
+        if (n >= RULE_CAP) chip.classList.add('full');
+        else if (n >= WARN_CAP) chip.classList.add('warn');
+      }
+      const btn = document.getElementById('btnNewRule');
+      if (btn) btn.disabled = __rulesCache.length >= RULE_CAP;
+    } catch (e) {
+      if (list) list.innerHTML = '<div class="rules-error">Failed to load rules (network error).</div>';
+      if (chip) { chip.textContent = '?/' + RULE_CAP; chip.classList.remove('warn','full'); }
+    }
+  }
+
+  function countPredicates(when){
+    if (!when) return 0;
+    let n = 0;
+    for (const def of PREDICATE_DEFS) {
+      const v = when[def.key];
+      if (v === undefined || v === null || v === '') continue;
+      if (def.type === 'bool' && v === false) continue;
+      n++;
+    }
+    return n;
+  }
+
+  function summarizeEffects(then){
+    if (!then || !then.length) return 'no effects';
+    return then.length + ' effect' + (then.length === 1 ? '' : 's') + ': ' + then.map(e => e.kind).join(', ');
+  }
+
+  function renderRules(rules){
+    const host = document.getElementById('rulesList');
+    if (!host) return;
+    if (!rules.length) {
+      host.innerHTML = '<div class="rules-empty">No rules yet. Click <b>+ New rule</b> to author one, or migrate a rule from the Affix Nameplates / Buff Nameplates / etc tabs.</div>';
+      return;
+    }
+    const sorted = rules.slice().sort((a,b) => (b.Priority||0) - (a.Priority||0));
+    host.innerHTML = sorted.map(r => {
+      const id = r.Id || '';
+      const enabled = r.Enabled !== false;
+      const npred = countPredicates(r.When);
+      const neff = (r.Then && r.Then.length) || 0;
+      return '<div class="rule-card' + (enabled ? '' : ' disabled') + '" data-id="' + esc(id) + '">' +
+        '<label class="rc-toggle"><input type="checkbox" class="rc-en" ' + (enabled ? 'checked' : '') + '> on</label>' +
+        '<div class="rc-prio">' +
+          '<button class="rc-up" title="move up">&#9650;</button>' +
+          '<button class="rc-down" title="move down">&#9660;</button>' +
+        '</div>' +
+        '<span class="rc-name">' + esc(r.Name || '(unnamed)') + '</span>' +
+        '<span class="rc-summary">' + npred + ' predicate' + (npred === 1 ? '' : 's') + ' &rarr; ' + summarizeEffects(r.Then) + '</span>' +
+        '<div class="rc-actions">' +
+          '<button class="rc-edit">edit</button>' +
+          '<button class="rc-del">delete</button>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    host.querySelectorAll('.rule-card').forEach(card => {
+      const id = card.getAttribute('data-id');
+      card.querySelector('.rc-en').addEventListener('change', async (ev) => {
+        const checked = ev.target.checked;
+        card.classList.toggle('disabled', !checked);
+        const rule = __rulesCache.find(x => String(x.Id) === id);
+        if (!rule) return;
+        const body = JSON.parse(JSON.stringify(rule));
+        body.Enabled = checked;
+        try {
+          const r = await fetch('/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+          if (!r.ok) { ev.target.checked = !checked; card.classList.toggle('disabled', !checked); throw 0; }
+          rule.Enabled = checked;
+          dispatchRulesChanged();
+        } catch (e) {
+          const err = document.createElement('div');
+          err.className = 'rules-error';
+          err.textContent = 'Failed to toggle rule (reverted).';
+          host.prepend(err);
+          setTimeout(() => err.remove(), 3000);
+        }
+      });
+      card.querySelector('.rc-up').addEventListener('click', () => swapPriority(id, -1));
+      card.querySelector('.rc-down').addEventListener('click', () => swapPriority(id, 1));
+      card.querySelector('.rc-edit').addEventListener('click', () => {
+        const rule = __rulesCache.find(x => String(x.Id) === id);
+        if (rule) openEditor(rule);
+      });
+      card.querySelector('.rc-del').addEventListener('click', () => deleteRule(id));
+    });
+  }
+
+  async function swapPriority(id, dir){
+    const sorted = __rulesCache.slice().sort((a,b) => (b.Priority||0) - (a.Priority||0));
+    const idx = sorted.findIndex(r => String(r.Id) === id);
+    if (idx < 0) return;
+    const j = idx + dir;
+    if (j < 0 || j >= sorted.length) return;
+    const a = sorted[idx], b = sorted[j];
+    const pa = a.Priority || 0, pb = b.Priority || 0;
+    const bodyA = JSON.parse(JSON.stringify(a)); bodyA.Priority = pb;
+    const bodyB = JSON.parse(JSON.stringify(b)); bodyB.Priority = pa;
+    try {
+      const r1 = await fetch('/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(bodyA) });
+      if (!r1.ok) throw 0;
+      const r2 = await fetch('/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(bodyB) });
+      if (!r2.ok) throw 0;
+      await loadRules();
+      dispatchRulesChanged();
+    } catch (e) {
+      const host = document.getElementById('rulesList');
+      if (host) {
+        const err = document.createElement('div');
+        err.className = 'rules-error';
+        err.textContent = 'Failed to reorder rule.';
+        host.prepend(err);
+        setTimeout(() => err.remove(), 3000);
+      }
+    }
+  }
+
+  function dispatchRulesChanged(){
+    document.dispatchEvent(new CustomEvent('rules-changed'));
+  }
+
+  // ── editor ──
+  function buildSelectorRows(){
+    const host = document.getElementById('selectorRows');
+    if (!host) return;
+    host.innerHTML = PREDICATE_DEFS.map(def => {
+      let input = '';
+      if (def.type === 'text') {
+        input = '<input type="text" class="sr-input sr-input-text" data-key="' + def.key + '" placeholder="' + esc(def.label) + '">';
+      } else if (def.type === 'number') {
+        input = '<input type="number" class="sr-input sr-input-num" data-key="' + def.key + '" step="1" style="width:80px">';
+      } else if (def.type === 'select') {
+        input = '<select class="sr-input sr-input-sel" data-key="' + def.key + '">' +
+          def.options.map(o => '<option value="' + o + '">' + o + '</option>').join('') + '</select>';
+      } else if (def.type === 'bool') {
+        input = '<label class="sr-toggle" style="display:flex;align-items:center;gap:6px;cursor:pointer">' +
+          '<input type="checkbox" class="sr-input sr-input-bool" data-key="' + def.key + '"> true</label>';
+      }
+      const hint = def.hint ? '<span class="sr-hint">' + esc(def.hint) + '</span>' : '';
+      return '<div class="selector-row disabled" data-key="' + def.key + '">' +
+        '<label class="sr-enable"><input type="checkbox" class="sr-on"> ' + esc(def.label) + '</label>' +
+        input + hint + '</div>';
+    }).join('');
+
+    host.querySelectorAll('.selector-row').forEach(row => {
+      const on = row.querySelector('.sr-on');
+      on.addEventListener('change', () => {
+        row.classList.toggle('disabled', !on.checked);
+        updateSaveGate();
+      });
+      const inp = row.querySelector('.sr-input');
+      if (inp) inp.addEventListener('input', updateSaveGate);
+    });
+  }
+
+  function readSelector(){
+    const when = {};
+    document.querySelectorAll('#selectorRows .selector-row').forEach(row => {
+      const key = row.getAttribute('data-key');
+      const on = row.querySelector('.sr-on').checked;
+      if (!on) return;
+      const def = PREDICATE_DEFS.find(d => d.key === key);
+      const inp = row.querySelector('.sr-input');
+      let val = def.type === 'bool' ? inp.checked : inp.value;
+      if (def.type === 'number') {
+        if (val === '' || val === null) return;
+        val = parseInt(val, 10); if (isNaN(val)) return;
+      } else if (def.type === 'text' || def.type === 'select') {
+        if (val === '') return;
+      }
+      when[key] = val;
+    });
+    return when;
+  }
+
+  function fillSelector(when){
+    when = when || {};
+    document.querySelectorAll('#selectorRows .selector-row').forEach(row => {
+      const key = row.getAttribute('data-key');
+      const def = PREDICATE_DEFS.find(d => d.key === key);
+      const v = when[key];
+      const on = (v !== undefined && v !== null && v !== '' && !(def.type === 'bool' && v === false));
+      row.querySelector('.sr-on').checked = on;
+      row.classList.toggle('disabled', !on);
+      const inp = row.querySelector('.sr-input');
+      if (inp) {
+        if (def.type === 'bool') inp.checked = !!v;
+        else inp.value = (v === undefined || v === null) ? '' : String(v);
+      }
+    });
+  }
+
+  // ── effects ──
+  function renderEffectChips(){
+    const host = document.getElementById('effectChips');
+    if (!host) return;
+    host.innerHTML = __effects.map((e, i) => {
+      let config = '';
+      if (e.kind === 'tint' || e.kind === 'ring') {
+        config = '<input type="color" class="ec-color" value="' + esc(e.Color || '#c8a049') + '">';
+      } else if (e.kind === 'label') {
+        config = '<input type="text" class="ec-text" placeholder="label text (use {tokens})" value="' + esc(e.Text || '') + '" style="min-width:200px">';
+      } else if (e.kind === 'sound') {
+        config = '<input type="text" class="ec-text" placeholder="filename (in config/sounds/)" value="' + esc(e.File || '') + '" style="min-width:200px">';
+      } else if (e.kind === 'pulse') {
+        config = '<select class="ec-sel"><option value="slow"' + (e.Speed === 'slow' ? ' selected' : '') + '>slow</option><option value="fast"' + (e.Speed === 'fast' ? ' selected' : '') + '>fast</option></select>';
+      }
+      return '<div class="effect-chip" data-i="' + i + '">' +
+        '<span class="ec-kind">' + esc(e.kind) + '</span>' +
+        '<div class="ec-config">' + config + '</div>' +
+        '<div class="ec-reorder"><button class="ec-up" title="move up">&#9650;</button><button class="ec-down" title="move down">&#9660;</button></div>' +
+        '<button class="ec-remove" title="remove">&times;</button>' +
+      '</div>';
+    }).join('');
+
+    host.querySelectorAll('.effect-chip').forEach(chip => {
+      const i = parseInt(chip.getAttribute('data-i'), 10);
+      const e = __effects[i];
+      const colorInp = chip.querySelector('.ec-color');
+      if (colorInp) colorInp.addEventListener('input', () => { e.Color = colorInp.value; });
+      const textInp = chip.querySelector('.ec-text');
+      if (textInp) textInp.addEventListener('input', () => {
+        if (e.kind === 'label') e.Text = textInp.value;
+        else if (e.kind === 'sound') e.File = textInp.value;
+      });
+      const sel = chip.querySelector('.ec-sel');
+      if (sel) sel.addEventListener('change', () => { e.Speed = sel.value; });
+      chip.querySelector('.ec-remove').addEventListener('click', () => {
+        __effects.splice(i, 1);
+        renderEffectChips();
+        updateSaveGate();
+      });
+      chip.querySelector('.ec-up').addEventListener('click', () => {
+        if (i > 0) { const t = __effects[i-1]; __effects[i-1] = __effects[i]; __effects[i] = t; renderEffectChips(); updateSaveGate(); }
+      });
+      chip.querySelector('.ec-down').addEventListener('click', () => {
+        if (i < __effects.length - 1) { const t = __effects[i+1]; __effects[i+1] = __effects[i]; __effects[i] = t; renderEffectChips(); updateSaveGate(); }
+      });
+    });
+  }
+
+  function effectsToJSON(){
+    return __effects.map(e => {
+      if (e.kind === 'hide') return { kind: 'hide' };
+      if (e.kind === 'tint') return { kind: 'tint', Color: e.Color || '#000000' };
+      if (e.kind === 'ring') return { kind: 'ring', Color: e.Color || '#000000' };
+      if (e.kind === 'label') return { kind: 'label', Text: e.Text || '' };
+      if (e.kind === 'sound') return { kind: 'sound', File: e.File || '' };
+      if (e.kind === 'pulse') return { kind: 'pulse', Speed: e.Speed || 'slow' };
+      return { kind: e.kind };
+    });
+  }
+
+  function effectsFromJSON(then){
+    __effects = (then || []).map(e => {
+      if (e.kind === 'tint' || e.kind === 'ring') return { kind: e.kind, Color: e.Color || '#c8a049' };
+      if (e.kind === 'label') return { kind: 'label', Text: e.Text || '' };
+      if (e.kind === 'sound') return { kind: 'sound', File: e.File || '' };
+      if (e.kind === 'pulse') return { kind: 'pulse', Speed: e.Speed || 'slow' };
+      return { kind: e.kind || 'hide' };
+    });
+  }
+
+  function updateSaveGate(){
+    const btn = document.getElementById('btnSaveRule');
+    if (!btn) return;
+    const name = (document.getElementById('ruleNameInput').value || '').trim();
+    const ok = name.length > 0 && __effects.length > 0;
+    btn.disabled = !ok;
+  }
+
+  function openEditor(rule){
+    __editing = rule ? rule : {};
+    const pane = document.getElementById('rulesEditor');
+    if (pane) pane.hidden = false;
+    document.getElementById('ruleNameInput').value = rule ? (rule.Name || '') : '';
+    document.getElementById('rulePriorityInput').value = rule ? (rule.Priority || 0) : 0;
+    document.getElementById('ruleEnabledInput').checked = rule ? (rule.Enabled !== false) : true;
+    fillSelector(rule ? rule.When : null);
+    effectsFromJSON(rule ? rule.Then : null);
+    renderEffectChips();
+    setStatus('', '');
+    updateSaveGate();
+    document.getElementById('ruleNameInput').focus();
+  }
+
+  function closeEditor(){
+    __editing = null;
+    __effects = [];
+    const pane = document.getElementById('rulesEditor');
+    if (pane) pane.hidden = true;
+    setStatus('', '');
+  }
+
+  async function saveRule(){
+    const name = (document.getElementById('ruleNameInput').value || '').trim();
+    if (!name) { setStatus('Name is required', 'err'); return; }
+    if (__effects.length === 0) { setStatus('At least one effect is required', 'err'); return; }
+    const priority = parseInt(document.getElementById('rulePriorityInput').value, 10) || 0;
+    const enabled = document.getElementById('ruleEnabledInput').checked;
+    const when = readSelector();
+    const then = effectsToJSON();
+    const id = (__editing && __editing.Id) ? String(__editing.Id) : EMPTY_GUID;
+    const body = { Id: id, Name: name, Priority: priority, Enabled: enabled, When: when, Then: then };
+    setStatus('Saving...', '');
+    try {
+      const r = await fetch('/api/rules', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+      if (r.status === 409) { const d = await r.json().catch(() => ({})); setStatus('A rule named "' + (d.name || name) + '" already exists', 'err'); return; }
+      if (r.status === 400) { const d = await r.json().catch(() => ({})); setStatus(d.error || 'Validation error', 'err'); return; }
+      if (!r.ok) { setStatus('Save failed (HTTP ' + r.status + ')', 'err'); return; }
+      closeEditor();
+      await loadRules();
+      dispatchRulesChanged();
+    } catch (e) {
+      setStatus('Save failed (network error)', 'err');
+    }
+  }
+
+  async function deleteRule(id){
+    if (!confirm('Delete this rule? This cannot be undone.')) return;
+    try {
+      const r = await fetch('/api/rules/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (!r.ok) { const host = document.getElementById('rulesList'); if (host) { const err = document.createElement('div'); err.className = 'rules-error'; err.textContent = 'Delete failed (HTTP ' + r.status + ').'; host.prepend(err); setTimeout(() => err.remove(), 3000); } return; }
+      await loadRules();
+      dispatchRulesChanged();
+    } catch (e) {
+      const host = document.getElementById('rulesList');
+      if (host) { const err = document.createElement('div'); err.className = 'rules-error'; err.textContent = 'Delete failed (network error).'; host.prepend(err); setTimeout(() => err.remove(), 3000); }
+    }
+  }
+
+  // ── wire-up (runs once on script load) ──
+  function init(){
+    buildSelectorRows();
+
+    const btnNew = document.getElementById('btnNewRule');
+    if (btnNew) btnNew.addEventListener('click', () => openEditor(null));
+    const btnSave = document.getElementById('btnSaveRule');
+    if (btnSave) btnSave.addEventListener('click', saveRule);
+    const btnCancel = document.getElementById('btnCancelRule');
+    if (btnCancel) btnCancel.addEventListener('click', closeEditor);
+    const nameInp = document.getElementById('ruleNameInput');
+    if (nameInp) nameInp.addEventListener('input', updateSaveGate);
+    const addEff = document.getElementById('btnAddEffect');
+    if (addEff) addEff.addEventListener('click', () => {
+      const sel = document.getElementById('effectKindSelect');
+      const kind = sel.value;
+      if (!kind || EFFECT_KINDS.indexOf(kind) < 0) { setStatus('Pick an effect kind first', 'err'); return; }
+      const seed = { kind };
+      if (kind === 'tint' || kind === 'ring') seed.Color = '#c8a049';
+      else if (kind === 'label') seed.Text = '';
+      else if (kind === 'sound') seed.File = '';
+      else if (kind === 'pulse') seed.Speed = 'slow';
+      __effects.push(seed);
+      renderEffectChips();
+      updateSaveGate();
+      sel.value = '';
+      setStatus('', '');
+    });
+
+    // Tab activation: load on first open (lazy). Subsequent opens are no-ops; the
+    // list is refreshed on save/delete instead.
+    let __loaded = false;
+    document.querySelectorAll('.tab[data-tab="rules"]').forEach(t => t.addEventListener('click', () => {
+      if (!__loaded) { __loaded = true; loadRules(); }
+    }));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
