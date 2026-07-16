@@ -108,6 +108,7 @@ public sealed class ApiServer : IDisposable
     private readonly Func<object>? _itemFilterMatches; // v0.31 Prospector: /api/item-filters/matches counter
     private readonly Func<object>? _panelState;              // v0.32 Panorama: /api/panels provider (character/inventory/stash open state)
     private readonly Func<object>? _dropsProvider;           // v0.33 Drop Timeline: /api/drops payload
+    private readonly Func<string, object>? _codexProvider;   // v0.37 Character Codex: /api/codex?character=<name>
     // v0.36 W1: user icon registry (FileSystemWatcher over config/icons/). Null when unconfigured.
     private readonly IconRegistry? _iconRegistry;
 
@@ -158,7 +159,10 @@ public sealed class ApiServer : IDisposable
         Func<object>? panelStateProvider = null,
         Func<object>? dropsProvider = null,
         // v0.36 W1: user icon registry for the /api/user-icons manifest endpoint.
-        IconRegistry? iconRegistry = null)
+        IconRegistry? iconRegistry = null,
+        // v0.37 A1: character-codex event journal reader. Called with the ?character=<name> query
+        // param; returns the JSON-shaped payload for that character (empty envelope if unknown).
+        Func<string, object>? codexProvider = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -198,6 +202,7 @@ public sealed class ApiServer : IDisposable
         _panelState = panelStateProvider;
         _dropsProvider = dropsProvider;
         _iconRegistry = iconRegistry;
+        _codexProvider = codexProvider;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1412,6 +1417,26 @@ public sealed class ApiServer : IDisposable
                 // (drops:[]) when the provider isn't wired.
                 object dropsPayload = _dropsProvider?.Invoke() ?? new { drops = Array.Empty<object>() };
                 WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(dropsPayload, Json), "application/json; charset=utf-8");
+                break;
+            }
+
+            case "/api/codex":
+            {
+                // v0.37 A1: per-character codex event journal. Loopback-Host-gated because the
+                // character-name query param leaks PII (character identity is never in /state).
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                    break;
+                }
+                var character = ctx.Request.QueryString["character"];
+                if (string.IsNullOrWhiteSpace(character))
+                {
+                    Write(ctx, 400, JsonSerializer.Serialize(new { error = "missing character query param" }, Json));
+                    break;
+                }
+                object codexPayload = _codexProvider?.Invoke(character) ?? new { events = Array.Empty<object>() };
+                WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(codexPayload, Json), "application/json; charset=utf-8");
                 break;
             }
 
