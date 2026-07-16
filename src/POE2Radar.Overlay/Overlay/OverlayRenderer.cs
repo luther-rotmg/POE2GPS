@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Numerics;
 using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
+using POE2Radar.Core.Icons;
 using POE2Radar.Core.Pathfinding;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Overlay;   // Threshold — THR-XP-RENDER: SessionHudXpFormatter (sub-namespace).
@@ -61,6 +62,12 @@ public sealed class OverlayRenderer : IDisposable
     private TerrainBitmap? _terrain;
     private AtlasIconCache? _atlasIcons;   // #5: decoded atlas content-icon bitmaps (lazy per render target)
 
+    // v0.36 I3: custom entity PNG icons from config/icons/ directory, loaded via IconRegistry.
+    private IconRegistry? _entityIconRegistry;
+    private EntityIconCache? _entityIconCache;
+    private Vortice.WIC.IWICImagingFactory? _wic;
+    private bool _iconTintByRarity = true;
+
     // Per-icon-name geometry, built lazily from the SVG IconLibrary and cached for the renderer's
     // lifetime. A name that can't be resolved/parsed is mapped to the Circle geometry so something
     // always draws; the cache may therefore point several keys at one instance (deduped on Dispose).
@@ -111,6 +118,10 @@ public sealed class OverlayRenderer : IDisposable
         _bStyle    = rt.CreateSolidColorBrush(ColText);
         _tf = _window.DWriteFactory.CreateTextFormat("Consolas", null, FontWeight.Normal, FontStyle.Normal, FontStretch.Normal, 12f, "en-us");
         _atlasIcons = new AtlasIconCache();   // decode embedded atlas content PNGs once (#5)
+        _wic = new Vortice.WIC.IWICImagingFactory();
+        _entityIconRegistry = new IconRegistry();
+        _entityIconRegistry.LoadFrom(System.IO.Path.Combine(AppContext.BaseDirectory, "config", "icons"));
+        _entityIconCache = new EntityIconCache(_entityIconRegistry, _wic);
         _ready = true;
     }
 
@@ -1636,7 +1647,27 @@ public sealed class OverlayRenderer : IDisposable
 
                 var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale);
                 _bStyle!.Color = GetRuleColor(rule);   // D2: memoized
-                DrawIcon(rt, rule.Shape, p, rule.Size, _bStyle, filled: true);
+                var iconEntry = _entityIconRegistry?.Resolve(e.Category, e.Rarity, e.Metadata);
+                ID2D1Bitmap? iconBmp = null;
+                if (iconEntry is not null)
+                    iconBmp = _entityIconCache?.Get(iconEntry.Name, rt);
+                if (iconBmp is not null)
+                {
+                    if (_iconTintByRarity)
+                    {
+                        var prev = _bStyle.Color;
+                        _bStyle.Color = new Color4(prev.R, prev.G, prev.B, 0.55f);
+                        var rr = MathF.Max(rule.Size, 1f) * 1.15f;
+                        rt.FillEllipse(new Ellipse(new System.Numerics.Vector2(p.X, p.Y), rr, rr), _bStyle);
+                        _bStyle.Color = prev;
+                    }
+                    var dest = EntityIconCache.ComputeEntityIconDestRect(new System.Numerics.Vector2(p.X, p.Y), rule.Size);
+                    rt.DrawBitmap(iconBmp, 1f, Vortice.Direct2D1.BitmapInterpolationMode.Linear, dest);
+                }
+                else
+                {
+                    DrawIcon(rt, rule.Shape, p, rule.Size, _bStyle, filled: true);
+                }
                 if (!string.IsNullOrEmpty(rule.Label))
                     rt.DrawText(rule.Label, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
             }
@@ -1841,5 +1872,8 @@ public sealed class OverlayRenderer : IDisposable
         _tf?.Dispose();
         _terrain?.Dispose();
         _atlasIcons?.Dispose();
+        _entityIconCache?.Dispose();
+        _entityIconRegistry?.Dispose();
+        _wic?.Dispose();
     }
 }
