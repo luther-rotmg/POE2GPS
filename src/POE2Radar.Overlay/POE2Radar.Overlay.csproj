@@ -55,4 +55,10 @@
     <EmbeddedResource Include="Web/Assets/dashboard.js" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\starter-icons\*.png" LogicalName="POE2Radar.Overlay.StarterIcons.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\assets\starter-icons\ATTRIBUTION.md" LogicalName="POE2Radar.Overlay.StarterIcons.ATTRIBUTION.md" />
+    <EmbeddedResource Include="..\..\assets\starter-icons\mapping.json.default" LogicalName="POE2Radar.Overlay.StarterIcons.mapping.json" />
+  </ItemGroup>
+
 </Project>

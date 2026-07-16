@@ -442,3 +442,6 @@ cloudflare-worker/.wrangler/
 
 # Local scratch (release-note drafts, working files — never committed/shipped)
 scratchpad/
+
+# v0.36 K1/K2: runtime user config lives next to the installed DLL, never in the repo tree
+/config/

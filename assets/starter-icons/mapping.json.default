@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "default": "entity-generic",
+  "categories": {
+    "Monster": {
+      "Normal": "monster-normal",
+      "Magic":  "monster-magic",
+      "Rare":   "monster-rare",
+      "Unique": "monster-unique"
+    },
+    "Chest": {
+      "default": "chest-closed"
+    },
+    "Npc": {
+      "default": "npc"
+    },
+    "Transition": {
+      "default": "transition"
+    },
+    "Object": {
+      "default": "entity-generic"
+    }
+  },
+  "categoryRarity": {
+    "Monster.Normal": "monster-normal",
+    "Monster.Magic":  "monster-magic",
+    "Monster.Rare":   "monster-rare",
+    "Monster.Unique": "monster-unique"
+  },
+  "metadataGlobs": [
+    { "glob": "*Monolith*Claimable*", "icon": "waystone" },
+    { "glob": "*Breach*",             "icon": "breach"   },
+    { "glob": "*UberBoss*",           "icon": "boss"     },
+    { "glob": "*MapBoss*",            "icon": "boss"     },
+    { "glob": "*Shrine*",             "icon": "shrine"   },
+    { "glob": "*Ritual*",             "icon": "ritual"   }
+  ]
+}
