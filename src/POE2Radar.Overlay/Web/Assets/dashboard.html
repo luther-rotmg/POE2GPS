@@ -94,6 +94,7 @@
             <button class="tab" data-tab="waystone">Waystone</button>
             <button class="tab" data-tab="itemfilters">Item Filters</button>
             <button class="tab" data-tab="drops">Drops</button>
+            <button class="tab" data-tab="codex">Codex</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -937,6 +938,24 @@
             </div>
           </div>
         </section>
+
+        <!-- CODEX-PANEL-START -->
+        <section class="view" data-view="codex" data-panel="codex" hidden>
+          <div class="codex-controls">
+            <label>Character <input type="text" id="codex-character-input" maxlength="40" pattern="[A-Za-z0-9_-]{1,40}"></label>
+            <button type="button" id="codex-load-btn">Load</button>
+            <select id="codex-jump-date"><option value="">Jump to date...</option></select>
+          </div>
+          <div class="codex-chips">
+            <button type="button" class="codex-chip active" data-codex-filter="level">Level</button>
+            <button type="button" class="codex-chip active" data-codex-filter="boss">Boss</button>
+            <button type="button" class="codex-chip active" data-codex-filter="death">Death</button>
+            <button type="button" class="codex-chip active" data-codex-filter="drop">Drop</button>
+          </div>
+          <div id="codex-book" class="codex-book" aria-live="polite"></div>
+          <div id="codex-status" class="codex-status" role="status"></div>
+        </section>
+        <!-- CODEX-PANEL-END -->
 
         <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
         <section class="view" data-view="bosses" hidden>

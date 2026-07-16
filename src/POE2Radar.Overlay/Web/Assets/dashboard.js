@@ -2085,6 +2085,114 @@ function renderDrops(){
 }
 document.querySelectorAll('.tab[data-tab="drops"]').forEach(t => t.addEventListener('click', loadDrops));
 
+// CODEX-JS-START
+(function () {
+  const input = document.getElementById('codex-character-input');
+  const loadBtn = document.getElementById('codex-load-btn');
+  const jumpSel = document.getElementById('codex-jump-date');
+  const book = document.getElementById('codex-book');
+  const status = document.getElementById('codex-status');
+  const chips = document.querySelectorAll('[data-codex-filter]');
+  const activeFilters = { level: true, boss: true, death: true, drop: true };
+  let currentEvents = [];
+  function setStatus(msg) { if (status) status.textContent = msg; }
+  function fmtDay(tsSec) {
+    const d = new Date(tsSec * 1000);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+  function iconFor(kind) {
+    switch (kind) {
+      case 'level': return '[Lv]';
+      case 'boss':  return '[Bo]';
+      case 'death': return '[Dx]';
+      case 'drop':  return '[Dr]';
+      default:      return '[??]';
+    }
+  }
+  function summaryFor(e) {
+    switch (e.kind) {
+      case 'level': return 'Level ' + (e.from || '?') + ' -> ' + (e.to || '?');
+      case 'boss':  return 'Killed ' + (e.boss || 'unknown');
+      case 'death': return 'Died in ' + (e.zone || 'unknown') + ' (area lvl ' + (e.areaLevel != null ? e.areaLevel : '?') + ')';
+      case 'drop':  return (e.rarity || '?') + ' drop: ' + (e.name || 'unknown') + ' in ' + (e.zone || '?');
+      default:      return JSON.stringify(e);
+    }
+  }
+  function render() {
+    const visible = currentEvents.filter(e => activeFilters[e.kind]);
+    const byDay = new Map();
+    for (const e of visible) {
+      const day = fmtDay(e.ts);
+      if (!byDay.has(day)) byDay.set(day, []);
+      byDay.get(day).push(e);
+    }
+    const days = Array.from(byDay.keys()).sort();
+    book.innerHTML = '';
+    jumpSel.innerHTML = '<option value="">Jump to date...</option>';
+    for (const day of days) {
+      const spread = document.createElement('div');
+      spread.className = 'codex-spread';
+      spread.id = 'codex-day-' + day;
+      const header = document.createElement('h3');
+      header.className = 'codex-day-header';
+      header.textContent = day;
+      spread.appendChild(header);
+      const list = document.createElement('ul');
+      list.className = 'codex-day-events';
+      for (const e of byDay.get(day)) {
+        const li = document.createElement('li');
+        li.className = 'codex-event codex-event-' + e.kind;
+        const t = new Date(e.ts * 1000);
+        const hh = String(t.getHours()).padStart(2, '0');
+        const mm = String(t.getMinutes()).padStart(2, '0');
+        li.textContent = hh + ':' + mm + ' ' + iconFor(e.kind) + ' ' + summaryFor(e);
+        list.appendChild(li);
+      }
+      spread.appendChild(list);
+      book.appendChild(spread);
+      const opt = document.createElement('option');
+      opt.value = day;
+      opt.textContent = day + ' (' + byDay.get(day).length + ')';
+      jumpSel.appendChild(opt);
+    }
+    setStatus(visible.length + ' events across ' + days.length + ' days');
+  }
+  function load() {
+    const name = (input.value || '').trim();
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(name)) {
+      setStatus('Invalid character name (letters, digits, _-, up to 40 chars).');
+      return;
+    }
+    setStatus('Loading...');
+    fetch('/api/codex?character=' + encodeURIComponent(name))
+      .then(r => {
+        if (r.status === 404) { currentEvents = []; render(); setStatus('No codex file for that character yet.'); return null; }
+        if (!r.ok) { throw new Error('HTTP ' + r.status); }
+        return r.json();
+      })
+      .then(j => { if (!j) return; currentEvents = Array.isArray(j.events) ? j.events : []; render(); })
+      .catch(err => setStatus('Load failed: ' + err.message));
+  }
+  loadBtn.addEventListener('click', load);
+  input.addEventListener('keydown', ev => { if (ev.key === 'Enter') load(); });
+  chips.forEach(chip => chip.addEventListener('click', () => {
+    const k = chip.getAttribute('data-codex-filter');
+    activeFilters[k] = !activeFilters[k];
+    chip.classList.toggle('active', activeFilters[k]);
+    render();
+  }));
+  jumpSel.addEventListener('change', () => {
+    const v = jumpSel.value;
+    if (!v) return;
+    const el = document.getElementById('codex-day-' + v);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+})();
+// CODEX-JS-END
+
 /* ── Support — v0.27 (LO ask, expanded): supporters roll v2 ────────────────────────────────────
    Reads /api/supporters. Renders:
    - large total-count number + label
