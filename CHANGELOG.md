@@ -3,6 +3,43 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.39.0] — 2026-07-16 "Rule Engine"
+
+*One place. One schema. One Save.*
+
+### Added — 🎛 **The Rule Engine** *(unified when-selector → then-effects[] pipeline)*
+
+- 🎛 **New "Rule Engine" tab in Settings.** Every rule is `when this matches, then do this`. Selectors filter by metadata regex, entity token, rarity, zone code, in-hideout flag, level range, or buff presence — any combination, flat AND (v1.1 will add nested boolean logic). Effects: **hide** (force-suppress the entity), **tint** (`#rrggbb` color override), **ring** (outline — deferred to v0.39.1), **label** (custom text with `{name}`/`{level}`/`{metadata}`/`{zone}` tokens — v0.39.1), **sound** (WAV file — v0.39.1), **pulse** (slow/fast — v0.39.1). v1.0 ships **hide** + **tint** live end-to-end; the other effect types persist through Save/Load but are inert on the overlay until R3.1 wires them.
+- 🔄 **Composable priority + enabled toggle.** Higher priority wins conflicts; toggle any rule on/off without deleting it. Save → apply live on next entity tick — no restart, no page reload.
+- 🚪 **Legacy migration on demand.** Existing Affix Nameplates / Buff Nameplates / Rules (item filter) tabs each get a `Migrate to Rule Engine →` button that opens the Rules Engine editor pre-filled with a starting-point rule derived from that tab. Original legacy rule stays put — you review + Save the new one; delete the legacy source manually when confident.
+- 📮 **Share-code roadmap.** Rule sharing (paste-safe RUNE1-style codes like v0.38 palettes) is planned for v0.39.1 — v1.0 ships local-only.
+- 🛡 **Fully additive.** All six legacy rule surfaces (AffixNameplates, BuffNameplates, WaystoneRedFlags, AutoNav, AtlasTags, CustomLandmarks, ItemFilterEngine) continue to work byte-identically. The new engine is opt-in. Ignore the new tab and nothing changes about how the overlay behaves for you.
+
+### Under the hood
+
+- New `POE2Radar.Core.Rules` namespace: `RulesFile` envelope + `RuleRecord` (id/name/priority/enabled/when/then) + `Selector` (8 optional predicates) + polymorphic `Effect` base with 6 sealed subtypes (HideEffect/TintEffect/RingEffect/LabelEffect/SoundEffect/PulseEffect). `[JsonPolymorphic]` + `[property: JsonIgnore]` discriminator per the v0.37 CodexEvent pattern.
+- New `RulesFileStore` static class: Load/Save/Upsert/Delete/ValidateRule against `config/rules.json` (whole-file atomic-rename envelope, NOT JSONL). Strict slug/hex/rarity/speed/sound-name validation; 100-rule cap enforced at Save.
+- New `RuleEngine.Compile(RulesFile)` → `CompiledRuleSet.TryMatch(EntityView, WorldSnapshotView) → IReadOnlyList<Effect>`. Regex pre-compiled with `Compiled | IgnoreCase | CultureInvariant`; rules sorted by descending priority; TryMatch never throws (compile-time validation catches all).
+- New `RuleEffectApplier` helper: `HexToColor4("#rrggbb") → Color4` + `TryApply(effects, ref Color4) → bool hide`. Used inline by `OverlayRenderer` in the entity draw loop; exported public + tested for future R3.1 wire-up sites.
+- New `/api/rules` HttpListener routes in `ApiServer.cs`: `GET` list ungated, `GET/POST/DELETE` by id, `POST` 409-on-duplicate-name, all writes loopback-Host-gated. Mirrors the v0.38 F1 `/api/palettes` pattern.
+- New `OverlayRenderer.Rules` + `ItemFilterEngine.Rules` public properties, defaulting to `RuleEngine.Empty` (safe null pattern — no rule effects apply until loaded). `RadarApp` loads + compiles on startup via silent try/catch (malformed `rules.json` can't crash startup).
+
+### Tests
+
+- 89 new xUnit facts across `RulesFileStoreTests` (19: round-trip, cap, invalid hex/rarity/sound-name), `RuleEngineTests` (25: every predicate × effect combo, perf bench 100 rules × 10K iterations @ 0.02ms/call avg), `ApiRulesEndpointTests` (13: CRUD, 403/404/409/400/500 semantics), `DashboardRulesTabTests` (6: structural — tab button, editor ids, JS symbols), `RuleEffectApplierTests` (16: hex parsing + effect application), `ItemFilterEngineRuleFilterTests` (6: pass-through, Hide filters, TintEffect no-op, disabled skip), `DashboardRulesMigrationTests` (4: migrate-button presence + prefill-event listener). Full suite grows from 937 to 1026 (all green).
+
+### Known limitations
+
+- **Ring / label / sound / pulse** effects persist through Save/Load but don't render on the overlay yet. Follow-up bead R3.1 wires them in v0.39.1.
+- **Nested selector boolean logic** (`not:` / `any:` / `all:` wrappers) — flat AND only in v1.0. v1.1 based on user feedback.
+- **Live match count** ("matches ~N of last 100 entities") — deferred to v0.39.1 to keep R5's dashboard tab tractable.
+- **Legacy migration** copies one representative rule per tab, not full auto-migration of every legacy rule. User reviews + Saves the migrated draft; original legacy rule stays put.
+- **Buff-based selectors** don't fire on filter-path (only on renderer-path) because `ItemFilterEngine` doesn't have world-snapshot context at Match-time — selectors that check `zoneCode`/`inHideout`/`hasBuff` are renderer-only.
+
+### Upgrade
+
+Fully additive — no config migration required. Every existing settings file, filter, and rule works unchanged. `config/rules.json` starts empty; the new tab is inert until you author your first rule.
+
 ## [0.38.0] — 2026-07-16 "The Forge"
 
 *Ten built-in palettes was a start. Now you make your own.*
