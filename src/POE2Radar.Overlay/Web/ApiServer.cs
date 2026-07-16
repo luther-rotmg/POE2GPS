@@ -1440,6 +1440,112 @@ public sealed class ApiServer : IDisposable
                 break;
             }
 
+            case "/api/palettes":
+            {
+                // v0.38 F1: Color Forge — user-authored palette CRUD. GET (ungated) lists all
+                // palettes; POST (loopback-gated) saves a new palette.
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    var palettes = POE2Radar.Core.Palettes.UserPaletteStore.List();
+                    var payload = palettes.Select(p => new
+                    {
+                        slug = p.Slug,
+                        displayName = p.DisplayName,
+                        vars = p.Vars,
+                        preview = p.Preview,
+                    });
+                    Write(ctx, 200, JsonSerializer.Serialize(new { palettes = payload }, Json));
+                }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                        break;
+                    }
+                    try
+                    {
+                        var body = ReadBody(ctx);
+                        var doc = JsonDocument.Parse(body);
+                        var slug = doc.RootElement.GetProperty("slug").GetString() ?? "";
+                        var displayName = doc.RootElement.GetProperty("displayName").GetString() ?? "";
+                        var varsEl = doc.RootElement.GetProperty("vars");
+                        var vars = new Dictionary<string, string>();
+                        foreach (var prop in varsEl.EnumerateObject())
+                            vars[prop.Name] = prop.Value.GetString() ?? "";
+                        var p = new POE2Radar.Core.Palettes.UserPalette(
+                            slug, displayName, vars, Array.Empty<string>(), DateTime.UtcNow);
+                        if (POE2Radar.Core.Palettes.UserPaletteStore.Get(slug) != null)
+                        {
+                            Write(ctx, 409, JsonSerializer.Serialize(new { error = "slug already exists", slug }, Json));
+                            break;
+                        }
+                        var saved = POE2Radar.Core.Palettes.UserPaletteStore.Save(p);
+                        Write(ctx, 200, JsonSerializer.Serialize(new
+                        {
+                            slug = saved.Slug,
+                            displayName = saved.DisplayName,
+                            vars = saved.Vars,
+                            preview = saved.Preview,
+                        }, Json));
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = ex.Message }, Json));
+                    }
+                    catch (JsonException)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = "invalid JSON body" }, Json));
+                    }
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case string p when p.StartsWith("/api/palettes/", StringComparison.Ordinal) && p.Length > "/api/palettes/".Length:
+            {
+                var slug = p["/api/palettes/".Length..];
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    var palette = POE2Radar.Core.Palettes.UserPaletteStore.Get(slug);
+                    if (palette == null)
+                    {
+                        Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
+                        break;
+                    }
+                    Write(ctx, 200, JsonSerializer.Serialize(new
+                    {
+                        slug = palette.Slug,
+                        displayName = palette.DisplayName,
+                        vars = palette.Vars,
+                        preview = palette.Preview,
+                    }, Json));
+                }
+                else if (ctx.Request.HttpMethod == "DELETE")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                        break;
+                    }
+                    var deleted = POE2Radar.Core.Palettes.UserPaletteStore.Delete(slug);
+                    if (!deleted)
+                    {
+                        Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
+                        break;
+                    }
+                    Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, slug }, Json));
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
             case "/api/map":
             {
                 // v0.20.0 T5: same OR-gate — the shared renderer needs terrain from either entry point.
