@@ -1,0 +1,40 @@
+## [0.38.0] — 2026-07-16 "The Forge"
+
+*Ten built-in palettes was a start. Now you make your own.*
+
+### Added — 🔨 **The Color Forge**
+
+- 🎨 **Full 13-var color designer** in Settings → Color Forge. Every dashboard CSS variable — --gold, --gold-bright, --gold-deep, --ink, --ink-dim, --ink-faint, --panel, --panel2, --bg, --bg-alt, --line, --line-soft, --good — gets its own row with HSL sliders + hex text input, kept in bidirectional sync (drag the slider, the hex updates; type a hex, the sliders snap). Invalid hex marks the input .invalid; the rest of the palette keeps working.
+- 🖼 **Live sample preview** shows a mock kill-card, drop-card, vitals bar, chart, button, and tooltip using the values you're dialing in. Preview is scoped to its own `<div>` via `--fp-*` vars — the applied dashboard palette doesn't change until you hit Save, so you can experiment without wrecking your current look.
+- 💾 **Save / Load / Delete presets** via a Name field + Save button + Load-from dropdown. Presets persist to `config/palettes/<slug>.json` (13 vars + preview thumbnail auto-derived from `[--bg, --panel, --gold, --ink]`). Slug validation: `^[a-z0-9-]{1,32}$`, the 10 built-in slugs are reserved. Duplicate-name Save returns 409 Conflict — never silent overwrite.
+- 🎯 **Presets appear in the palette dropdown + chip strip** immediately after Save — no reload needed. Selected user palette persists via the same settings flow as the built-ins. Same supporter-gate logic: user palettes are supporter-only, same as the built-ins.
+
+### Added — 📮 **Share codes** *(paste-safe color exchange)*
+
+- 📤 **Copy current** encodes whatever palette is rendering right now into a `RUNE1-<base64url>-<crc6>` wire string and puts it on your clipboard. Reads live computed CSS vars, so it captures built-ins AND Forge presets AND imports identically.
+- 📥 **Import pasted** decodes a RUNE1 code from the textarea, applies it to `<body>` via a dedicated `<style id="importedPaletteStyles">` block, and persists to `localStorage['poe2gps.importedPalette']` as a single slot (overwrite on each import). Survives page reload without re-import.
+- 🛡 **FNV-1a checksum** on the last 6 hex chars catches paste corruption before decode — malformed codes silently return null rather than half-applying a broken palette.
+- ♻ **Want to keep an imported palette?** Import it, then open the Forge, name it, and hit Save. Import lives in localStorage until overwritten; Save turns it into a real preset in `config/palettes/`.
+
+### Added — 🖼 **Preset Gallery**
+
+- 🖼 **Thumbnail grid of the 10 built-in palettes** in the Settings tab, one card per palette with a 4-swatch mini-preview + display name. Swatches read live from the CSS palette blocks (no hardcoded hex map to drift), so any palette CSS tweak reflects in the gallery automatically.
+- 🔀 **Clone button** on each card forks that palette into the Forge editor pre-populated with its 13 vars + a suggested name (`<slug>-fork`). Save it under a new name and you've got a variant. Fastest way to riff on an existing look.
+
+### Under the hood
+
+- New `POE2Radar.Core.Palettes.UserPalette` sealed record + `UserPaletteStore` static class handles read/list/save/delete against `config/palettes/`. Strict slug + hex validation at the store layer, not the API layer, so shell-level tinkering (dropping a file directly) still enforces the invariants.
+- New `/api/palettes` HttpListener routes in `ApiServer.cs`: `GET` list is open (needed by the dashboard chip strip), `POST`/`DELETE` are loopback-Host-gated (writes never happen from a non-localhost origin). Duplicate-name `POST` returns `409 Conflict`.
+- New `paletteCodec.js` module: self-contained encode/decode with FNV-1a-32 checksum, exposed as `window.__paletteCodec = {encode, decode, MAGIC, KEYS}`. C# mirror in `PaletteCodecTests.cs` asserts byte-for-byte parity — decode a JS-encoded string, and vice versa.
+- `dashboard.js`: new ColorForge IIFE + Preset Gallery renderer + Share/Import IIFE + user-palettes-changed CustomEvent dispatch/listen. Shared `_userPalettesPromise` cache serves both the `<select>` refresh and the preview chip strip from a single `GET /api/palettes` on load, invalidated on save/delete.
+- `dashboard.css`: `.forge-panel`, `.forge-row`, `.forge-preview`, `.forge-preset-card`, `.palette-share` blocks. Preview vars scoped to `#forgePreview` via `--fp-*` custom-property names so authoring never leaks into the applied palette.
+- `dashboard.html`: new `<style id="user-palette-styles">` block populated at runtime with `body[data-palette="user-<slug>"]{...}` rules — the same selector shape as the built-in palette blocks, so user palettes drop into the existing CSS pipeline without a code-path fork.
+
+### Tests
+
+- 40+ new xUnit facts across `UserPaletteStoreTests` (round-trip, list, delete, reserved-slug rejection, invalid-hex rejection, preview auto-derivation), `PaletteCodecTests` (round-trip, hex-lower normalization, corrupt-input handling, 8KB decoded cap, JS/C# parity), `DashboardPalettePreviewTests` (extended to allow user-<slug> keys via regex), `DashboardForgePresetGalleryTests` (HTML container, CSS selectors, JS symbols, no hardcoded hex map), `DashboardForgeCloneTests` (Clone button wiring). Full suite grows from 925 to ~965 (all green).
+
+### Upgrade
+
+Fully additive. Existing installs upgrade cleanly, no config migration. Every existing built-in palette + supporter code + settings file works unchanged. If you don't want any of this, ignore the new "Color Forge" and "Preset Gallery" widgets in Settings; the classic dropdown still works exactly as before.
+
