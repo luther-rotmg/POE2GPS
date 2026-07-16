@@ -7,6 +7,7 @@ using POE2Radar.Core.Config;
 using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Input;
+using POE2Radar.Core.Icons;
 using POE2Radar.Core.Remote;
 using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
@@ -107,6 +108,8 @@ public sealed class ApiServer : IDisposable
     private readonly Func<object>? _itemFilterMatches; // v0.31 Prospector: /api/item-filters/matches counter
     private readonly Func<object>? _panelState;              // v0.32 Panorama: /api/panels provider (character/inventory/stash open state)
     private readonly Func<object>? _dropsProvider;           // v0.33 Drop Timeline: /api/drops payload
+    // v0.36 W1: user icon registry (FileSystemWatcher over config/icons/). Null when unconfigured.
+    private readonly IconRegistry? _iconRegistry;
 
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
@@ -153,7 +156,9 @@ public sealed class ApiServer : IDisposable
         ItemFilterEngine? itemFilters = null,
         Func<object>? itemFilterMatchesProvider = null,
         Func<object>? panelStateProvider = null,
-        Func<object>? dropsProvider = null)
+        Func<object>? dropsProvider = null,
+        // v0.36 W1: user icon registry for the /api/user-icons manifest endpoint.
+        IconRegistry? iconRegistry = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -192,6 +197,7 @@ public sealed class ApiServer : IDisposable
         _itemFilterMatches = itemFilterMatchesProvider;
         _panelState = panelStateProvider;
         _dropsProvider = dropsProvider;
+        _iconRegistry = iconRegistry;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -379,6 +385,36 @@ public sealed class ApiServer : IDisposable
                 // Read-only icon library for the dashboard's icon picker previews (name + viewBox + paths).
                 var icons = IconLibrary.Ordered.Select(d => new { name = d.Name, viewBox = d.ViewBox, paths = d.Paths });
                 Write(ctx, 200, JsonSerializer.Serialize(icons, Json));
+                break;
+            }
+
+            case "/api/user-icons":
+            {
+                // v0.36 W1: user icon manifest for map.js (and dashboard preview).
+                // Data source is IconRegistry (I1) which owns disk I/O + FileSystemWatcher
+                // over config/icons/. ETag is keyed on snapshot version so a file drop
+                // bumps the version and forces map.js to refetch.
+                var snap = _iconRegistry?.Current ?? IconRegistry.Snapshot.Empty;
+                var version = snap.Version;
+                var etag = "\"sha1-user-icons-v" + version + "\"";
+                var inm = ctx.Request.Headers["If-None-Match"];
+                if (!string.IsNullOrEmpty(inm) && inm == etag)
+                {
+                    ctx.Response.StatusCode = 304;
+                    ctx.Response.Headers["ETag"] = etag;
+                    ctx.Response.Close();
+                    break;
+                }
+                var payload = snap.Icons.Values.Select(e => new
+                {
+                    name          = e.Name,
+                    category      = (string?)null,
+                    rarity        = (string?)null,
+                    metadataGlob  = (string?)null,
+                    dataUri       = "data:image/png;base64," + Convert.ToBase64String(e.PngBytes),
+                });
+                ctx.Response.Headers["ETag"] = etag;
+                Write(ctx, 200, JsonSerializer.Serialize(payload, Json));
                 break;
             }
 
