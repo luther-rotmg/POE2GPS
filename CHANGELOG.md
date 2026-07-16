@@ -3,6 +3,25 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.36.1] — 2026-07-16 "First Light"
+
+*The starter pack lights itself on first run — the v0.36.0 promise, delivered.*
+
+### Fixed — 📦 **Starter pack auto-activates on first run** *(closes the v0.36.0 known limitation)*
+
+- 🕯 **Fresh installs now light up automatically.** On startup — before `OverlayRenderer` builds `IconRegistry` — `RadarApp` calls `EmbeddedStarterIconExtractor.EnsureExtracted(config/icons/)`, which unpacks all 20 bundled icons (both 32 and 64 px sizes), `mapping.json`, and `ATTRIBUTION.md` verbatim from the embedded `POE2Radar.Overlay.StarterIcons.*` resources. No more "copy the files out of the DLL" step.
+- 🛡 **User config always wins.** If `config/icons/` already contains any user file, the extractor returns `SkipReason="user-files-present"` and touches nothing. Your custom pack is never overwritten.
+- ♻ **Idempotent.** Once the pack is on disk it counts as "user files" from the extractor's point of view, so the guard trips on every subsequent launch — no re-extraction, no churn.
+- 🔎 **Support-diagnostic ExtractResult.** `(bool Extracted, int FileCount, string? SkipReason)` is logged on startup so a broken install can be triaged from the log without exposing internals to end users.
+
+### Tests
+
+- 5 new xUnit facts covering the missing-directory, empty-directory, user-files-present (PNG), user-files-present (`mapping.json`), and idempotency paths.
+
+### Upgrade
+
+Fully additive. Existing installs with a populated `config/icons/` see zero change — the extractor no-ops when it detects your files. Empty or missing `config/icons/` now lights up with the bundled 20-icon pack on the next launch instead of rendering like v0.35. No settings change, no migration.
+
 ## [0.36.0] — 2026-07-16 "Illumination"
 
 *Hand-painted icons come to the map.*
