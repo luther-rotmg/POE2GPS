@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using POE2Radar.Core.Rules;
 
 namespace POE2Radar.Core.Game;
 
@@ -58,6 +59,11 @@ public sealed class ItemFilterEngine
 
     public int Generation { get { lock (_gate) return _generation; } }
     public IReadOnlyList<FilterRule> All { get { lock (_gate) return _rules.ToList(); } }
+
+    /// <summary>Compiled Rules Engine ruleset, loaded at startup. Defaults to empty.
+    /// Used by <see cref="ApplyRuleFilter"/> to apply rule-engine hide effects on top of
+    /// legacy filter results.</summary>
+    public CompiledRuleSet Rules { get; set; } = RuleEngine.Empty;
 
     public void Replace(IEnumerable<FilterRule> rules)
     {
@@ -192,6 +198,27 @@ public sealed class ItemFilterEngine
         }
         matched.Sort((a, b) => b.Rule.Priority.CompareTo(a.Rule.Priority));
         return matched;
+    }
+
+    /// <summary>
+    /// Post-filter: apply the compiled Rules Engine on top of legacy filter results.
+    /// If the entity matches a rule with a <see cref="HideEffect"/>, returns an empty
+    /// list (supressing the item from the overlay). Otherwise returns results unchanged.
+    /// Fast path: if <see cref="Rules"/> has no rules (RuleCount == 0), returns immediately.
+    /// </summary>
+    public IReadOnlyList<MatchedFilter> ApplyRuleFilter(
+        IReadOnlyList<MatchedFilter> results,
+        EntityView entity,
+        WorldSnapshotView snap)
+    {
+        if (Rules.RuleCount == 0)
+            return results;
+
+        var effects = Rules.TryMatch(entity, snap);
+        if (effects.Count > 0 && effects.Any(e => e is HideEffect))
+            return Array.Empty<MatchedFilter>();
+
+        return results;
     }
 
     private static bool RuleMatches(

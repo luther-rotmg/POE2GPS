@@ -936,6 +936,7 @@ public sealed class RadarApp : IDisposable
         {
             var rulesFile = POE2Radar.Core.Rules.RulesFileStore.Load(ConfigDir);
             _renderer.Rules = POE2Radar.Core.Rules.RuleEngine.Compile(rulesFile);
+            _itemFilterEngine.Rules = POE2Radar.Core.Rules.RuleEngine.Compile(rulesFile);
         }
         catch { /* silent — malformed rules.json shouldn't crash startup */ }
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
