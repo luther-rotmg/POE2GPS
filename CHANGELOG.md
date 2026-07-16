@@ -3,6 +3,44 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.35.0] — 2026-07-15 "Chromatic"
+
+*Your colors, from picker to PNG — and a safe stage to wear them on.*
+
+### Added — 🎨 **Signature Palette Pack** *(8 new Gold-tier cosmetic palettes + live preview)*
+
+- 🎨 **Eight new Gold-tier palettes** — Ultimatum Red, Sanctum Cream, Necropolis Amethyst, Delirium Static, Legion Bronze, Ritual Blood, Trial Ordeal, Blight Bloom. Pick one that matches your stream's brand or your favorite league, wear it between runs.
+- 🔲 **Live swatch strip under the Settings picker** — every palette renders its full 8-tone band right below the dropdown, so you see the skin before you wear it instead of guessing from a name.
+- 🖼 **Recap PNG now dresses in your active palette.** The shareable end-of-session render pulls its header, accent, and border colors from the same palette your dashboard is running — post one to Discord and it already reads as yours, no manual editing to match your brand.
+- 🔌 **`/api/settings` now exposes `paletteColors`** — the resolved color set for the active palette rides on the settings payload, so the recap renderer (and any future OBS overlay skinning) consumes the same source of truth as the dashboard CSS.
+- 🧪 **Palette conformance lock** — every palette is contract-tested for slug shape, CSS variable coverage, and HTML class parity, so a future palette drop can't ship half-wired.
+
+### Added — 📡 **Stream-Safe Overlay** *(anti-snipe browser source for on-air runs)*
+
+- 📡 **New `/obs?mode=safe` browser source** — add it as your OBS scene source and go live without handing snipers your next map, your hideout coords, or the rare mob you're about to fight. All the protections below wire in automatically; no scene-editor gymnastics.
+- ⏱ **Configurable delay ring buffer (default 30s)** — a client-side FIFO in the map view holds each zone update for the delay window before painting, so what viewers see always trails what you see. Tune the window in Settings.
+- 🕶 **Zone-name masking + hideout-coord blur** — current-zone text is masked and hideout coordinates are blurred on the safe view, so a screenshot of your stream can't be used to walk your instance.
+- 🌫 **Optional entity-name fog** — off by default, flip it on and entity name labels get fogged on the safe overlay while remaining crisp on your local `/map` view.
+- ⚙️ **New RadarSettings fields round-trip through `/api/settings`** — every safe-mode toggle persists across restarts and syncs to the dashboard like every other setting.
+
+### Fixed — 🗺 **Atlas honesty** *(the atlas panel tells you the truth now)*
+
+- 🚨 **Real `/api/atlas` failure state surfaces to the dashboard** — when the endpoint actually fails, the atlas card now shows the error text instead of sitting on a silent "scanning…" spinner forever. You find out something is wrong the moment it goes wrong.
+- ♾ **`AtlasAutoRouteMaxHops = 0` round-trips as "unlimited"** — power users who set 0 no longer get silently clamped back to 32 on the next save. If you were relying on 0 as a workaround, it now actually sticks.
+
+### Also included from v0.34 (previously unreleased)
+
+- 🎛 **Dashboard console for atlas + advanced-strip toggles** — 4 atlas behavior toggles (`atlasShowRoute`, `atlasAutoRoute`, `atlasShowBiomeBorder`, `atlasAutoRouteMaxHops`) plus 3 v0.32-Advanced settings (`enableDropTimeline`, `enableItemFilterLiveCounters`, `enableInventoryHighlights`) surface directly in the Settings panel — no more hand-editing `RadarSettings.json` to tune atlas behavior.
+- 📸 **Save Session PNG button on the main dashboard** — the shareable end-of-session recap render is now one click from the dashboard, not just from the `/obs` view.
+
+### Tests
+
+- 39 new xUnit facts across the palette contract, safe-mode helpers, recap palette map, and atlas plumbing. Test suite grows accordingly, full green.
+
+### Upgrade
+
+Fully additive drop — no config changes, no migrations, no user action needed. Existing palettes, radar settings, and recap layouts carry over untouched. The new Signature palettes remain gated to Gold-tier supporters as with the existing cosmetic pack. Stream-Safe is opt-in via the new `/obs?mode=safe` URL, so your current `/obs` browser source keeps behaving exactly as it does today.
+
 ## [0.33.0] — 2026-07-13 "Ledger"
 
 ### Added — 📒 **Drop Timeline** *(persistent per-session record of your ground drops)*
