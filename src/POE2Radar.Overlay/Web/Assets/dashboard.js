@@ -2531,6 +2531,68 @@ function renderForgePresetGallery(){
 
 document.addEventListener('DOMContentLoaded', renderForgePresetGallery);
 
+// v0.38 Color Forge — clone-to-editable ------------------------------------
+// User-preset store. Interim localStorage key; TODO: swap for server-side
+// persistence via /api/forge/presets when the Forge state bead lands.
+const FORGE_USER_PRESETS_KEY = 'poe2gps.forge.userPresets';
+
+function forgeLoadUserPresets(){
+  try{ const raw = localStorage.getItem(FORGE_USER_PRESETS_KEY);
+       return raw ? (JSON.parse(raw) || []) : []; }
+  catch(_){ return []; }
+}
+function forgeSaveUserPresets(list){
+  try{ localStorage.setItem(FORGE_USER_PRESETS_KEY, JSON.stringify(list)); }
+  catch(_){ /* quota / privacy mode — best-effort only */ }
+}
+
+// Returns `<baseSlug>-1`, `<baseSlug>-2`, … first free suffix vs current store.
+// Always suffixed (never bare baseSlug) so a cloned preset never collides with
+// the built-in slug of the same name.
+function forgeUniqueName(baseSlug){
+  const existing = new Set(forgeLoadUserPresets().map(p => p.name));
+  let i = 1;
+  while(existing.has(baseSlug + '-' + i)) i++;
+  return baseSlug + '-' + i;
+}
+
+function forgeCloneBuiltin(sourceSlug){
+  const vars = readPaletteVarsFromCss(sourceSlug);
+  if(!vars) return null;
+  const name = forgeUniqueName(sourceSlug);
+  const preset = { name, sourceSlug, vars };
+  const list = forgeLoadUserPresets();
+  list.push(preset);
+  forgeSaveUserPresets(list);
+  const host = document.getElementById('forgePresetGallery');
+  if(host){
+    host.dispatchEvent(new CustomEvent('forge:preset-cloned', {
+      bubbles: true, detail: preset
+    }));
+  }
+  return preset;
+}
+
+function wireForgeGalleryClicks(){
+  const host = document.getElementById('forgePresetGallery');
+  if(!host) return;
+  host.addEventListener('click', (e) => {
+    const card = e.target.closest('.forge-preset-card');
+    if(!card || !host.contains(card)) return;
+    const slug = card.dataset.sourceSlug;
+    if(slug) forgeCloneBuiltin(slug);
+  });
+  host.addEventListener('keydown', (e) => {
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    const card = e.target.closest('.forge-preset-card');
+    if(!card || !host.contains(card)) return;
+    e.preventDefault();
+    const slug = card.dataset.sourceSlug;
+    if(slug) forgeCloneBuiltin(slug);
+  });
+}
+document.addEventListener('DOMContentLoaded', wireForgeGalleryClicks);
+
 /* ── Reach — v0.26 (CHOR-41): waystone mod-risk parser wiring ──────────────────────────────────
    The Parse button POSTs the textarea contents to /api/waystone/parse and renders the tiered
    mod list, combo hits, total score, and skip recommendation. */
