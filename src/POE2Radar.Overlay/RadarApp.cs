@@ -104,6 +104,11 @@ public sealed class RadarApp : IDisposable
     // Records each non-white drop the player observes while EnableDropTimeline is true.
     private readonly DropTimeline _dropTimeline = new(
         Path.Combine(AppContext.BaseDirectory, "config", "drop_timeline.json"));
+    // v0.37 Character Codex: per-character event journal + observers. Constructed in ctor
+    // body since ConfigDir isn't available at field-initializer time. Observers wire below.
+    private POE2Radar.Core.Session.SessionEventLog _sessionEventLog = null!;
+    private POE2Radar.Core.Codex.CodexBossObserver? _codexBossObserver;
+    private POE2Radar.Core.Codex.CodexDropForwarder? _codexDropForwarder;
     private int _lastDeathsThisZone;                                   // render thread only
     private int _landmarkGen;
     private int _displayRulesGen;
@@ -540,6 +545,17 @@ public sealed class RadarApp : IDisposable
         _landmarkPatterns = new LandmarkPatterns(Path.Combine(ConfigDir, "landmark_patterns.json"));
         // v0.30 Instinct: persistent per-character boss-wipe log (survives across sessions).
         _wipeLog = new POE2Radar.Overlay.Overlay.BossWipeLog(Path.Combine(ConfigDir, "boss_wipe_log.json"));
+        // v0.37 Character Codex wire-up: construct the per-character log, subscribe
+        // SessionTracker's LEVEL-UP / DEATH events, register the drop forwarder.
+        _sessionEventLog = new POE2Radar.Core.Session.SessionEventLog(ConfigDir);
+        // Record returns bool (accept/reject); wrap to match Action<CodexEvent> delegate shape.
+        System.Action<POE2Radar.Core.Session.CodexEvent> codexSink = e => _sessionEventLog.Record(e);
+        _session.CodexEmit += codexSink;
+        _codexBossObserver = new POE2Radar.Core.Codex.CodexBossObserver(
+            POE2Radar.Core.Game.BossEncounterCatalog.Shared,
+            codexSink);
+        _codexDropForwarder = new POE2Radar.Core.Codex.CodexDropForwarder(codexSink);
+        _dropTimeline.Recorded += _codexDropForwarder.OnDropRecorded;
         _live.CustomLandmarkMatch = TileLandmarkMatch; // surface tiles via landmark patterns + Tile rules
         _landmarkGen = _landmarkPatterns.Generation;
         _live.LandmarkClusterGap = _settings.LandmarkClusterGap;
@@ -1687,9 +1703,16 @@ public sealed class RadarApp : IDisposable
             bool isTown = ZoneGuide.Shared.Area(snap.AreaCode)?.Town ?? false;
             // Feed kill observations from the published immutable snapshot (render-thread-safe).
             // ObserveKill and Update both run here on the render thread — no race.
+            // v0.37 codex: also feed CodexBossObserver on the same walk (same render-thread cadence).
+            var tsUnix = System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             foreach (var e in snap.Entities)
+            {
                 if (e.Category == Poe2Live.EntityCategory.Monster)
                     _session.ObserveKill(e.Address, e.Rarity, e.HpCur, e.HpMax);
+                _codexBossObserver?.ObserveEntityTick(e, snap.AreaCode, tsUnix);
+            }
+            // v0.37 codex: feed PlayerName into the character-name stability gate.
+            _sessionEventLog.ObservePlayerName(snap.PlayerName);
             // Threshold — THR-XP-RENDER: 9-arg overload from THR-XP-TRACKER. The gate here
             // passes 0 when the row is off so a stale _currentXp captured from a prior
             // ShowXpRate=true window can never leak into the ring after the user toggles the
