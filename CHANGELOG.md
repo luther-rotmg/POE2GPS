@@ -3,6 +3,53 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.36.0] — 2026-07-16 "Illumination"
+
+*Hand-painted icons come to the map.*
+
+### Added — 🖼 **Custom Entity Icons** *(drop PNGs into `config/icons/`, both surfaces wear your art)*
+
+- 🎨 **The vector dot is now a textured quad.** Drop PNGs into `config/icons/` and every entity — monsters, stashes, waypoints, NPCs, chests, the lot — swaps its overlay marker for your art. Same source folder skins both the D2D overlay and the browser `/map` view, so the two never drift out of sync.
+- 🗂 **Precedence goes metadata glob → category+rarity → category → default.** Surgical overrides never fight your defaults — pin a specific monster metadata id to one PNG without disturbing the rest of its category. Nested `categories.rarity` schema is the new form; legacy flat `mapping.json` files continue to load unchanged.
+- 🌈 **`IconTintByRarity` toggle in the dashboard Settings panel** — flip it on to lay a translucent rarity halo behind each icon (Unique ochre, Rare yellow, Magic blue, Normal grey), so monster tier still reads at a glance even with custom art on top. Defaults to on.
+- ♻ **Hot-reload from `config/icons/`.** Edit a PNG or `mapping.json` and the overlay + web map pick it up within ~250 ms — save-and-see loop, no restart. Backed by a `FileSystemWatcher` in the new `IconRegistry` with an atomic snapshot + monotonic `SnapshotVersion` so mid-refresh reads never tear.
+
+### Added — ✒ **Starter Pack — 20 hand-drawn icons, bundled in** *(CC BY 3.0, [game-icons.net](https://game-icons.net))*
+
+- 📦 **Twenty CC BY 3.0 icons ship embedded inside the DLL** at both 32 and 64 pixel sizes, with a canonical `mapping.json.default` that binds them across every entity category out of the box. Black-line on transparent so the overlay's rarity tint recolors them cleanly at draw time.
+- 🖋 **Attribution — [Lorc](https://lorcblog.blogspot.com/) and [Delapouite](https://delapouite.com/) via [game-icons.net](https://game-icons.net), CC BY 3.0.** Full per-file attribution ships alongside the pack in `assets/starter-icons/ATTRIBUTION.md`, and a build-time verify step gates every icon on a matching credit line so nothing ships unattributed.
+- 🧭 **Zero-config default mapping** — categories → filenames pinned in `mapping.json.default` so the pack works the instant the runtime hook lights up. Skull for monsters, chest for stashes, compass for waypoints, and so on down the entity table.
+
+### Added — 🌐 **Web map parity** *(browser view mirrors the overlay, driven by the same manifest)*
+
+- 🔌 **New `GET /api/user-icons` manifest endpoint** — enumerates every user icon under `config/icons/` (name, category, rarity, size, hash), ETagged with the `IconRegistry.SnapshotVersion` so the browser's conditional GET short-circuits on 304 until the next hot-reload bumps the counter.
+- 🖼 **`/map` preloads the manifest and swaps at draw time.** `loadUserIcons()` fetches once at page load and again on `SnapshotVersion` bump; `drawEntities()` walks the same precedence chain the overlay does and calls `drawImage` instead of the old dot fill. Rarity tint applies via a pre-draw halo pass under the sprite, matching the overlay's compositing order.
+
+### Fixed — 🗺 **Server-side hideout detection via AreaCode prefix** *(v0.35 S4 follow-up)*
+
+- 🏠 Hideout detection moved from name-substring matching to `AreaCode`-prefix matching. No user-visible behavior change — just fewer false positives on maps whose display name happens to contain a hideout keyword. Streams the Stream-Safe hideout-coord blur off the authoritative signal.
+
+### Under the hood
+
+- New `Poe2Radar.Core.Icons.IconRegistry` — atomic snapshot record (`ImmutableDictionary<string, IconEntry>` + monotonic `SnapshotVersion`), `FileSystemWatcher` on `config/icons/` with a 250 ms debounce coalescing burst edits into one snapshot swap. Match resolver walks metadata-glob → category+rarity → category → default in a single pass.
+- New `EntityIconCache` between `IconRegistry` and the D2D renderer — lazy-uploads PNGs to `Vortice.Direct2D1.ID2D1Bitmap` on first draw, keyed by `(SnapshotVersion, iconId)` so a hot-reload invalidates cleanly without leaking GPU handles. `OverlayRenderer` swaps the legacy `FillEllipse` path for a textured `DrawBitmap` quad, with the rarity halo drawn as a translucent circle in the same pass when `IconTintByRarity` is on.
+- `RadarSettings.IconTintByRarity` field (defaults `true`) round-trips through `/api/settings` and merges in on first read of older settings files — no migration, forward-compatible.
+- Starter pack embedded as `.resx` resources under `Poe2Radar.Core.Icons.StarterPack.*`; `Poe2Radar.Research --verify-icon-attribution` gates CI on a matching `assets/starter-icons/ATTRIBUTION.md` credit line per shipped file.
+- `/api/user-icons` handler emits the `SnapshotVersion` as a strong ETag; conditional-request short-circuit sits directly on the registry snapshot pointer so 304s cost one atomic read.
+- New `dashboard.js` `loadUserIcons()` + `drawEntities()` sprite-swap path — preload once, refetch on `SnapshotVersion` bump surfaced via the existing SSE settings stream.
+
+### Known limitation — starter pack auto-extract lands in v0.36.x
+
+The starter pack ships **embedded inside the DLL** in v0.36.0, but the auto-extract-on-first-run wiring is landing in a v0.36.x patch. Until then, to light up icons today either drop your own PNGs into `config/icons/`, or copy the bundled starter files out of the DLL into that folder. If `config/icons/` doesn't exist or is empty, the overlay and web map render exactly like v0.35 — no visual change, no breakage.
+
+### Tests
+
+- 38 new xUnit facts across `IconRegistry` (snapshot atomicity, hot-reload debounce, precedence chain, glob matching, corrupt-mapping tolerance), `EntityIconCache` (upload keying, hot-reload invalidation), `/api/user-icons` (payload shape, ETag round-trip, 304 short-circuit), `RadarSettings.IconTintByRarity` round-trip, the starter-pack attribution verifier, and the server-side hideout `AreaCode`-prefix classifier. Test suite green.
+
+### Upgrade
+
+Fully additive — existing installs upgrade cleanly with no config migration. `RadarSettings` gains one new field (`IconTintByRarity`, defaulting to `true`) which merges in on first read; older settings files are forward-compatible. `/api/user-icons` is a new endpoint; no existing endpoint changed shape. The nested `categories.rarity` `mapping.json` schema is the new form, but legacy flat mapping files continue to load unchanged. If `config/icons/` doesn't exist or is empty, the overlay and web map look identical to v0.35.
+
 ## [0.35.0] — 2026-07-15 "Chromatic"
 
 *Your colors, from picker to PNG — and a safe stage to wear them on.*
