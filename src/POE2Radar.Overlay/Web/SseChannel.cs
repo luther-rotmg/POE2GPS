@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using POE2Radar.Core;
+using POE2Radar.Core.Game;
 using POE2Radar.Overlay.Overlay;
 
 namespace POE2Radar.Overlay.Web;
@@ -174,6 +175,7 @@ public sealed class SseChannel : IDisposable
             entities = entitiesField,
             entitiesDelta = entitiesDeltaField,
             monoliths = SelectMonoliths(s),
+            isHideout = Poe2Live.IsHideoutAreaCode(s.AreaCode),
             // v0.20.1 T9: selected-target route polylines. Additive wire field — v0.20.0 clients ignore
             // it silently. Empty when no nav target is selected (state.Paths defaults to Array.Empty<>()),
             // so the enumerable projection collapses to an empty JSON array at O(1) cost when off.

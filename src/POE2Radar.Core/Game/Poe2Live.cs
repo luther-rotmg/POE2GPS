@@ -2417,4 +2417,14 @@ public sealed class Poe2Live
         if (tracker == 0) return 0;
         return Ptr(tracker + Poe2.HoverTracker.HoveredEntityDirect);
     }
+
+    /// <summary>Returns true when the given internal AreaCode names a claimable hideout tile
+    /// (matches every known hideout in world_areas.json + atlas_maps.json). Pure function — no
+    /// memory reads. Used by /stream SSE to gate client-side hideout redaction in safe-mode.</summary>
+    public static bool IsHideoutAreaCode(string? code)
+    {
+        if (string.IsNullOrEmpty(code)) return false;
+        return code.StartsWith("MapHideout", System.StringComparison.Ordinal)
+            && code.EndsWith("_Claimable", System.StringComparison.Ordinal);
+    }
 }

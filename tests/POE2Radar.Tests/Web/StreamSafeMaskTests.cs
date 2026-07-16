@@ -21,12 +21,11 @@ public class StreamSafeMaskTests
             var js = await GetAsync(port, "/assets/map.js");
             Assert.Contains("function zoneDisplayName", js);
             Assert.Contains("function maybeBlurHideoutPose", js);
-            Assert.Contains("function isHideoutArea", js);
+            Assert.Contains("snap.isHideout", js);
             Assert.Contains("'<area>'", js); // masked literal
             Assert.Contains("_safeMaskZone", js);
             Assert.Contains("_safeHideoutBlur", js);
             Assert.Contains("state.isHideout", js);
-            Assert.Contains("state.hideoutHits", js);
         }
         finally { api.Dispose(); }
     }

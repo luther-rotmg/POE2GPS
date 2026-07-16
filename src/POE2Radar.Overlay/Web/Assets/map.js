@@ -71,7 +71,6 @@
     // T8: persistent entity map, merged from full/delta frames.
     entities: new Map(),                   // id -> { id, x, y, cat, rar, hp, hpMax }
     isHideout:   false,
-    hideoutHits: 0,
   };
 
   // Restore gps-mode class from either URL param (?gps=1) or last-session localStorage.
@@ -159,24 +158,12 @@
 
     if (snap.area !== state.currentArea) onZoneChange(snap.area);
 
-    isHideoutArea(snap); // updates state.isHideout via the 3-full hysteresis
+    state.isHideout = snap.isHideout === true;
   }
 
   function zoneDisplayName(area) {
     if (_safeMaskZone) return '<area>';
     return area; // upstream renderers may prefer a friendly name; keep as area hex for now.
-  }
-
-  function isHideoutArea(snap) {
-    // Heuristic: no monoliths, no paths, tiny entity population. Three consecutive fulls to commit.
-    const looksLikeHideout =
-      (!snap.monoliths || snap.monoliths.length === 0) &&
-      (!snap.paths || snap.paths.length === 0) &&
-      (!snap.entities || snap.entities.length <= 4);
-    if (snap.full !== true) return state.isHideout; // only fulls advance/reset the counter
-    state.hideoutHits = looksLikeHideout ? Math.min(3, state.hideoutHits + 1) : 0;
-    state.isHideout   = state.hideoutHits >= 3;
-    return state.isHideout;
   }
 
   function maybeBlurHideoutPose(pose) {
