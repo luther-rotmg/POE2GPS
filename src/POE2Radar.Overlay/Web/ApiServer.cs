@@ -9,6 +9,7 @@ using POE2Radar.Core.Health;
 using POE2Radar.Core.Input;
 using POE2Radar.Core.Icons;
 using POE2Radar.Core.Remote;
+using POE2Radar.Core.Rules;
 using POE2Radar.Core.Session;
 using POE2Radar.Overlay.Config;
 
@@ -111,7 +112,8 @@ public sealed class ApiServer : IDisposable
     private readonly Func<string, object>? _codexProvider;   // v0.37 Character Codex: /api/codex?character=<name>
     // v0.36 W1: user icon registry (FileSystemWatcher over config/icons/). Null when unconfigured.
     private readonly IconRegistry? _iconRegistry;
-
+    // v0.39 Rules Engine: config directory for rules.json persistence.
+    private readonly string _rulesConfigDir;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -162,7 +164,9 @@ public sealed class ApiServer : IDisposable
         IconRegistry? iconRegistry = null,
         // v0.37 A1: character-codex event journal reader. Called with the ?character=<name> query
         // param; returns the JSON-shaped payload for that character (empty envelope if unknown).
-        Func<string, object>? codexProvider = null)
+        Func<string, object>? codexProvider = null,
+        // v0.39 Rules Engine: config directory for rules.json persistence.
+        string? rulesConfigDir = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -203,6 +207,7 @@ public sealed class ApiServer : IDisposable
         _dropsProvider = dropsProvider;
         _iconRegistry = iconRegistry;
         _codexProvider = codexProvider;
+        _rulesConfigDir = rulesConfigDir ?? Path.Combine(AppContext.BaseDirectory, "config");
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1538,6 +1543,118 @@ public sealed class ApiServer : IDisposable
                         break;
                     }
                     Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, slug }, Json));
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case "/api/rules":
+            {
+                // v0.39 Rules Engine: user-authored display rules CRUD. GET (ungated) lists all
+                // rules; POST (loopback-gated) creates or updates a rule. Body is a RuleRecord JSON.
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    var file = RulesFileStore.Load(_rulesConfigDir);
+                    var payload = file.Rules.Select(r => new
+                    {
+                        r.Id, r.Name, r.Priority, r.Enabled, r.When, r.Then,
+                    });
+                    Write(ctx, 200, JsonSerializer.Serialize(new { rules = payload }, Json));
+                }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                        break;
+                    }
+                    try
+                    {
+                        var body = ReadBody(ctx);
+                        var rule = JsonSerializer.Deserialize<RuleRecord>(body, Json)
+                                   ?? throw new JsonException("null body");
+
+                        // Duplicate-name check only at create (Id empty).
+                        if (rule.Id == Guid.Empty)
+                        {
+                            var existing = RulesFileStore.Load(_rulesConfigDir).Rules;
+                            if (existing.Any(r => string.Equals(r.Name, rule.Name, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                Write(ctx, 409, JsonSerializer.Serialize(new { error = "rule name already exists", name = rule.Name }, Json));
+                                break;
+                            }
+                        }
+
+                        var saved = RulesFileStore.Upsert(_rulesConfigDir, rule);
+                        Write(ctx, 200, JsonSerializer.Serialize(new
+                        {
+                            saved.Id, saved.Name, saved.Priority, saved.Enabled, saved.When, saved.Then,
+                        }, Json));
+                    }
+                    catch (JsonException)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = "invalid JSON body" }, Json));
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        // Distinguish rule-cap overflow from validation errors.
+                        var msg = ex.Message.Contains("exceeds maximum of 100", StringComparison.Ordinal)
+                            ? "rule cap reached (100)"
+                            : ex.Message;
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = msg }, Json));
+                    }
+                    catch (System.Exception)
+                    {
+                        Write(ctx, 500, JsonSerializer.Serialize(new { error = "internal" }, Json));
+                    }
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case string p when p.StartsWith("/api/rules/", StringComparison.Ordinal) && p.Length > "/api/rules/".Length:
+            {
+                var idSegment = p["/api/rules/".Length..];
+                if (!Guid.TryParse(idSegment, out var id))
+                {
+                    Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
+                    break;
+                }
+
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    var file = RulesFileStore.Load(_rulesConfigDir);
+                    var rule = file.Rules.FirstOrDefault(r => r.Id == id);
+                    if (rule == null)
+                    {
+                        Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
+                        break;
+                    }
+                    Write(ctx, 200, JsonSerializer.Serialize(new
+                    {
+                        rule.Id, rule.Name, rule.Priority, rule.Enabled, rule.When, rule.Then,
+                    }, Json));
+                }
+                else if (ctx.Request.HttpMethod == "DELETE")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                        break;
+                    }
+                    var deleted = RulesFileStore.Delete(_rulesConfigDir, id);
+                    if (!deleted)
+                    {
+                        Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
+                        break;
+                    }
+                    Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, id }, Json));
                 }
                 else
                 {

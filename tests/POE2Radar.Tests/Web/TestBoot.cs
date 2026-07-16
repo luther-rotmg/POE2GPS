@@ -12,7 +12,8 @@ internal static class TestBoot
 
     public static ApiServer Server(bool webMap, bool webObs, out int port,
                                    Func<RadarState>? stateProvider = null,
-                                   Func<(byte[]? Walkable, int Width, int Height, uint AreaHash)>? terrainProvider = null)
+                                   Func<(byte[]? Walkable, int Width, int Height, uint AreaHash)>? terrainProvider = null,
+                                   string? rulesConfigDir = null)
     {
         port = NextPort();
         var settings = new RadarSettings
@@ -53,7 +54,8 @@ internal static class TestBoot
             port: port,
             sse: sse,
             assetHost: host,
-            terrainProvider: terrainProvider ?? (() => (null, 0, 0, 0u)));
+            terrainProvider: terrainProvider ?? (() => (null, 0, 0, 0u)),
+            rulesConfigDir: rulesConfigDir);
         api.Start();
         return api;
     }
