@@ -107,6 +107,8 @@ public sealed class RadarApp : IDisposable
     // v0.37 Character Codex: per-character event journal + observers. Constructed in ctor
     // body since ConfigDir isn't available at field-initializer time. Observers wire below.
     private POE2Radar.Core.Session.SessionEventLog _sessionEventLog = null!;
+    // v0.40 Cartographer: 1-Hz per-character per-zone position recorder.
+    private readonly POE2Radar.Core.Tracks.TrackRecorder _trackRecorder;
     private POE2Radar.Core.Codex.CodexBossObserver? _codexBossObserver;
     private POE2Radar.Core.Codex.CodexDropForwarder? _codexDropForwarder;
     private int _lastDeathsThisZone;                                   // render thread only
@@ -548,6 +550,8 @@ public sealed class RadarApp : IDisposable
         // v0.37 Character Codex wire-up: construct the per-character log, subscribe
         // SessionTracker's LEVEL-UP / DEATH events, register the drop forwarder.
         _sessionEventLog = new POE2Radar.Core.Session.SessionEventLog(ConfigDir);
+        // v0.40 Cartographer: 1-Hz per-character per-zone position recorder.
+        _trackRecorder = new POE2Radar.Core.Tracks.TrackRecorder(ConfigDir);
         // Record returns bool (accept/reject); wrap to match Action<CodexEvent> delegate shape.
         System.Action<POE2Radar.Core.Session.CodexEvent> codexSink = e => _sessionEventLog.Record(e);
         _session.CodexEmit += codexSink;
@@ -1724,6 +1728,8 @@ public sealed class RadarApp : IDisposable
             }
             // v0.37 codex: feed PlayerName into the character-name stability gate.
             _sessionEventLog.ObservePlayerName(snap.PlayerName);
+            // v0.40 Cartographer: 1-Hz per-character per-zone position recorder.
+            _trackRecorder.ObserveTick(snap.PlayerName, snap.AreaCode, player);
             // Threshold — THR-XP-RENDER: 9-arg overload from THR-XP-TRACKER. The gate here
             // passes 0 when the row is off so a stale _currentXp captured from a prior
             // ShowXpRate=true window can never leak into the ring after the user toggles the
