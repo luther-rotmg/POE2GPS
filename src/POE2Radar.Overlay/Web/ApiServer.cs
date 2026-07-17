@@ -11,6 +11,7 @@ using POE2Radar.Core.Icons;
 using POE2Radar.Core.Remote;
 using POE2Radar.Core.OverlayLayouts;
 using POE2Radar.Core.RadarFilters;
+using POE2Radar.Core.NavDestinations;
 using POE2Radar.Core.Rules;
 using POE2Radar.Core.Session;
 using POE2Radar.Core.Tracks;
@@ -1829,6 +1830,90 @@ public sealed class ApiServer : IDisposable
                         break;
                     }
                     var deleted = RulesFileStore.Delete(_rulesConfigDir, id);
+                    if (!deleted)
+                    {
+                        Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
+                        break;
+                    }
+                    Write(ctx, 200, JsonSerializer.Serialize(new { ok = true, id }, Json));
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case "/api/nav-destinations":
+            {
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    var zone = q["zone"];
+                    if (!string.IsNullOrEmpty(zone))
+                    {
+                        var filtered = NavDestinationStore.LoadForZone(_rulesConfigDir, zone);
+                        Write(ctx, 200, JsonSerializer.Serialize(new { destinations = filtered.Select(d => new { d.Id, d.ZoneCode, d.Name, d.X, d.Y }) }, Json));
+                    }
+                    else
+                    {
+                        var file = NavDestinationStore.Load(_rulesConfigDir);
+                        Write(ctx, 200, JsonSerializer.Serialize(new { destinations = file.Destinations.Select(d => new { d.Id, d.ZoneCode, d.Name, d.X, d.Y }) }, Json));
+                    }
+                }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                        break;
+                    }
+                    try
+                    {
+                        var body = ReadBody(ctx);
+                        var destination = JsonSerializer.Deserialize<NavDestination>(body, Json)
+                                       ?? throw new JsonException("null body");
+
+                        // Pre-assign a new Guid if empty so we can return the assigned id.
+                        var toUpsert = destination.Id == Guid.Empty
+                            ? destination with { Id = Guid.NewGuid() }
+                            : destination;
+
+                        NavDestinationStore.Upsert(_rulesConfigDir, toUpsert);
+                        Write(ctx, 200, JsonSerializer.Serialize(new { toUpsert.Id, toUpsert.ZoneCode, toUpsert.Name, toUpsert.X, toUpsert.Y }, Json));
+                    }
+                    catch (JsonException)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = "invalid JSON body" }, Json));
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = ex.Message }, Json));
+                    }
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case string p when p.StartsWith("/api/nav-destinations/", StringComparison.Ordinal) && p.Length > "/api/nav-destinations/".Length:
+            {
+                var idSegment = p["/api/nav-destinations/".Length..];
+                if (!Guid.TryParse(idSegment, out var id))
+                {
+                    Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
+                    break;
+                }
+
+                if (ctx.Request.HttpMethod == "DELETE")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                        break;
+                    }
+                    var deleted = NavDestinationStore.Delete(_rulesConfigDir, id);
                     if (!deleted)
                     {
                         Write(ctx, 404, JsonSerializer.Serialize(new { error = "not found" }, Json));
