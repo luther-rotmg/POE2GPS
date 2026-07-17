@@ -3,6 +3,18 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.2] — 2026-07-17 "Scrollable Tabstrip"
+
+*Fix for the v0.41.0 tabstrip overflow.*
+
+### Fixed
+
+- 📜 **Dashboard tabstrip now scrolls horizontally** on narrow viewports. v0.41.0 added four new tabs (Radar Filter / Layouts / Nav / Widget) that pushed the strip past the visible edge for anyone whose dashboard window was narrower than ~1900px, hiding the newest tabs entirely with no way to reach them. Fix: `overflow-x: auto` + `white-space: nowrap` + a subtle 6px scrollbar (thin scrollbar-color variant on Firefox, styled `::-webkit-scrollbar` on Chromium). Scroll with shift-wheel, trackpad, or the scrollbar. Tab labels stay fully readable — no ellipsis-truncation.
+
+### Upgrade
+
+Recommended for everyone on v0.41.0 / v0.41.1 whose window doesn't fit the full 15-tab strip.
+
 ## [0.41.1] — 2026-07-17 "Ops Hotfix"
 
 *Supporter roster nudge — no user-visible functional change.*
