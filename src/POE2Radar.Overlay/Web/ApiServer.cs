@@ -14,6 +14,7 @@ using POE2Radar.Core.RadarFilters;
 using POE2Radar.Core.NavDestinations;
 using POE2Radar.Core.Rules;
 using POE2Radar.Core.Session;
+using POE2Radar.Core.SessionWidget;
 using POE2Radar.Core.Tracks;
 using POE2Radar.Overlay.Config;
 
@@ -1730,6 +1731,54 @@ public sealed class ApiServer : IDisposable
                             blacklist = p.Blacklist,
                         });
                         Write(ctx, 200, JsonSerializer.Serialize(new { presets = payload }, Json));
+                    }
+                    catch (JsonException)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = "invalid JSON body" }, Json));
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = ex.Message }, Json));
+                    }
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case "/api/session-widget":
+            {
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    var config = SessionWidgetStore.Load(_rulesConfigDir);
+                    Write(ctx, 200, JsonSerializer.Serialize(new
+                    {
+                        position = config.Position,
+                        chips = config.Chips,
+                        allowedChips = SessionWidgetStore.AllowedChips,
+                    }, Json));
+                }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "forbidden host" }, Json));
+                        break;
+                    }
+                    try
+                    {
+                        var body = ReadBody(ctx);
+                        var config = JsonSerializer.Deserialize<SessionWidgetConfig>(body, Json)
+                                   ?? throw new JsonException("null body");
+                        SessionWidgetStore.Save(_rulesConfigDir, config);
+                        Write(ctx, 200, JsonSerializer.Serialize(new
+                        {
+                            position = config.Position,
+                            chips = config.Chips,
+                            allowedChips = SessionWidgetStore.AllowedChips,
+                        }, Json));
                     }
                     catch (JsonException)
                     {
