@@ -63,6 +63,18 @@ public sealed class OverlayRenderer : IDisposable
     /// The entity draw loop applies hide/tint effects from matched rules.</summary>
     public CompiledRuleSet Rules { get; set; } = RuleEngine.Empty;
 
+    /// <summary>Radar Filter preset file, loaded at startup. Defaults to empty (schema 1, no presets).
+    /// The entity draw loop applies blacklist early-continue from the matching preset.</summary>
+    public POE2Radar.Core.RadarFilters.RadarFilterFile RadarFilters { get; set; } = new(1, Array.Empty<POE2Radar.Core.RadarFilters.RadarFilterPreset>());
+
+    /// <summary>Refresh the internal Radar Filter compiled cache from a new file. Resets the zone-
+    /// specific blacklist so it's recompiled on the next entity-loop iteration.</summary>
+    public void RefreshRadarFilters(POE2Radar.Core.RadarFilters.RadarFilterFile file)
+    {
+        RadarFilters = file;
+        _activeBlacklist = null;
+    }
+
     private readonly OverlayWindow _window;
     private TerrainBitmap? _terrain;
     private AtlasIconCache? _atlasIcons;   // #5: decoded atlas content-icon bitmaps (lazy per render target)
@@ -110,6 +122,11 @@ public sealed class OverlayRenderer : IDisposable
 
     // R3.1: render-thread stopwatch for pulse effect alpha modulation.
     private readonly System.Diagnostics.Stopwatch _renderStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+    // v0.41 A2: Radar Filter blacklist compiled cache (render-thread-owned). Rebuilt when
+    // zone changes or RefreshRadarFilters is called. Null means "not yet compiled for current zone".
+    private System.Text.RegularExpressions.Regex[]? _activeBlacklist;
+    private string? _lastZoneCode;
 
     public OverlayRenderer(OverlayWindow window) { _window = window; }
 
@@ -1650,6 +1667,23 @@ public sealed class OverlayRenderer : IDisposable
                 try { e = ents![i]; } catch { break; }   // race: list re-sized under us → give up this frame
                 if (ctx.HideJunk && JunkFilter.IsJunk(e.Metadata)) continue;
 
+                // v0.41 A2: Radar Filter blacklist early-continue (supporter-gated).
+                if (POE2Radar.Core.Support.SupporterGate.IsSupporter)
+                {
+                    if (_activeBlacklist is null || _lastZoneCode != ctx.AreaCode)
+                    {
+                        _activeBlacklist = RadarFilterMatcher.CompileBlacklist(RadarFilters, ctx.AreaCode ?? "");
+                        _lastZoneCode = ctx.AreaCode;
+                    }
+                    var blackHit = false;
+                    var meta = e.Metadata ?? "";
+                    for (int b = 0; b < _activeBlacklist.Length; b++)
+                    {
+                        if (_activeBlacklist[b].IsMatch(meta)) { blackHit = true; break; }
+                    }
+                    if (blackHit) continue;
+                }
+
                 var rule = ctx.Resolve?.Invoke(e);
                 if (rule is null || rule.Hide) continue;
 
@@ -1662,8 +1696,8 @@ public sealed class OverlayRenderer : IDisposable
                     0,                                        // EntityDot doesn't expose Level
                     Array.Empty<string>());                   // Buffs not available at render time
                 var snapView = new WorldSnapshotView(
-                    ctx.AreaCode,
-                    POE2Radar.Core.Game.Poe2Live.IsHideoutAreaCode(ctx.AreaCode));
+                    ctx.AreaCode ?? "",
+                    POE2Radar.Core.Game.Poe2Live.IsHideoutAreaCode(ctx.AreaCode ?? ""));
                 var reEffects = Rules.TryMatch(entityView, snapView);
                 // HideEffect → skip this entity entirely (before any draw work)
                 bool hide = false;

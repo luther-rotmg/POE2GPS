@@ -943,6 +943,14 @@ public sealed class RadarApp : IDisposable
             _itemFilterEngine.Rules = POE2Radar.Core.Rules.RuleEngine.Compile(rulesFile);
         }
         catch { /* silent — malformed rules.json shouldn't crash startup */ }
+        // v0.41 A2: load Radar Filters preset file at startup.
+        // A malformed or missing file won't crash startup — the renderer keeps its empty default.
+        try
+        {
+            var radarFilters = POE2Radar.Core.RadarFilters.RadarFilterStore.Load(ConfigDir);
+            _renderer.RefreshRadarFilters(radarFilters);
+        }
+        catch { /* silent — malformed file shouldn't crash startup */ }
         try { _api.Start(); ConsoleTheme.Kv("dashboard", $"http://localhost:{_settings.ApiPort}  (F12)"); }
         catch (Exception ex) { Console.Error.WriteLine($"API server disabled: {ex.Message}"); }
         ConsoleTheme.Hotkeys();
