@@ -4,6 +4,7 @@ using POE2Radar.Core.Game;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Icons;
 using POE2Radar.Core.Pathfinding;
+using POE2Radar.Core.NavDestinations;
 using POE2Radar.Core.Rules;
 using POE2Radar.Overlay.Config;
 using POE2Radar.Overlay.Overlay;   // Threshold — THR-XP-RENDER: SessionHudXpFormatter (sub-namespace).
@@ -75,6 +76,16 @@ public sealed class OverlayRenderer : IDisposable
         _activeBlacklist = null;
     }
 
+    /// <summary>Nav Destinations — user-authored named A* endpoints per zone, loaded from the store.</summary>
+    public IReadOnlyList<NavDestination> NavDestinations { get; set; } = Array.Empty<NavDestination>();
+
+    /// <summary>Refresh the internal Nav Destination cache. Resets the zone-specific cache so it's re-filtered on next draw.</summary>
+    public void RefreshNavDestinations(IReadOnlyList<NavDestination> destinations)
+    {
+        NavDestinations = destinations;
+        _activeNavDestinations = null;
+    }
+
     private readonly OverlayWindow _window;
     private TerrainBitmap? _terrain;
     private AtlasIconCache? _atlasIcons;   // #5: decoded atlas content-icon bitmaps (lazy per render target)
@@ -127,6 +138,10 @@ public sealed class OverlayRenderer : IDisposable
     // zone changes or RefreshRadarFilters is called. Null means "not yet compiled for current zone".
     private System.Text.RegularExpressions.Regex[]? _activeBlacklist;
     private string? _lastZoneCode;
+
+    // v0.41 C2: Nav Destinations — user-authored named A* endpoints per zone.
+    private NavDestination[]? _activeNavDestinations;
+    private string? _lastNavZoneCode;
 
     public OverlayRenderer(OverlayWindow window) { _window = window; }
 
@@ -1799,6 +1814,21 @@ public sealed class OverlayRenderer : IDisposable
             }
             catch (System.InvalidOperationException) { /* concurrent modification during render — drop remaining landmarks this frame */ }
             catch (System.ArgumentOutOfRangeException) { /* list shrunk under us — drop remaining landmarks this frame */ }
+        }
+
+        // v0.41 C2: supporter Nav Destinations — user-authored named A* endpoints per zone.
+        if (POE2Radar.Core.Support.SupporterGate.IsSupporter) {
+            if (_activeNavDestinations is null || _lastNavZoneCode != ctx.AreaCode) {
+                var currentZone = ctx.AreaCode ?? "";
+                _activeNavDestinations = NavDestinations.Where(d => d.ZoneCode == currentZone).ToArray();
+                _lastNavZoneCode = ctx.AreaCode;
+            }
+            foreach (var dest in _activeNavDestinations) {
+                var p = Project(new NumVec2(dest.X, dest.Y), player, center, scale);
+                _bStyle!.Color = new Color4(0.4f, 0.9f, 1.0f, 1.0f);
+                DrawIcon(rt, "Diamond", p, 6.0f, _bStyle, filled: false);
+                rt.DrawText("→ " + dest.Name, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
+            }
         }
 
         // Draw-only guidance routes: one full smoothed A* polyline per selected landmark, each in its

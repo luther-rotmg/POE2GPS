@@ -112,6 +112,7 @@ public sealed class RadarApp : IDisposable
     private POE2Radar.Core.Codex.CodexBossObserver? _codexBossObserver;
     private POE2Radar.Core.Codex.CodexDropForwarder? _codexDropForwarder;
     private int _lastDeathsThisZone;                                   // render thread only
+    private string? _lastNavZoneCode;                                   // v0.41 C2: Nav Destination zone-change guard
     private int _landmarkGen;
     private int _displayRulesGen;
     private int _landmarkStoreGen;
@@ -1738,6 +1739,14 @@ public sealed class RadarApp : IDisposable
             _sessionEventLog.ObservePlayerName(snap.PlayerName);
             // v0.40 Cartographer: 1-Hz per-character per-zone position recorder.
             _trackRecorder.ObserveTick(snap.PlayerName, snap.AreaCode, player);
+            // v0.41 C2: refresh Nav Destinations on zone change.
+            if (snap.AreaCode != _lastNavZoneCode) {
+                try {
+                    var dests = POE2Radar.Core.NavDestinations.NavDestinationStore.LoadForZone(ConfigDir, snap.AreaCode ?? "");
+                    _renderer.RefreshNavDestinations(dests);
+                } catch { /* silent — malformed file shouldn't crash render tick */ }
+                _lastNavZoneCode = snap.AreaCode;
+            }
             // Threshold — THR-XP-RENDER: 9-arg overload from THR-XP-TRACKER. The gate here
             // passes 0 when the row is off so a stale _currentXp captured from a prior
             // ShowXpRate=true window can never leak into the ring after the user toggles the
