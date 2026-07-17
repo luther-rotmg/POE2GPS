@@ -4777,3 +4777,54 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   else init();
 })();
 // OVERLAY-LAYOUTS-JS-END
+
+/* v0.41 C3 Nav Destinations overlay chip: floating discoverability strip.
+   Reads saved destinations for the current zone and renders clickable chips.
+   Supporter-gated — non-supporters see nothing. Polls every 2s via refreshNavDestChips. */
+(() => {
+  async function refreshNavDestChips() {
+    try {
+      // Supporter gate: early return + clear if not supporter
+      if (!window.__supporterGate || !window.__supporterGate.isSupporter()) {
+        const mount = document.getElementById('navDestChips');
+        if (mount) mount.innerHTML = '';
+        return;
+      }
+      // Fetch area code from /api/state
+      const stateResp = await fetch('/api/state', { cache: 'no-store' });
+      if (!stateResp.ok) return;
+      const stateData = await stateResp.json();
+      const areaCode = stateData.areaCode || '';
+      if (!areaCode) return;
+
+      // Fetch destinations for this zone
+      const destResp = await fetch('/api/nav-destinations?zone=' + encodeURIComponent(areaCode), { cache: 'no-store' });
+      if (!destResp.ok) return;
+      const destData = await destResp.json();
+      const destinations = (destData && destData.destinations) || [];
+
+      // Render chips into #navDestChips
+      const mount = document.getElementById('navDestChips');
+      if (!mount) return;
+      if (!destinations.length) {
+        mount.innerHTML = '';
+        return;
+      }
+      mount.innerHTML = destinations.map(d =>
+        '<span class="nav-dest-chip">→ ' + esc(d.name || d) + '</span>'
+      ).join('');
+    } catch (e) {
+      // Silent try/catch — network or parse errors are non-fatal
+    }
+  }
+
+  // Initial call on load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', refreshNavDestChips);
+  } else {
+    refreshNavDestChips();
+  }
+
+  // Module-scoped 2s poll interval
+  setInterval(refreshNavDestChips, 2000);
+})();
