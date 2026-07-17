@@ -3978,3 +3978,362 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
     });
   } catch {}
 })();
+
+/* ── v0.41 A3 Radar Filter dashboard tab: per-zone entity whitelist/blacklist presets.
+     Consumes /api/radar-filters (A_API) CRUD; supporter-gated via S3 __supporterHint.
+     The existing #radarFilterHint div (declared in the global hint area above the views)
+     is the mount for the supporter hint: tab activation renders the hint there for
+     non-supporters, or loads + renders the preset list for supporters. The gate is
+     re-checked on every render so a mid-session supporter-code change flips the view.
+     PRESERVE ALL OTHER BEHAVIOR — additive IIFE; no existing tab/IIFE is touched. */
+// RADAR-FILTER-JS-START
+(() => {
+  const RF_CAP = 20;
+  const RF_WARN = 10;
+
+  // Editor state: array of {match, whitelist[], blacklist[], _open}
+  let __presetsCache = [];
+  // null = not yet loaded; array after first /entities fetch (cached for the entity dropdown)
+  let __entitiesCache = null;
+
+  function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  function isSupporter() {
+    try { return !!(window.__supporterGate && window.__supporterGate.isSupporter()); }
+    catch (e) { return false; }
+  }
+
+  function setStatus(cardEl, msg, cls) {
+    const el = cardEl?.querySelector('.rf-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'rf-status' + (cls ? ' ' + cls : '');
+  }
+
+  function updateCapChip() {
+    const chip = document.getElementById('rfCapChip');
+    if (!chip) return;
+    const n = __presetsCache.length;
+    chip.textContent = 'presets: ' + n + ' / ' + RF_CAP;
+    chip.classList.remove('warn', 'full');
+    if (n >= RF_CAP) chip.classList.add('full');
+    else if (n >= RF_WARN) chip.classList.add('warn');
+    const btn = document.getElementById('btnRfNewPreset');
+    if (btn) btn.disabled = n >= RF_CAP;
+  }
+
+  function chipHtml(pattern, kind) {
+    return '<span class="rf-chip ' + kind + '">' + esc(pattern) +
+      '<button type="button" class="rf-chip-x" data-pat="' + esc(pattern) + '" data-kind="' + kind + '" aria-label="remove">&times;</button>' +
+      '</span>';
+  }
+
+  function chipListHtml(arr, kind) {
+    if (!arr || !arr.length) return '<span class="hint-row" style="opacity:.5">none</span>';
+    return arr.map(p => chipHtml(p, kind)).join('');
+  }
+
+  function renderPresets() {
+    const host = document.getElementById('rfPresetList');
+    if (!host) return;
+    if (!__presetsCache.length) {
+      host.innerHTML = '<div class="rf-empty">No radar filter presets yet. Click <b>+ New preset</b> to scope the radar by zone code and entity metadata.</div>';
+      updateCapChip();
+      return;
+    }
+    host.innerHTML = __presetsCache.map((p, i) => {
+      const open = !!p._open;
+      const wl = p.whitelist || [];
+      const bl = p.blacklist || [];
+      return '<div class="rf-card" data-i="' + i + '">' +
+        '<div class="rf-card-head">' +
+          '<input type="text" class="rf-match" value="' + esc(p.match || '') + '" placeholder="match (zone code glob, e.g. *_town)">' +
+          '<div class="rf-chip-list" title="whitelist">' + chipListHtml(wl, 'wl') + '</div>' +
+          '<div class="rf-chip-list" title="blacklist">' + chipListHtml(bl, 'bl') + '</div>' +
+          '<button type="button" class="rf-up" title="move up">&#9650;</button>' +
+          '<button type="button" class="rf-dn" title="move down">&#9660;</button>' +
+          '<button type="button" class="rf-del" title="delete">&times;</button>' +
+          '<button type="button" class="rf-toggle" title="' + (open ? 'collapse' : 'expand') + '">' + (open ? '&#9660;' : '&#9654;') + '</button>' +
+        '</div>' +
+        '<div class="rf-card-body"' + (open ? '' : ' hidden') + '>' +
+          '<label>Match (zone code glob)</label>' +
+          '<input type="text" class="rf-match-full" value="' + esc(p.match || '') + '" placeholder="match (zone code glob, e.g. *_town)">' +
+          '<label>Whitelist patterns</label>' +
+          '<div class="rf-chip-list rf-wl-full">' + chipListHtml(wl, 'wl') + '</div>' +
+          '<label>Blacklist patterns</label>' +
+          '<div class="rf-chip-list rf-bl-full">' + chipListHtml(bl, 'bl') + '</div>' +
+          '<div class="rf-entity-row">' +
+            '<input type="text" class="rf-add-input" placeholder="metadata pattern to add (e.g. Metadata/Monsters/Boss)">' +
+            '<button type="button" class="rf-add-wl">+ Whitelist</button>' +
+            '<button type="button" class="rf-add-bl">+ Blacklist</button>' +
+          '</div>' +
+          '<div class="rf-entity-row">' +
+            '<select class="rf-entity-select"><option value="">\u2014 Add current-zone entity \u2014</option></select>' +
+            '<button type="button" class="rf-add-cur-wl">Add to whitelist</button>' +
+            '<button type="button" class="rf-add-cur-bl">Add to blacklist</button>' +
+          '</div>' +
+          '<div class="rf-card-footer">' +
+            '<button type="button" class="rf-save">Save</button>' +
+            '<span class="rf-status"></span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    // Wire each card's controls
+    host.querySelectorAll('.rf-card').forEach(card => {
+      const i = +card.dataset.i;
+      const preset = __presetsCache[i];
+      if (!preset) return;
+
+      // Accordion toggle: clicking the head (but not its inputs/buttons) expands/collapses
+      const head = card.querySelector('.rf-card-head');
+      head.addEventListener('click', (ev) => {
+        if (ev.target.closest('input,button,select,label')) return;
+        preset._open = !preset._open;
+        renderPresets();
+      });
+      card.querySelector('.rf-toggle').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        preset._open = !preset._open;
+        renderPresets();
+      });
+
+      // Sync the two match inputs (header summary + body full) into the preset live;
+      // never committed until Save is clicked.
+      const matchInput = card.querySelector('.rf-match');
+      const matchFull = card.querySelector('.rf-match-full');
+      matchInput.addEventListener('input', () => {
+        preset.match = matchInput.value;
+        if (matchFull && matchFull.value !== matchInput.value) matchFull.value = matchInput.value;
+      });
+      matchFull.addEventListener('input', () => {
+        preset.match = matchFull.value;
+        if (matchInput.value !== matchFull.value) matchInput.value = matchFull.value;
+      });
+
+      // Chip removal (delegated per-button)
+      card.querySelectorAll('.rf-chip-x').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const pat = btn.getAttribute('data-pat');
+          const kind = btn.getAttribute('data-kind');
+          if (kind === 'wl') preset.whitelist = (preset.whitelist || []).filter(x => x !== pat);
+          else preset.blacklist = (preset.blacklist || []).filter(x => x !== pat);
+          renderPresets();
+        });
+      });
+
+      // Add-pattern input + Whitelist/Blacklist buttons
+      const addInput = card.querySelector('.rf-add-input');
+      function addPattern(kind) {
+        const v = (addInput.value || '').trim();
+        if (!v) return;
+        const arr = kind === 'wl' ? (preset.whitelist || (preset.whitelist = [])) : (preset.blacklist || (preset.blacklist = []));
+        if (!arr.includes(v)) arr.push(v);
+        addInput.value = '';
+        renderPresets();
+      }
+      card.querySelector('.rf-add-wl').addEventListener('click', () => addPattern('wl'));
+      card.querySelector('.rf-add-bl').addEventListener('click', () => addPattern('bl'));
+      addInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); addPattern('wl'); }
+      });
+
+      // "Add current-zone entity" helper: populate the dropdown from the cached /entities
+      // list (loaded lazily on first tab activation). Picking an entity + clicking Add to...
+      // appends its metadata to the corresponding chip list.
+      populateEntitySelect(card.querySelector('.rf-entity-select'));
+      card.querySelector('.rf-add-cur-wl').addEventListener('click', () => addCurrentEntity('wl', card));
+      card.querySelector('.rf-add-cur-bl').addEventListener('click', () => addCurrentEntity('bl', card));
+
+      // Move up / down (reorders __presetsCache; Save commits the new order)
+      card.querySelector('.rf-up').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (i > 0) {
+          const t = __presetsCache[i - 1];
+          __presetsCache[i - 1] = __presetsCache[i];
+          __presetsCache[i] = t;
+          renderPresets();
+        }
+      });
+      card.querySelector('.rf-dn').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        if (i < __presetsCache.length - 1) {
+          const t = __presetsCache[i + 1];
+          __presetsCache[i + 1] = __presetsCache[i];
+          __presetsCache[i] = t;
+          renderPresets();
+        }
+      });
+
+      // Delete (local only — Save commits the trimmed list)
+      card.querySelector('.rf-del').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        __presetsCache.splice(i, 1);
+        renderPresets();
+      });
+
+      // Save: build the full RadarFilterFile from current UI state (preserving order) and POST.
+      card.querySelector('.rf-save').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        savePresets(card);
+      });
+    });
+
+    updateCapChip();
+  }
+
+  function populateEntitySelect(sel) {
+    if (!sel) return;
+    if (!__entitiesCache) {
+      // Trigger a lazy load; the fetch callback will refresh every select in the DOM.
+      loadEntities();
+      return;
+    }
+    const opts = ['<option value="">\u2014 Add current-zone entity \u2014</option>'];
+    for (const e of __entitiesCache) {
+      const meta = e.metadata || '';
+      const label = (e.name || meta || String(e.id ?? '')) + ' \u00b7 ' + meta;
+      opts.push('<option value="' + esc(meta) + '">' + esc(label) + '</option>');
+    }
+    sel.innerHTML = opts.join('');
+  }
+
+  async function loadEntities() {
+    try {
+      const r = await fetch('/entities', { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      const arr = await r.json();
+      __entitiesCache = Array.isArray(arr) ? arr.slice(0, 200) : [];
+    } catch (e) {
+      __entitiesCache = [];
+    }
+    // Refresh any selects already in the DOM (cards rendered before the fetch resolved)
+    document.querySelectorAll('.rf-entity-select').forEach(populateEntitySelect);
+  }
+
+  function addCurrentEntity(kind, cardEl) {
+    const sel = cardEl.querySelector('.rf-entity-select');
+    if (!sel || !sel.value) {
+      setStatus(cardEl, 'Pick an entity first.', 'err');
+      return;
+    }
+    const i = +cardEl.dataset.i;
+    const preset = __presetsCache[i];
+    if (!preset) return;
+    const v = sel.value;
+    const arr = kind === 'wl' ? (preset.whitelist || (preset.whitelist = [])) : (preset.blacklist || (preset.blacklist = []));
+    if (!arr.includes(v)) arr.push(v);
+    sel.value = '';
+    renderPresets();
+    setStatus(cardEl, 'Added "' + v + '" to ' + (kind === 'wl' ? 'whitelist' : 'blacklist') + ' (Save to commit).', 'ok');
+  }
+
+  // Page-load / tab-activate: GET /api/radar-filters -> populate #rfPresetList
+  // (or render the supporter hint if !supporter — see renderHintOrList).
+  async function loadPresets() {
+    const host = document.getElementById('rfPresetList');
+    try {
+      const r = await fetch('/api/radar-filters', { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      const data = await r.json();
+      const presets = (data && data.presets) ? data.presets : [];
+      __presetsCache = presets.map(p => ({
+        match: p.match || '',
+        whitelist: Array.isArray(p.whitelist) ? p.whitelist.slice() : [],
+        blacklist: Array.isArray(p.blacklist) ? p.blacklist.slice() : [],
+        _open: false,
+      }));
+      renderPresets();
+    } catch (e) {
+      if (host) host.innerHTML = '<div class="rf-error">Failed to load radar filter presets (network error).</div>';
+      updateCapChip();
+    }
+  }
+
+  // Build the full RadarFilterFile from current UI state (preserving order) -> POST.
+  // No optimistic UI: always re-fetch after Save. 400/403 responses show an inline
+  // status message on the failing card.
+  async function savePresets(cardEl) {
+    const file = {
+      schemaVersion: 1,
+      presets: __presetsCache.map(p => ({
+        match: p.match || '',
+        whitelist: p.whitelist || [],
+        blacklist: p.blacklist || [],
+      })),
+    };
+    if (cardEl) setStatus(cardEl, 'Saving\u2026', '');
+    try {
+      const r = await fetch('/api/radar-filters', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(file),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const presets = (data && data.presets) ? data.presets : [];
+        __presetsCache = presets.map(p => ({
+          match: p.match || '',
+          whitelist: Array.isArray(p.whitelist) ? p.whitelist.slice() : [],
+          blacklist: Array.isArray(p.blacklist) ? p.blacklist.slice() : [],
+          _open: false,
+        }));
+        renderPresets();
+        if (cardEl) setStatus(cardEl, '\u2713 saved', 'ok');
+      } else if (r.status === 400 || r.status === 403) {
+        let msg = 'Save rejected (HTTP ' + r.status + ').';
+        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch (_) {}
+        if (cardEl) setStatus(cardEl, msg, 'err');
+      } else {
+        if (cardEl) setStatus(cardEl, 'Save failed (HTTP ' + r.status + ').', 'err');
+      }
+    } catch (e) {
+      if (cardEl) setStatus(cardEl, 'Save failed (network error).', 'err');
+    }
+  }
+
+  // Supporter gate check every render (in case the code changes mid-session):
+  // non-supporter -> render the S3 hint into #radarFilterHint and unhide it;
+  // supporter -> hide the hint mount and load presets.
+  function renderHintOrList() {
+    const hintMount = document.getElementById('radarFilterHint');
+    if (!isSupporter()) {
+      if (hintMount) {
+        try { window.__supporterHint.render(hintMount); } catch (e) {}
+        hintMount.hidden = false;
+      }
+      const list = document.getElementById('rfPresetList');
+      if (list) list.innerHTML = '';
+      return;
+    }
+    if (hintMount) {
+      hintMount.hidden = true;
+      hintMount.innerHTML = '';
+    }
+    loadPresets();
+  }
+
+  function init() {
+    const newBtn = document.getElementById('btnRfNewPreset');
+    if (newBtn) newBtn.addEventListener('click', () => {
+      if (__presetsCache.length >= RF_CAP) return;
+      __presetsCache.push({ match: '', whitelist: [], blacklist: [], _open: true });
+      renderPresets();
+    });
+
+    // Tab activation: check supporter gate -> render hint OR load presets.
+    // Re-check the gate on every click so a mid-session supporter-code change flips the view.
+    // /entities is fetched once on first activation to populate the per-card dropdown.
+    let __entitiesLoaded = false;
+    document.querySelectorAll('.tab[data-tab="radar-filter"]').forEach(t => t.addEventListener('click', () => {
+      renderHintOrList();
+      if (!__entitiesLoaded) { __entitiesLoaded = true; loadEntities(); }
+    }));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+// RADAR-FILTER-JS-END

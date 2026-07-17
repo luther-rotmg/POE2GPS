@@ -98,6 +98,7 @@
             <button class="tab" data-tab="codex">Codex</button>
             <button class="tab" data-tab="cartographer">Cartographer</button>
             <button class="tab" data-tab="rules">Rule Engine</button>
+            <button class="tab" data-tab="radar-filter">Radar Filter</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -1097,6 +1098,20 @@
                 </div>
               </div>
             </div>
+          </div>
+        </section>
+
+        <!-- v0.41 A3 Radar Filter dashboard tab: per-zone entity whitelist/blacklist presets.
+             Consumes /api/radar-filters (A_API) CRUD; supporter-gated via S3 __supporterHint.
+             Mount for the supporter hint is the existing #radarFilterHint div (above the views);
+             tab activation renders the hint there for non-supporters, or loads presets for supporters. -->
+        <section class="view" data-view="radar-filter" hidden>
+          <div class="radar-filter-tab">
+            <div class="rf-header">
+              <button id="btnRfNewPreset" class="btn">+ New preset</button>
+              <span id="rfCapChip" class="chip"></span>
+            </div>
+            <div id="rfPresetList"></div>
           </div>
         </section>
 
