@@ -9,6 +9,7 @@ using POE2Radar.Core.Health;
 using POE2Radar.Core.Input;
 using POE2Radar.Core.Icons;
 using POE2Radar.Core.Remote;
+using POE2Radar.Core.RadarFilters;
 using POE2Radar.Core.Rules;
 using POE2Radar.Core.Session;
 using POE2Radar.Core.Tracks;
@@ -1683,6 +1684,58 @@ public sealed class ApiServer : IDisposable
                     catch (System.Exception)
                     {
                         Write(ctx, 500, JsonSerializer.Serialize(new { error = "internal" }, Json));
+                    }
+                }
+                else
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                }
+                break;
+            }
+
+            case "/api/radar-filters":
+            {
+                // v0.41 A_API: user radar filter presets CRUD. GET (ungated) lists all
+                // presets; POST (loopback-gated) replaces the entire file.
+                if (ctx.Request.HttpMethod == "GET")
+                {
+                    var file = RadarFilterStore.Load(_rulesConfigDir);
+                    var payload = file.Presets.Select(p => new
+                    {
+                        match = p.Match,
+                        whitelist = p.Whitelist,
+                        blacklist = p.Blacklist,
+                    });
+                    Write(ctx, 200, JsonSerializer.Serialize(new { presets = payload }, Json));
+                }
+                else if (ctx.Request.HttpMethod == "POST")
+                {
+                    if (!IsLoopbackHost(ctx.Request))
+                    {
+                        Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                        break;
+                    }
+                    try
+                    {
+                        var body = ReadBody(ctx);
+                        var file = JsonSerializer.Deserialize<RadarFilterFile>(body, Json)
+                                   ?? throw new JsonException("null body");
+                        RadarFilterStore.Save(_rulesConfigDir, file);
+                        var payload = file.Presets.Select(p => new
+                        {
+                            match = p.Match,
+                            whitelist = p.Whitelist,
+                            blacklist = p.Blacklist,
+                        });
+                        Write(ctx, 200, JsonSerializer.Serialize(new { presets = payload }, Json));
+                    }
+                    catch (JsonException)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = "invalid JSON body" }, Json));
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        Write(ctx, 400, JsonSerializer.Serialize(new { error = ex.Message }, Json));
                     }
                 }
                 else
