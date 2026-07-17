@@ -3908,3 +3908,19 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   else init();
 })();
 // CARTOGRAPHER-JS-END
+
+/* v0.40 P6 Cartographer discoverability hint on Overlay tab: one-time-dismissable card.
+   Shows the hint card on page load if localStorage doesn't have the dismissed key.
+   Dismiss button sets localStorage and hides the card. */
+(() => {
+  try {
+    if (localStorage.getItem('cartographer-hint-dismissed') === '1') return;
+    const el = document.getElementById('cartographerHint');
+    if (!el) return;
+    el.hidden = false;
+    document.getElementById('cartographerHintClose')?.addEventListener('click', () => {
+      try { localStorage.setItem('cartographer-hint-dismissed', '1'); } catch {}
+      el.hidden = true;
+    });
+  } catch {}
+})();

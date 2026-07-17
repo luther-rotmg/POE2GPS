@@ -567,3 +567,20 @@
   .carto-btn { font-family: inherit; font-size: 11px; color: var(--gold-bright); background: var(--panel); border: 1px solid var(--gold-deep); border-radius: 3px; padding: 6px 12px; cursor: pointer; }
   .carto-btn:hover { background: var(--panel2); border-color: var(--gold); }
   .carto-scrub { accent-color: var(--gold); }
+
+  /* v0.40 P6 Cartographer discoverability hint on Overlay tab: one-time-dismissable card
+     linking to the new Cartographer tab. Hidden by default; shown by JS if not dismissed. */
+  .cartographer-hint {
+    display: flex; flex-direction: row; align-items: center; gap: 10px;
+    padding: 10px 14px; margin: 0 0 12px 0;
+    border-left: 3px solid var(--gold);
+    background: var(--panel); border-radius: 3px;
+    font-size: 12px; color: var(--ink);
+  }
+  .cartographer-hint[hidden] { display: none; }
+  .hint-close {
+    margin-left: auto; flex: none;
+    background: transparent; border: none; color: var(--ink-dim);
+    font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 6px;
+  }
+  .hint-close:hover { color: var(--gold-bright); }
