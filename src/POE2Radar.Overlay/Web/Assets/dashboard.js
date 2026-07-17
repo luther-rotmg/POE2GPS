@@ -2301,6 +2301,26 @@ document.querySelectorAll('.tab[data-tab="settings"]').forEach(t => t.addEventLi
 // Also try to load immediately in case Settings is the initial view.
 loadSupporters();
 
+/* Support — v0.41 (LO ask): cached supporter gate — JS mirror of POE2Radar.Core.Support.SupporterGate.
+   Exposes the supporter status to the overlay's render loop and dashboard cosemetics without a
+   per-call network roundtrip. Calls refresh() on settings save or page load to keep the cache
+   aligned with the C# validator. Defaults to false until the first refresh. */
+(() => {
+  let _supporterCached = false;
+  window.__supporterGate = {
+    isSupporter: () => _supporterCached,
+    refresh: async () => {
+      try {
+        const r = await fetch('/api/settings');
+        if (!r.ok) return;
+        const s = await r.json();
+        _supporterCached = !!s.isSupporter;
+      } catch (e) { /* silent — network failure keeps prior cache */ }
+    },
+    _syncFrom: (isSup) => { _supporterCached = !!isSup; }
+  };
+})();
+
 /* Palette — v0.38 (F2): load user-created palette CSS blocks from /api/palettes and inject
    them into #user-palette-styles as body[data-palette="user-<slug>"] blocks. Invoked at module load
    BEFORE applySupporterCosmetics so a persisted user palette renders on first paint. Silently
@@ -2327,6 +2347,7 @@ async function applySupporterCosmetics(){
     const r = await fetch('/api/settings');
     if (!r.ok) return;
     const s = await r.json();
+    try { window.__supporterGate._syncFrom(s.isSupporter); } catch {}
     const chip = document.getElementById('supporterCodeState');
     const codeIn = document.querySelector('[data-set="supporterCode"]');
     const paletteSel = document.querySelector('[data-set="dashboardPalette"]');
