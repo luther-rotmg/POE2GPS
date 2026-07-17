@@ -3,6 +3,18 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.1] — 2026-07-17 "Ops Hotfix"
+
+*Supporter roster nudge — no user-visible functional change.*
+
+### Changed
+
+- 🔑 Expanded the embedded supporter-code roster with one additional entry — restores a code that missed initial delivery. Anyone on v0.41.0 without a supporter code sees zero change; anyone whose delivered code was affected can now paste it and unlock the supporter tier as intended.
+
+### Upgrade
+
+Optional for most users. Recommended only if you're the specific supporter waiting on a re-delivered code.
+
 ## [0.41.0] — 2026-07-17 "Supporter Bundle"
 
 *Focused play. Your loadout follows your zone.*
