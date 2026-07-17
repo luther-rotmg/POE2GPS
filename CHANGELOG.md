@@ -3,6 +3,31 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.39.1] — 2026-07-17 "Ring, Label, Pulse"
+
+*The rest of the effects, wired.*
+
+### Added — 🎨 **Ring, Label, and Pulse effects go live**
+
+- ⭕ **Ring** — outlines the entity with a `#rrggbb`-parsed color at 1.4× the icon radius. Stacks on top of hide/tint from v0.39.0.
+- 🏷 **Label** — overrides the entity's default label with your custom text. Four token expansions: `{name}` (entity token), `{level}` (entity level), `{metadata}` (full metadata path), `{zone}` (current area code). Unknown tokens are left as literal `{foo}` — never crashes.
+- 💓 **Pulse** — alpha modulation on the entity's brush. `slow` = 1 Hz (breathing), `fast` = 3 Hz (heartbeat). Alpha bounded to [0.4, 1.0] so entities never disappear entirely mid-pulse. Composes with tint (pulse alpha applies to whatever color the entity ends up with).
+
+**Sound** remains deferred — needs an audio playback subsystem with first-sight dedup + WAV file resolution from `config/sounds/`. Sound-effect rules save + load fine today; they just don't play yet.
+
+### Under the hood
+
+- `RuleEffectApplier` gains 3 new pure helpers: `HasEffect<T>(effects, out T?)` generic lookup, `ExpandLabelTokens(template, EntityView, WorldSnapshotView)` deterministic substitution, `ApplyPulseAlpha(baseColor, PulseEffect, elapsedMs)` = `0.7 + 0.3·sin(2π·hz·t)` mapped to [0.4, 1.0].
+- `OverlayRenderer` gains a `_renderStopwatch` field (single Stopwatch.StartNew for the app lifetime) that feeds elapsedMs to the pulse calculation. Entity draw loop applies pulse alpha before tint override, then draws icon, then draws ring outline as a DrawEllipse with the brush color restored afterward, then uses `effectiveLabel = LabelEffect.Text` expanded (or falls back to `rule.Label`) for the label draw.
+
+### Tests
+
+- 35 new xUnit facts in `RuleEffectApplierTests` (total grows 16 → 51): HasEffect for each of 3 kinds present/missing, all 4 label tokens plus unknown/empty edge cases, pulse alpha at slow/fast × start/mid/end waypoints, alpha boundedness. Full suite grows from 1026 to 1061 (all green).
+
+### Upgrade
+
+Fully additive. Rules authored in v0.39.0 that used Ring/Label/Pulse effects (which persisted through Save/Load but were inert on the overlay) now render as intended without any config change.
+
 ## [0.39.0] — 2026-07-16 "Rule Engine"
 
 *One place. One schema. One Save.*
