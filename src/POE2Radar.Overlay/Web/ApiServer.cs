@@ -11,6 +11,7 @@ using POE2Radar.Core.Icons;
 using POE2Radar.Core.Remote;
 using POE2Radar.Core.Rules;
 using POE2Radar.Core.Session;
+using POE2Radar.Core.Tracks;
 using POE2Radar.Overlay.Config;
 
 namespace POE2Radar.Overlay.Web;
@@ -1442,6 +1443,79 @@ public sealed class ApiServer : IDisposable
                 }
                 object codexPayload = _codexProvider?.Invoke(character) ?? new { events = Array.Empty<object>() };
                 WriteMaybeGzipped(ctx, JsonSerializer.SerializeToUtf8Bytes(codexPayload, Json), "application/json; charset=utf-8");
+                break;
+            }
+
+            case "/api/tracks":
+            {
+                // v0.40 Cartographer: per-character zone track samples. Loopback-Host-gated because
+                // the character-name query param identifies the player character.
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                var character = ctx.Request.QueryString["character"];
+                if (string.IsNullOrWhiteSpace(character))
+                {
+                    Write(ctx, 400, JsonSerializer.Serialize(new { error = "missing character" }, Json));
+                    break;
+                }
+                var zone = ctx.Request.QueryString["zone"];
+                if (string.IsNullOrWhiteSpace(zone))
+                {
+                    Write(ctx, 400, JsonSerializer.Serialize(new { error = "missing zone" }, Json));
+                    break;
+                }
+                var samples = TrackStore.Load(_rulesConfigDir, character, zone);
+                Write(ctx, 200, JsonSerializer.Serialize(new { samples }, Json));
+                break;
+            }
+
+            case "/api/tracks/characters":
+            {
+                // v0.40 Cartographer: list of all tracked characters. Loopback-Host-gated.
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                var characters = TrackStore.ListCharacters(_rulesConfigDir);
+                Write(ctx, 200, JsonSerializer.Serialize(new { characters }, Json));
+                break;
+            }
+
+            case "/api/tracks/zones":
+            {
+                // v0.40 Cartographer: list of zones tracked for a character. Loopback-Host-gated.
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                var character = ctx.Request.QueryString["character"];
+                if (string.IsNullOrWhiteSpace(character))
+                {
+                    Write(ctx, 400, JsonSerializer.Serialize(new { error = "missing character" }, Json));
+                    break;
+                }
+                var zones = TrackStore.ListZones(_rulesConfigDir, character);
+                Write(ctx, 200, JsonSerializer.Serialize(new { zones }, Json));
                 break;
             }
 
