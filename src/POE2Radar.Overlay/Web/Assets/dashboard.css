@@ -651,3 +651,47 @@
   .rf-status.err { color: #d94a4a; }
   .rf-empty { padding: 18px; border: 1px dashed var(--line-soft); border-radius: 4px; color: var(--ink-dim); background: var(--bg2); line-height: 1.6; }
   .rf-error { color: #d94a4a; padding: 8px 10px; border: 1px solid #d94a4a; border-radius: 3px; background: rgba(217,74,74,.08); }
+
+  /* v0.41 B4 Overlay Layouts dashboard tab: zone-aware panel visibility/position presets.
+     Uses the existing --gold/--panel/--ink theme; mirrors the Radar Filter card look. */
+  .layouts-tab { display: flex; flex-direction: column; gap: 14px; }
+  .lo-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .lo-header .btn { background: var(--panel2); color: var(--gold-bright); border: 1px solid var(--gold-deep); padding: 7px 14px; cursor: pointer; border-radius: 2px; font-family: inherit; font-size: 12px; }
+  .lo-header .btn:disabled { opacity: .45; cursor: not-allowed; }
+  #loCapChip.chip { font-size: 11px; letter-spacing: .08em; padding: 4px 10px; border: 1px solid var(--line); border-radius: 2px; background: var(--panel); color: var(--ink-dim); }
+  #loCapChip.chip.warn { color: var(--gold-bright); border-color: var(--gold-deep); }
+  #loCapChip.chip.full { color: #d94a4a; border-color: #d94a4a; }
+
+  .lo-card { border: 1px solid var(--line-soft); border-radius: 3px; background: var(--panel); }
+  .lo-card-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; flex-wrap: wrap; cursor: pointer; }
+  .lo-card-head:hover { border-color: var(--gold-deep); }
+  .lo-card .lo-name { background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft); padding: 5px 8px; border-radius: 2px; font-family: inherit; font-size: 12px; min-width: 140px; }
+  .lo-card .lo-name:focus { outline: none; border-color: var(--gold-deep); }
+  .lo-card .lo-match { background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft); padding: 5px 8px; border-radius: 2px; font-family: inherit; font-size: 12px; min-width: 160px; }
+  .lo-card .lo-match:focus { outline: none; border-color: var(--gold-deep); }
+  .lo-card .lo-summary { font-size: 11px; color: var(--ink-dim); }
+  .lo-card .lo-del, .lo-card .lo-toggle { background: transparent; color: var(--ink-dim); border: 1px solid var(--line-soft); cursor: pointer; padding: 3px 8px; font-size: 11px; border-radius: 2px; }
+  .lo-card .lo-toggle:hover { color: var(--gold-bright); border-color: var(--gold-deep); }
+  .lo-card .lo-del:hover { color: #d94a4a; border-color: #d94a4a; }
+  .lo-card-body { padding: 12px 14px; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 10px; }
+  .lo-card-body[hidden] { display: none; }
+  .lo-card-body label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--gold-bright); font-weight: 600; }
+  .lo-panel-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px dotted var(--line-soft); }
+  .lo-panel-key { font-size: 11px; color: var(--ink); flex: 1; min-width: 180px; font-family: monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lo-vis { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--ink-dim); cursor: pointer; }
+  .lo-panel-row .lo-x, .lo-panel-row .lo-y { background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft); padding: 4px 6px; border-radius: 2px; font-family: inherit; font-size: 12px; width: 64px; }
+  .lo-panel-row .lo-x:focus, .lo-panel-row .lo-y:focus { outline: none; border-color: var(--gold-deep); }
+  .lo-panel-row .lo-panel-del { background: transparent; border: 1px solid var(--line-soft); color: var(--ink-dim); cursor: pointer; padding: 2px 7px; font-size: 13px; border-radius: 2px; }
+  .lo-panel-row .lo-panel-del:hover { color: #d94a4a; border-color: #d94a4a; }
+  .lo-add-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 6px; }
+  .lo-add-row select { background: var(--bg-alt); color: var(--ink); border: 1px solid var(--line-soft); padding: 5px 8px; border-radius: 2px; font-family: inherit; font-size: 12px; flex: 1; min-width: 220px; }
+  .lo-add-row select:focus { outline: none; border-color: var(--gold-deep); }
+  .lo-add-panel { background: var(--panel2); color: var(--gold-bright); border: 1px solid var(--gold-deep); padding: 5px 12px; cursor: pointer; border-radius: 2px; font-family: inherit; font-size: 12px; }
+  .lo-card-footer { display: flex; align-items: center; gap: 10px; padding-top: 6px; border-top: 1px dashed var(--line-soft); }
+  .lo-save { background: var(--panel2); color: var(--gold-bright); border: 1px solid var(--gold-deep); padding: 7px 16px; cursor: pointer; border-radius: 2px; font-family: inherit; font-size: 12px; }
+  .lo-save:hover { background: var(--gold-deep); color: var(--bg); }
+  .lo-status { font-size: 11px; color: var(--ink-dim); min-height: 14px; flex: 1; }
+  .lo-status.ok { color: var(--good); }
+  .lo-status.err { color: #d94a4a; }
+  .lo-empty { padding: 18px; border: 1px dashed var(--line-soft); border-radius: 4px; color: var(--ink-dim); background: var(--bg2); line-height: 1.6; }
+  .lo-error { color: #d94a4a; padding: 8px 10px; border: 1px solid #d94a4a; border-radius: 3px; background: rgba(217,74,74,.08); }

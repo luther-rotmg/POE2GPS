@@ -99,6 +99,7 @@
             <button class="tab" data-tab="cartographer">Cartographer</button>
             <button class="tab" data-tab="rules">Rule Engine</button>
             <button class="tab" data-tab="radar-filter">Radar Filter</button>
+            <button class="tab" data-tab="layouts">Layouts</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -1112,6 +1113,21 @@
               <span id="rfCapChip" class="chip"></span>
             </div>
             <div id="rfPresetList" data-panel-id="dashboard-radar-filter-list"></div>
+          </div>
+        </section>
+
+        <!-- v0.41 B4 Overlay Layouts dashboard tab: zone-aware panel visibility/position presets.
+             Consumes /api/overlay-layouts (B_API) CRUD; supporter-gated via S3 __supporterHint.
+             Mount for the supporter hint is the existing #overlayLayoutHint div (above the views);
+             tab activation renders the hint there for non-supporters, or loads layouts for supporters. -->
+        <section class="view" data-view="layouts" hidden>
+          <div class="layouts-tab">
+            <div class="lo-header">
+              <button id="btnLoNewLayout" class="btn">+ New layout</button>
+              <button id="btnLoCapture" class="btn">Capture current</button>
+              <span id="loCapChip" class="chip">layouts: 0 / 10</span>
+            </div>
+            <div id="loList"></div>
           </div>
         </section>
 

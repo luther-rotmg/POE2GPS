@@ -4431,3 +4431,349 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
 
   window.__reloadOverlayLayouts = refreshLayouts;
 })();
+
+/* ── v0.41 B4 Overlay Layouts dashboard tab: zone-aware panel visibility/position presets.
+     Consumes /api/overlay-layouts (B_API) CRUD; supporter-gated via S3 __supporterHint.
+     The existing #overlayLayoutHint div (declared in the global hint area above the views)
+     is the mount for the supporter hint: tab activation renders the hint there for
+     non-supporters, or loads + renders the layout list for supporters. Capture-current
+     snapshots live panel visibility via window.__panelInventory (B2). Save rebuilds the
+     full OverlayLayoutFile from every card and POSTs, then calls window.__reloadOverlayLayouts()
+     (B3) so the live auto-swap picks up the new presets. PRESERVE ALL OTHER BEHAVIOR —
+     additive IIFE; no existing tab/IIFE is touched. */
+// OVERLAY-LAYOUTS-JS-START
+(() => {
+  const LO_CAP = 10;
+  const LO_WARN = 8;
+
+  // Editor state: array of {name, match, panels:{slug:{visible,x,y}}, _open}
+  let __layoutsCache = [];
+
+  function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+  function isSupporter() {
+    try { return !!(window.__supporterGate && window.__supporterGate.isSupporter()); }
+    catch (e) { return false; }
+  }
+
+  function setStatus(cardEl, msg, cls) {
+    const el = cardEl?.querySelector('.lo-status');
+    if (!el) return;
+    el.textContent = msg || '';
+    el.className = 'lo-status' + (cls ? ' ' + cls : '');
+  }
+
+  // Normalize a wire panel-state into {visible,x,y}; accepts both camelCase (the
+  // actual wire format from the camelCase server serializer) and PascalCase
+  // (defensive — matches the B3 applyLayoutForZone access pattern).
+  function normPanel(p) {
+    if (!p) return { visible: null, x: null, y: null };
+    return {
+      visible: p.visible != null ? !!p.visible : (p.Visible != null ? !!p.Visible : null),
+      x: p.x != null ? p.x : (p.X != null ? p.X : null),
+      y: p.y != null ? p.y : (p.Y != null ? p.Y : null),
+    };
+  }
+
+  function updateCapChip() {
+    const chip = document.getElementById('loCapChip');
+    if (!chip) return;
+    const n = __layoutsCache.length;
+    chip.textContent = 'layouts: ' + n + ' / ' + LO_CAP;
+    chip.classList.remove('warn', 'full');
+    if (n >= LO_CAP) chip.classList.add('full');
+    else if (n >= LO_WARN) chip.classList.add('warn');
+    const btn = document.getElementById('btnLoNewLayout');
+    if (btn) btn.disabled = n >= LO_CAP;
+  }
+
+  function countOverridden(preset) {
+    return preset && preset.panels ? Object.keys(preset.panels).length : 0;
+  }
+
+  function availablePanelSlugs(preset) {
+    const all = (window.__panelInventory && typeof window.__panelInventory.list === 'function')
+      ? window.__panelInventory.list() : [];
+    const used = preset && preset.panels ? Object.keys(preset.panels) : [];
+    return all.filter(s => !used.includes(s));
+  }
+
+  function renderLayouts() {
+    const host = document.getElementById('loList');
+    if (!host) return;
+    if (!__layoutsCache.length) {
+      host.innerHTML = '<div class="lo-empty">No overlay layout presets yet. Click <b>+ New layout</b> or <b>Capture current</b> to snapshot panel visibility by zone.</div>';
+      updateCapChip();
+      return;
+    }
+    host.innerHTML = __layoutsCache.map((p, i) => {
+      const open = !!p._open;
+      const overridden = countOverridden(p);
+      const panelSlugs = Object.keys(p.panels || {});
+      const rows = panelSlugs.map(slug => {
+        const st = normPanel(p.panels[slug]);
+        return '<div class="lo-panel-row" data-slug="' + esc(slug) + '">' +
+          '<span class="lo-panel-key" title="' + esc(slug) + '">' + esc(slug) + '</span>' +
+          '<label class="lo-vis"><input type="checkbox" class="lo-visible"' + (st.visible === true ? ' checked' : '') + '>visible</label>' +
+          '<input type="number" class="lo-x" value="' + esc(st.x != null ? st.x : '') + '" placeholder="x">' +
+          '<input type="number" class="lo-y" value="' + esc(st.y != null ? st.y : '') + '" placeholder="y">' +
+          '<button type="button" class="lo-panel-del" title="remove panel">&times;</button>' +
+        '</div>';
+      }).join('');
+      const addOpts = ['<option value="">\u2014 add panel \u2014</option>']
+        .concat(availablePanelSlugs(p).map(s => '<option value="' + esc(s) + '">' + esc(s) + '</option>'));
+      return '<div class="lo-card" data-i="' + i + '">' +
+        '<div class="lo-card-head">' +
+          '<input type="text" class="lo-name" value="' + esc(p.name || '') + '" placeholder="layout name">' +
+          '<input type="text" class="lo-match" value="' + esc(p.match || '') + '" placeholder="match (zone code glob, e.g. *_town)">' +
+          '<span class="lo-summary">' + overridden + ' panel' + (overridden === 1 ? '' : 's') + ' overridden</span>' +
+          '<button type="button" class="lo-del" title="delete">&times;</button>' +
+          '<button type="button" class="lo-toggle" title="' + (open ? 'collapse' : 'expand') + '">' + (open ? '&#9660;' : '&#9654;') + '</button>' +
+        '</div>' +
+        '<div class="lo-card-body"' + (open ? '' : ' hidden') + '>' +
+          '<label>Panel overrides</label>' +
+          (panelSlugs.length ? rows : '<span class="hint-row" style="opacity:.5">no panel overrides — add one below</span>') +
+          '<div class="lo-add-row">' +
+            '<select class="lo-add-select">' + addOpts.join('') + '</select>' +
+            '<button type="button" class="lo-add-panel">+ Add panel</button>' +
+          '</div>' +
+          '<div class="lo-card-footer">' +
+            '<button type="button" class="lo-save">Save</button>' +
+            '<span class="lo-status"></span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    // Wire each card's controls
+    host.querySelectorAll('.lo-card').forEach(card => {
+      const i = +card.dataset.i;
+      const preset = __layoutsCache[i];
+      if (!preset) return;
+
+      // Accordion toggle: clicking the head (but not its inputs/buttons) expands/collapses
+      const head = card.querySelector('.lo-card-head');
+      head.addEventListener('click', (ev) => {
+        if (ev.target.closest('input,button,select,label')) return;
+        preset._open = !preset._open;
+        renderLayouts();
+      });
+      card.querySelector('.lo-toggle').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        preset._open = !preset._open;
+        renderLayouts();
+      });
+
+      // Name + match inputs commit live into the preset (Save persists).
+      const nameInput = card.querySelector('.lo-name');
+      const matchInput = card.querySelector('.lo-match');
+      nameInput.addEventListener('input', () => { preset.name = nameInput.value; });
+      matchInput.addEventListener('input', () => { preset.match = matchInput.value; });
+
+      // Per-row: visible checkbox + x/y inputs + remove-panel button
+      card.querySelectorAll('.lo-panel-row').forEach(row => {
+        const slug = row.getAttribute('data-slug');
+        const st = preset.panels[slug] || (preset.panels[slug] = { visible: null, x: null, y: null });
+        const visBox = row.querySelector('.lo-visible');
+        const xIn = row.querySelector('.lo-x');
+        const yIn = row.querySelector('.lo-y');
+        visBox.addEventListener('change', () => { st.visible = visBox.checked; });
+        xIn.addEventListener('input', () => { st.x = xIn.value === '' ? null : Number(xIn.value); });
+        yIn.addEventListener('input', () => { st.y = yIn.value === '' ? null : Number(yIn.value); });
+        row.querySelector('.lo-panel-del').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          delete preset.panels[slug];
+          renderLayouts();
+        });
+      });
+
+      // "+ Add panel" — pulls from window.__panelInventory.list() (excluding already-added)
+      const addSel = card.querySelector('.lo-add-select');
+      card.querySelector('.lo-add-panel').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const slug = addSel.value;
+        if (!slug) { setStatus(card, 'Pick a panel to add first.', 'err'); return; }
+        if (!preset.panels) preset.panels = {};
+        if (!preset.panels[slug]) preset.panels[slug] = { visible: null, x: null, y: null };
+        preset._open = true;
+        renderLayouts();
+        setStatus(card, 'Added "' + slug + '" (Save to commit).', 'ok');
+      });
+
+      // Delete (local only — Save commits the trimmed list)
+      card.querySelector('.lo-del').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        __layoutsCache.splice(i, 1);
+        renderLayouts();
+      });
+
+      // Save: build the full OverlayLayoutFile from current UI state (all cards) and POST.
+      card.querySelector('.lo-save').addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        saveAllLayouts(card);
+      });
+    });
+
+    updateCapChip();
+  }
+
+  // Page-load / tab-activate: GET /api/overlay-layouts -> populate #loList
+  // (or render the supporter hint if !supporter — see renderHintOrList).
+  async function loadLayouts() {
+    const host = document.getElementById('loList');
+    try {
+      const r = await fetch('/api/overlay-layouts', { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      const data = await r.json();
+      const presets = (data && data.presets) ? data.presets : [];
+      __layoutsCache = presets.map(p => {
+        const panels = {};
+        if (p && p.panels) {
+          for (const [slug, st] of Object.entries(p.panels)) {
+            panels[slug] = normPanel(st);
+          }
+        }
+        return {
+          name: p.name || '',
+          match: p.match || '',
+          panels: panels,
+          _open: false,
+        };
+      });
+      renderLayouts();
+    } catch (e) {
+      if (host) host.innerHTML = '<div class="lo-error">Failed to load overlay layouts (network error).</div>';
+      updateCapChip();
+    }
+  }
+
+  // Build the full OverlayLayoutFile from current UI state (all cards, preserving order) -> POST.
+  // camelCase keys match the server's camelCase serializer so the POST round-trips correctly.
+  // On success calls window.__reloadOverlayLayouts() (B3) so the live auto-swap re-fetches.
+  async function saveAllLayouts(cardEl) {
+    const file = {
+      schemaVersion: 1,
+      presets: __layoutsCache.map(p => {
+        const panels = {};
+        for (const [slug, st] of Object.entries(p.panels || {})) {
+          panels[slug] = {
+            visible: st.visible == null ? null : !!st.visible,
+            x: st.x == null ? null : st.x,
+            y: st.y == null ? null : st.y,
+          };
+        }
+        return { name: p.name || '', match: p.match || '', panels: panels };
+      }),
+    };
+    if (cardEl) setStatus(cardEl, 'Saving\u2026', '');
+    try {
+      const r = await fetch('/api/overlay-layouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(file),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        const presets = (data && data.presets) ? data.presets : [];
+        __layoutsCache = presets.map(p => {
+          const panels = {};
+          if (p && p.panels) {
+            for (const [slug, st] of Object.entries(p.panels)) {
+              panels[slug] = normPanel(st);
+            }
+          }
+          return {
+            name: p.name || '',
+            match: p.match || '',
+            panels: panels,
+            _open: false,
+          };
+        });
+        renderLayouts();
+        if (cardEl) setStatus(cardEl, '\u2713 saved', 'ok');
+        // Tell the B3 auto-swap to re-fetch the updated presets.
+        try { if (typeof window.__reloadOverlayLayouts === 'function') window.__reloadOverlayLayouts(); } catch (e) {}
+      } else if (r.status === 400 || r.status === 403) {
+        let msg = 'Save rejected (HTTP ' + r.status + ').';
+        try { const j = await r.json(); if (j && j.error) msg = j.error; } catch (_) {}
+        if (cardEl) setStatus(cardEl, msg, 'err');
+      } else {
+        if (cardEl) setStatus(cardEl, 'Save failed (HTTP ' + r.status + ').', 'err');
+      }
+    } catch (e) {
+      if (cardEl) setStatus(cardEl, 'Save failed (network error).', 'err');
+    }
+  }
+
+  // Capture-current: iterate window.__panelInventory.list() and read each panel's
+  // live visibility (getComputedStyle display==='none' -> visible=false, else true).
+  // Populates a fresh draft preset (no X/Y — visibility only); user names + saves.
+  function captureCurrent() {
+    if (!isSupporter()) { renderHintOrList(); return; }
+    if (__layoutsCache.length >= LO_CAP) return;
+    const panels = {};
+    try {
+      const slugs = (window.__panelInventory && typeof window.__panelInventory.list === 'function')
+        ? window.__panelInventory.list() : [];
+      for (const slug of slugs) {
+        const el = window.__panelInventory.get(slug);
+        let visible = null;
+        if (el) {
+          try { visible = window.getComputedStyle(el).display !== 'none'; } catch (e) { visible = null; }
+        }
+        panels[slug] = { visible: visible, x: null, y: null };
+      }
+    } catch (e) { /* non-fatal — capture what we can */ }
+    __layoutsCache.push({
+      name: '',
+      match: '',
+      panels: panels,
+      _open: true,
+    });
+    renderLayouts();
+  }
+
+  // Supporter gate check every render (in case the code changes mid-session):
+  // non-supporter -> render the S3 hint into #overlayLayoutHint and unhide it;
+  // supporter -> hide the hint mount and load layouts.
+  function renderHintOrList() {
+    const hintMount = document.getElementById('overlayLayoutHint');
+    if (!isSupporter()) {
+      if (hintMount) {
+        try { window.__supporterHint.render(hintMount); } catch (e) {}
+        hintMount.hidden = false;
+      }
+      const list = document.getElementById('loList');
+      if (list) list.innerHTML = '';
+      return;
+    }
+    if (hintMount) {
+      hintMount.hidden = true;
+      hintMount.innerHTML = '';
+    }
+    loadLayouts();
+  }
+
+  function init() {
+    const newBtn = document.getElementById('btnLoNewLayout');
+    if (newBtn) newBtn.addEventListener('click', () => {
+      if (!isSupporter()) { renderHintOrList(); return; }
+      if (__layoutsCache.length >= LO_CAP) return;
+      __layoutsCache.push({ name: '', match: '', panels: {}, _open: true });
+      renderLayouts();
+    });
+
+    const captureBtn = document.getElementById('btnLoCapture');
+    if (captureBtn) captureBtn.addEventListener('click', captureCurrent);
+
+    // Tab activation: check supporter gate -> render hint OR load layouts.
+    // Re-check the gate on every click so a mid-session supporter-code change flips the view.
+    document.querySelectorAll('.tab[data-tab="layouts"]').forEach(t => t.addEventListener('click', () => {
+      renderHintOrList();
+    }));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+// OVERLAY-LAYOUTS-JS-END
