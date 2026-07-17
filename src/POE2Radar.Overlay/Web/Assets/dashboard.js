@@ -3543,3 +3543,167 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+
+// CARTOGRAPHER-JS-START
+// v0.40 P4 Cartographer dashboard tab: position heatmap over 64x64 grid.
+// Consumes /api/tracks/{characters,zones} + /api/tracks (P3). Dashboard-only.
+// All fetch failures are silently caught (clear canvas + "no data" info chip).
+(() => {
+  const RAMP = ['rgba(0,0,0,0)', 'rgba(20,40,80,0.5)', 'rgba(30,120,140,0.7)', 'rgba(210,190,80,0.85)', 'rgba(220,120,50,0.95)'];
+  const GRID = 64;
+  const CELL = 8; // 512 / 64
+
+  const charSelect = document.getElementById('cartoCharSelect');
+  const zoneSelect = document.getElementById('cartoZoneSelect');
+  const info = document.getElementById('cartoInfo');
+  const canvas = document.getElementById('cartoCanvas');
+  const ctx = canvas ? canvas.getContext('2d') : null;
+
+  let charCache = null;
+  const zoneCache = new Map();   // character -> zones[]
+  const tracksCache = new Map();  // "character|zone" -> samples[]
+
+  function setInfo(msg) { if (info) info.textContent = msg; }
+
+  function clearCanvas() {
+    if (!ctx || !canvas) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function populateCharSelect(chars) {
+    if (!charSelect) return;
+    charSelect.innerHTML = '<option value="">\u2014 select \u2014</option>';
+    for (const c of chars) {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      charSelect.appendChild(opt);
+    }
+    setInfo(chars.length + ' characters');
+  }
+
+  function populateZoneSelect(zones) {
+    if (!zoneSelect) return;
+    zoneSelect.innerHTML = '<option value="">\u2014 select \u2014</option>';
+    for (const z of zones) {
+      const opt = document.createElement('option');
+      opt.value = z; opt.textContent = z;
+      zoneSelect.appendChild(opt);
+    }
+    clearCanvas();
+    setInfo(zones.length + ' zones');
+  }
+
+  function loadCharacters() {
+    if (charCache) { populateCharSelect(charCache); return; }
+    try {
+      fetch('/api/tracks/characters')
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(j => {
+          charCache = Array.isArray(j.characters) ? j.characters : [];
+          populateCharSelect(charCache);
+        })
+        .catch(() => { charCache = []; populateCharSelect(charCache); setInfo('no data'); });
+    } catch (e) { charCache = []; populateCharSelect(charCache); setInfo('no data'); }
+  }
+
+  function loadZones(character) {
+    if (!character) {
+      if (zoneSelect) zoneSelect.innerHTML = '<option value="">\u2014 select \u2014</option>';
+      clearCanvas(); setInfo(''); return;
+    }
+    if (zoneCache.has(character)) { populateZoneSelect(zoneCache.get(character)); return; }
+    try {
+      fetch('/api/tracks/zones?character=' + encodeURIComponent(character))
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(j => {
+          const zones = Array.isArray(j.zones) ? j.zones : [];
+          zoneCache.set(character, zones);
+          populateZoneSelect(zones);
+        })
+        .catch(() => { zoneCache.set(character, []); populateZoneSelect([]); setInfo('no data'); });
+    } catch (e) { zoneCache.set(character, []); populateZoneSelect([]); setInfo('no data'); }
+  }
+
+  function loadTracks(character, zone) {
+    if (!character || !zone) { clearCanvas(); setInfo(''); return; }
+    const key = character + '|' + zone;
+    if (tracksCache.has(key)) { renderHeatmap(tracksCache.get(key), canvas); return; }
+    try {
+      fetch('/api/tracks?character=' + encodeURIComponent(character) + '&zone=' + encodeURIComponent(zone))
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(j => {
+          const samples = Array.isArray(j.samples) ? j.samples : [];
+          tracksCache.set(key, samples);
+          renderHeatmap(samples, canvas);
+        })
+        .catch(() => { clearCanvas(); setInfo('no data'); });
+    } catch (e) { clearCanvas(); setInfo('no data'); }
+  }
+
+  function renderHeatmap(samples, canvas) {
+    if (!canvas) return;
+    const c2d = canvas.getContext('2d');
+    if (!c2d) return;
+    c2d.clearRect(0, 0, canvas.width, canvas.height);
+    if (!samples || samples.length === 0) { setInfo('0 samples'); return; }
+    // compute sample bounds (min/max of x/y across samples)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const s of samples) {
+      const x = s.x, y = s.y;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+    const rangeX = (maxX - minX) || 1;
+    const rangeY = (maxY - minY) || 1;
+    // one pass over samples -> count per cell (Map keyed on "cx,cy")
+    const counts = new Map();
+    for (const s of samples) {
+      const cx = Math.min(GRID - 1, Math.max(0, Math.floor(((s.x - minX) / rangeX) * GRID)));
+      const cy = Math.min(GRID - 1, Math.max(0, Math.floor(((s.y - minY) / rangeY) * GRID)));
+      const k = cx + ',' + cy;
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    // density = log(1 + count), normalized to [0,1] across the grid
+    let maxD = 0;
+    const density = new Map();
+    for (const [k, c] of counts) {
+      const d = Math.log(1 + c);
+      density.set(k, d);
+      if (d > maxD) maxD = d;
+    }
+    if (maxD <= 0) maxD = 1;
+    // rasterize: empty cells -> transparent; single-sample cell -> lowest non-transparent ramp
+    for (const [k, d] of density) {
+      const parts = k.split(',');
+      const cx = +parts[0], cy = +parts[1];
+      const c = counts.get(k);
+      let idx;
+      if (c === 1) {
+        idx = 1; // single-sample -> lowest non-transparent ramp color
+      } else {
+        const t = d / maxD; // [0,1]
+        idx = Math.min(RAMP.length - 1, Math.max(1, Math.ceil(t * (RAMP.length - 1))));
+        if (idx < 1) idx = 1;
+      }
+      c2d.fillStyle = RAMP[idx];
+      c2d.fillRect(cx * CELL, cy * CELL, CELL, CELL);
+    }
+    setInfo(samples.length + ' samples');
+  }
+
+  // ── wire-up (runs once on script load) ──
+  function init() {
+    if (charSelect) charSelect.addEventListener('change', () => loadZones(charSelect.value));
+    if (zoneSelect) zoneSelect.addEventListener('change', () => loadTracks(charSelect.value, zoneSelect.value));
+    let __loaded = false;
+    document.querySelectorAll('.tab[data-tab="cartographer"]').forEach(t => t.addEventListener('click', () => {
+      if (!__loaded) { __loaded = true; loadCharacters(); }
+    }));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
+// CARTOGRAPHER-JS-END

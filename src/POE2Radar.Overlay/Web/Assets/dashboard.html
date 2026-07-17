@@ -96,6 +96,7 @@
             <button class="tab" data-tab="itemfilters">Item Filters</button>
             <button class="tab" data-tab="drops">Drops</button>
             <button class="tab" data-tab="codex">Codex</button>
+            <button class="tab" data-tab="cartographer">Cartographer</button>
             <button class="tab" data-tab="rules">Rule Engine</button>
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
@@ -1012,6 +1013,19 @@
           <div id="codex-status" class="codex-status" role="status"></div>
         </section>
         <!-- CODEX-PANEL-END -->
+
+        <!-- v0.40 P4 Cartographer dashboard tab: position heatmap over 64x64 grid.
+             Consumes /api/tracks/{characters,zones} + /api/tracks (P3). Dashboard-only. -->
+        <section class="view" data-view="cartographer" hidden>
+          <div class="cartographer-tab">
+            <div class="carto-header">
+              <label>Character <select id="cartoCharSelect"></select></label>
+              <label>Zone <select id="cartoZoneSelect"></select></label>
+              <span id="cartoInfo"></span>
+            </div>
+            <canvas id="cartoCanvas" width="512" height="512" class="carto-canvas"></canvas>
+          </div>
+        </section>
 
         <!-- v0.39 R5 Rules Engine dashboard tab: author display rules (selector + effects)
              via /api/rules CRUD. R6 serves the endpoints; R1 owns the on-disk shape. -->
