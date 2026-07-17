@@ -3,6 +3,26 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.40.1] — 2026-07-17 "Patch-Day Hotfix"
+
+*Path of Exile 2 shifted five internal offsets today; POE2GPS follows.*
+
+### Fixed — 🔧 **AreaInstance offsets for the 2026-07-16 game patch (+0x8 shift)**
+
+- 🧭 **Reads work again.** Today's Path of Exile 2 patch shifted five fields inside the AreaInstance block by `+0x08`. Without the update, the overlay reads garbage for player position, entity map, terrain grid, and server data — heatmap goes blank, entities disappear, terrain draws wrong. Fixed by merging upstream Sikaka/POE2Radar@2615bec.
+- Shifts applied: LocalPlayer `0x5B8→0x5C0`, ServerDataPtr `0x598→0x5A0`, AwakeEntities `0x6D8→0x6E0`, SleepingEntities `0x6E8→0x6F0`, TerrainMetadata `0x8B8→0x8C0`.
+- Low-offset fields (AreaInfo/Level/Hash) sit below the insertion and are unchanged.
+- Life-component vitals, entity walk, terrain, inventory, and league detect all re-validated upstream against a live 2026-07-16 client session.
+
+### Under the hood
+
+- New `--chaindbg` Research probe: wide-scans the AreaInstance block for the LocalPlayer metadata gate, so future patch-day drift can be localized in seconds instead of manual byte-hunting.
+- Doc comments on the AreaInstance layout summary + entity-map / inventory / terrain seams updated to the new offsets to prevent future readers from anchoring on stale values.
+
+### Upgrade
+
+**Recommended for everyone playing today or later.** No config changes; if v0.40.0 is running against today's game patch it will silently misread — grab this build.
+
 ## [0.40.0] — 2026-07-17 "Cartographer"
 
 *Every zone you cleared, drawn.*
