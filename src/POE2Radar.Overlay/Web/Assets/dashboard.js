@@ -17,6 +17,7 @@ $$('.tab').forEach(t=>t.onclick=()=>{
   if(activeTab==='director') loadDirector();
   if(activeTab==='entatlas') loadEntAtlas();
   if(activeTab==='gear') loadGear();
+  if(activeTab==='nav') NavDestinations.renderHintOrList();
 });
 
 /* ── polling (left rail vitals/zone/census) ── */
@@ -4777,6 +4778,146 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   else init();
 })();
 // OVERLAY-LAYOUTS-JS-END
+
+// v0.41 C4 Nav Destinations dashboard tab IIFE — saved position bookmarks
+const NavDestinations = (() => {
+  const NAV_CAP = 50;
+  let __navCache = [];
+
+  async function loadDestinations() {
+    try {
+      const r = await fetch('/api/nav-destinations', { cache: 'no-store' });
+      if (!r.ok) { __navCache = []; renderDestinations(); return; }
+      const j = await r.json();
+      __navCache = (j && j.destinations) || [];
+      renderDestinations();
+    } catch (e) {
+      __navCache = [];
+      renderDestinations();
+    }
+  }
+
+  async function saveDestination(dest) {
+    try {
+      const r = await fetch('/api/nav-destinations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dest)
+      });
+      if (r.ok) {
+        await loadDestinations();
+      }
+    } catch (e) {}
+  }
+
+  async function deleteDestination(id) {
+    try {
+      const r = await fetch('/api/nav-destinations/' + encodeURIComponent(id), { method: 'DELETE' });
+      if (r.ok) {
+        await loadDestinations();
+      }
+    } catch (e) {}
+  }
+
+  async function captureCurrentPosition() {
+    try {
+      const stateResp = await fetch('/api/state', { cache: 'no-store' });
+      if (!stateResp.ok) return;
+      const stateData = await stateResp.json();
+      const areaCode = stateData.areaCode || '';
+      const playerGrid = stateData.playerGrid || { x: 0, y: 0 };
+      if (!areaCode) return;
+      const newDest = {
+        zoneCode: areaCode,
+        name: 'New destination',
+        x: playerGrid.x || 0,
+        y: playerGrid.y || 0
+      };
+      __navCache.push(newDest);
+      renderDestinations();
+    } catch (e) {}
+  }
+
+  function renderDestinations() {
+    const list = document.getElementById('navList');
+    if (!list) return;
+    const chip = document.getElementById('navCapChip');
+    if (chip) {
+      chip.textContent = 'destinations: ' + __navCache.length + ' / ' + NAV_CAP;
+      chip.classList.toggle('warn', __navCache.length >= NAV_CAP * 0.8);
+      chip.classList.toggle('full', __navCache.length >= NAV_CAP);
+    }
+    if (__navCache.length === 0) {
+      list.innerHTML = '<div class="nav-empty">No destinations saved. Use "Capture current position" or add manually.</div>';
+      return;
+    }
+    list.innerHTML = __navCache.map((d, i) =>
+      '<div class="nav-row" data-i="' + i + '">' +
+      '<input class="nav-cell nav-zone" data-field="zoneCode" value="' + esc(d.zoneCode || '') + '" placeholder="zone">' +
+      '<input class="nav-cell nav-name" data-field="name" value="' + esc(d.name || '') + '" placeholder="name">' +
+      '<input class="nav-cell nav-x" type="number" data-field="x" value="' + (d.x || 0) + '" placeholder="x">' +
+      '<input class="nav-cell nav-y" type="number" data-field="y" value="' + (d.y || 0) + '" placeholder="y">' +
+      '<button class="nav-del" data-del="' + i + '">✕</button>' +
+      '</div>'
+    ).join('');
+    $$('#navList .nav-row').forEach(row => {
+      const i = +row.dataset.i;
+      row.querySelectorAll('[data-field]').forEach(fld => {
+        fld.onchange = () => {
+          const field = fld.dataset.field;
+          if (field === 'x' || field === 'y') __navCache[i][field] = parseFloat(fld.value) || 0;
+          else __navCache[i][field] = fld.value;
+          saveDestination(__navCache[i]);
+        };
+      });
+      row.querySelector('[data-del]').onclick = () => {
+        __navCache.splice(i, 1);
+        renderDestinations();
+      };
+    });
+  }
+
+  function renderHintOrList() {
+    const hintMount = document.getElementById('navDestinationHint');
+    if (!window.__supporterGate || !window.__supporterGate.isSupporter()) {
+      if (hintMount) {
+        try { window.__supporterHint.render(hintMount); } catch (e) {}
+        hintMount.hidden = false;
+      }
+      const list = document.getElementById('navList');
+      if (list) list.innerHTML = '';
+      return;
+    }
+    if (hintMount) {
+      hintMount.hidden = true;
+      hintMount.innerHTML = '';
+    }
+    loadDestinations();
+  }
+
+  function init() {
+    const newBtn = document.getElementById('btnNavNew');
+    if (newBtn) newBtn.addEventListener('click', () => {
+      if (!window.__supporterGate || !window.__supporterGate.isSupporter()) { renderHintOrList(); return; }
+      if (__navCache.length >= NAV_CAP) return;
+      __navCache.push({ zoneCode: '', name: '', x: 0, y: 0 });
+      renderDestinations();
+    });
+
+    const captureBtn = document.getElementById('btnNavCapture');
+    if (captureBtn) captureBtn.addEventListener('click', captureCurrentPosition);
+
+    document.querySelectorAll('.tab[data-tab="nav"]').forEach(t => t.addEventListener('click', () => {
+      renderHintOrList();
+    }));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+  return { renderHintOrList, loadDestinations };
+})();
+// NAV-DESTINATIONS-JS-END
 
 /* v0.41 C3 Nav Destinations overlay chip: floating discoverability strip.
    Reads saved destinations for the current zone and renders clickable chips.

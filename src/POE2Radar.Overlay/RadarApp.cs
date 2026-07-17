@@ -1755,7 +1755,7 @@ public sealed class RadarApp : IDisposable
             long currentXpForUpdate = _settings.SessionHud.ShouldReadXpRate() ? _currentXp : 0L;
             _sessionSnapshot = _session.Update(
                 snap.AreaHash,
-                snap.AreaCode,
+                snap.AreaCode ?? "",
                 snap.AreaLevel,
                 snap.CharLevel,
                 _hpPct,
@@ -1816,7 +1816,7 @@ public sealed class RadarApp : IDisposable
             : (POE2Radar.Core.Campaign.Guide.CampaignStepInstruction?)null;
         _state = new RadarState(inGame, snap.AreaHash, snap.AreaLevel, map.IsVisible, map.Zoom, player,
             snap.Entities, snap.Landmarks, _hpPct, _manaPct, _esPct,
-            snap.AreaCode, "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
+            snap.AreaCode ?? "", "", snap.CharLevel, _worldMs, _renderMs, mr.Markers, _directorQueue, _fps,
             Session: _sessionSnapshot, Health: _healthState, HealthMessage: _healthMessage, CampaignGps: _campaignGps,
             RpmPerSec: _rpmPerSec,
             CampaignGuide: campaignGuideSnapshot)
@@ -1847,7 +1847,7 @@ public sealed class RadarApp : IDisposable
             HpPct: _hpPct,
             ManaPct: _manaPct,
             EsPct: _esPct,
-            AreaCode: snap.AreaCode,
+            AreaCode: snap.AreaCode ?? "",
             CharLevel: snap.CharLevel,
             CameraMatrix: _cameraMatrix,
             CycleIndicator: (_cycleIndicator is { } ci && DateTime.UtcNow < ci.Expiry) ? ci : null,

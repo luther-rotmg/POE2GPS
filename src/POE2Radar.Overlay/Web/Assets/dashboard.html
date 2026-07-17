@@ -99,8 +99,9 @@
             <button class="tab" data-tab="cartographer">Cartographer</button>
             <button class="tab" data-tab="rules">Rule Engine</button>
             <button class="tab" data-tab="radar-filter">Radar Filter</button>
-            <button class="tab" data-tab="layouts">Layouts</button>
-        <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
+             <button class="tab" data-tab="layouts">Layouts</button>
+             <button class="tab" data-tab="nav">Nav</button>
+         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
 <!-- v0.41 hint mount points; populated by feature beads A3/B4/C4/D3 -->
@@ -1131,9 +1132,24 @@
             </div>
             <div id="loList"></div>
           </div>
-        </section>
+         </section>
 
-        <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
+         <!-- v0.41 C4 Nav Destinations dashboard tab: saved position bookmarks.
+              Consumes /api/nav-destinations (C_API) CRUD; supporter-gated via S3 __supporterHint.
+              Mount for the supporter hint is the existing #navDestinationHint div (above the views);
+              tab activation renders the hint there for non-supporters, or loads destinations for supporters. -->
+         <section class="view" data-view="nav" hidden>
+           <div class="nav-tab">
+             <div class="nav-header">
+               <button id="btnNavNew" class="btn">+ New destination</button>
+               <button id="btnNavCapture" class="btn">Capture current position</button>
+               <span id="navCapChip" class="chip">destinations: 0 / 50</span>
+             </div>
+             <div id="navList"></div>
+           </div>
+         </section>
+
+         <!-- Reach — CHOR-42 (v0.26): boss encounter cheat sheet browser. -->
         <section class="view" data-view="bosses" hidden>
           <!-- v0.30 Instinct: per-character wipe log — what am I struggling with long term? -->
           <div class="card" style="grid-column:1/-1">
