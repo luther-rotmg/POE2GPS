@@ -101,6 +101,12 @@
         <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
+<!-- v0.41 hint mount points; populated by feature beads A3/B4/C4/D3 -->
+<div id="radarFilterHint" hidden></div>
+<div id="overlayLayoutHint" hidden></div>
+<div id="navDestinationHint" hidden></div>
+<div id="sessionWidgetHint" hidden></div>
+
       <div id="cartographerHint" class="cartographer-hint" hidden>
         <span>&#x1F5FA;&#xFE0F; New in v0.40: your maps get drawn. Check the Cartographer tab.</span>
         <button type="button" id="cartographerHintClose" class="hint-close">&#x00D7;</button>
@@ -301,7 +307,8 @@
             <div class="row"><div class="rl">Supporter code<small>Paste the code emailed after your Ko&#8209;fi donation. Cosmetic-only unlock &mdash; base tool is identical for everyone. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">Ko&#8209;fi &rarr;</a></small></div>
               <input class="numin" type="text" data-set="supporterCode" placeholder="paste code here" style="width:180px;font-family:monospace">
               <span id="supporterCodeState" style="font-size:11px;color:var(--ink-faint);letter-spacing:.14em;text-transform:uppercase;margin-left:8px"></span></div>
-            <div class="row"><div class="rl">Dashboard palette<small>Supporter-only; click a swatch to preview. Falls back to Default when the code is missing.</small></div>
+            <div id="dashboardPaletteHint"></div>
+            <div id="dashboardPaletteWrap"><div class="row"><div class="rl">Dashboard palette<small>Supporter-only; click a swatch to preview. Falls back to Default when the code is missing.</small></div>
               <div style="display:flex;flex-direction:column;gap:6px">
                 <select class="numin" data-set="dashboardPalette" style="width:180px">
                   <option value="">Default</option>
@@ -327,7 +334,7 @@
                     <span id="paletteShareStatus" class="palette-share-status" aria-live="polite"></span>
                   </div>
                 </div>
-              </div></div>
+              </div></div></div>
             <div class="row"><div class="lbl">Color Forge &mdash; Preset Gallery</div>
               <div class="col" style="flex:1">
                 <div class="hint">Click a preset to clone it as an editable starting point.</div>

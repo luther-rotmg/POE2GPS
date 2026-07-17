@@ -2321,6 +2321,33 @@ loadSupporters();
   };
 })();
 
+/* v0.41 S3 SupporterHint inline card: renders a hint card into mountEl when the user
+   is not a supporter. Idempotent — safe to call repeatedly with the same element. */
+window.__supporterHint = (() => {
+  const HINT_HTML = '<div class="supporter-hint">' +
+    '<span class="supporter-hint-icon">&#x2728;</span>' +
+    '<div class="supporter-hint-body">' +
+    '<div class="supporter-hint-title">Supporter feature</div>' +
+    '<div class="supporter-hint-copy">Save your Ko-fi code in Settings to unlock this.</div>' +
+    '</div>' +
+    '<button type="button" class="supporter-hint-link" onclick="document.querySelector(\'.tab[data-tab=settings]\')?.click()">Go to Settings &rarr;</button>' +
+    '</div>';
+  return {
+    render: (mountEl) => {
+      if (!mountEl) return;
+      if (window.__supporterGate && window.__supporterGate.isSupporter()) {
+        mountEl.innerHTML = '';
+        return;
+      }
+      mountEl.innerHTML = HINT_HTML;
+    },
+    hide: (mountEl) => {
+      if (!mountEl) return;
+      mountEl.innerHTML = '';
+    }
+  };
+})();
+
 /* Palette — v0.38 (F2): load user-created palette CSS blocks from /api/palettes and inject
    them into #user-palette-styles as body[data-palette="user-<slug>"] blocks. Invoked at module load
    BEFORE applySupporterCosmetics so a persisted user palette renders on first paint. Silently
@@ -2364,6 +2391,12 @@ async function applySupporterCosmetics(){
     const effectivePalette = s.isSupporter ? ((_imp && _imp.slug) || s.dashboardPalette || '') : '';
     if (_imp && _imp.slug) { try { window.__paletteInjectImportedStyle && window.__paletteInjectImportedStyle(_imp); } catch(e){} }
     document.body.setAttribute('data-palette', effectivePalette);
+    try {
+      const paletteMount = document.getElementById('dashboardPaletteHint');
+      if (paletteMount) window.__supporterHint.render(paletteMount);
+      const paletteSel = document.querySelector('[data-set="dashboardPalette"]');
+      if (paletteSel) paletteSel.disabled = !window.__supporterGate.isSupporter();
+    } catch {}
   } catch (err) { /* silent */ }
 }
 window.__reloadUserPalettes = loadUserPalettesCss;
