@@ -39,6 +39,9 @@ if (HasFlag(args, "--aob"))
 if (HasFlag(args, "--chain"))
     return RunChainProbe(process, reader);
 
+if (HasFlag(args, "--chaindbg"))
+    return RunChainDebug(process, reader);
+
 if (HasFlag(args, "--vitals"))
     return RunVitals(process, reader);
 
@@ -7447,6 +7450,54 @@ static (nint gameState, nint inGameState, nint areaInstance, nint localPlayer) R
         }
     }
     return (0, 0, 0, 0);
+}
+
+// Verbose stage-by-stage chain walk to localize post-patch drift. Prints each AOB gameState hit,
+// every InGameState candidate (current-state vec + 12 States slots), the AreaInstance @ +0x290, and
+// scans a wide offset window inside the AreaInstance for any pointer that resolves to a "Metadata/"
+// entity (= the drifted LocalPlayer offset).
+static int RunChainDebug(ProcessHandle process, MemoryReader reader)
+{
+    Console.WriteLine("\n=== CHAIN DEBUG ===");
+    int patternIdx = 0;
+    foreach (var pattern in AobPatterns.GameStateRefs)
+    {
+        var slots = AobScanner.ScanForResolvedAddresses(process, reader, pattern).Distinct().ToList();
+        Console.WriteLine($"\nPattern[{patternIdx++}]: {slots.Count} resolved slot(s)");
+        foreach (var slot in slots)
+        {
+            var gameState = SafePtr(reader, slot);
+            Console.WriteLine($"  slot 0x{slot:X16} -> GameState 0x{gameState:X16}");
+            if (gameState == 0) continue;
+
+            var candidates = new List<(string src, nint ptr)>();
+            var vecFirst = SafePtr(reader, gameState + Poe2.GameState.CurrentStatePtr);
+            if (vecFirst != 0) candidates.Add(("CurrentStateVec[0]", SafePtr(reader, vecFirst)));
+            for (var i = 0; i < Poe2.GameState.StateSlotCount; i++)
+                candidates.Add(($"States[{i}]", SafePtr(reader, gameState + Poe2.GameState.States + (nint)(i * Poe2.GameState.StateSlotStride))));
+
+            foreach (var (src, inGameState) in candidates)
+            {
+                if (inGameState == 0) continue;
+                var areaInstance = SafePtr(reader, inGameState + Poe2.InGameState.AreaInstanceData);
+                // Only chase candidates whose +0x290 looks like a heap ptr.
+                if (areaInstance == 0) continue;
+                Console.WriteLine($"    {src,-20} InGameState 0x{inGameState:X16}  +0x{Poe2.InGameState.AreaInstanceData:X}=AreaInstance 0x{areaInstance:X16}");
+
+                // Wide scan inside the AreaInstance for the LocalPlayer pointer (metadata gate).
+                for (nint off = 0x400; off <= 0x700; off += 8)
+                {
+                    var cand = SafePtr(reader, areaInstance + off);
+                    if (cand == 0) continue;
+                    var meta = ReadEntityMetadata(reader, cand);
+                    if (meta.StartsWith("Metadata/", StringComparison.Ordinal))
+                        Console.WriteLine($"        +0x{off:X3} -> 0x{cand:X16}  ENTITY [{meta}]");
+                }
+            }
+        }
+    }
+    Console.WriteLine("\nLook for a '+0x??? ENTITY [Metadata/Characters/...]' line = the live LocalPlayer offset.");
+    return 0;
 }
 
 static int RunChainProbe(ProcessHandle process, MemoryReader reader)

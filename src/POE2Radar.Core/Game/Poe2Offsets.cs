@@ -52,26 +52,27 @@ public static class Poe2
 
     /// <summary>
     /// The big per-area container: area metadata, player, entity maps, terrain.
-    /// <para>⚠ These internal offsets drift per patch. <b>PoE2 0.5.4 inserted +0x18 (24 bytes)</b>
-    /// into this struct: every field at offset ≥ 0x580 shifted by +0x18 (ServerDataPtr 0x580→0x598,
-    /// LocalPlayer 0x5A0→0x5B8, AwakeEntities 0x6C0→0x6D8, SleepingEntities 0x6D0→0x6E8,
-    /// TerrainMetadata 0x8A0→0x8B8). The low fields (AreaInfo/Level/Hash) sit below the insertion and
-    /// were unchanged. Re-validate per patch via the Research probes (<c>--chain</c>/<c>--info</c>/
-    /// <c>--rarity</c>/<c>--find-terrain</c>).</para>
+    /// <para>⚠ These internal offsets drift per patch. Recent shifts:
+    /// <b>2026-07-16 patch</b> shifted every field at offset ≥ 0x598 by +0x08 (ServerDataPtr 0x598→0x5A0,
+    /// LocalPlayer 0x5B8→0x5C0, AwakeEntities 0x6D8→0x6E0, SleepingEntities 0x6E8→0x6F0,
+    /// TerrainMetadata 0x8B8→0x8C0). <b>PoE2 0.5.4 (2026-06-25)</b> previously inserted +0x18 (24 bytes)
+    /// into this struct at offset ≥ 0x580. The low fields (AreaInfo/Level/Hash) sit below both
+    /// insertions and were unchanged. Re-validate per patch via the Research probes
+    /// (<c>--chain</c>/<c>--chaindbg</c>/<c>--info</c>/<c>--rarity</c>/<c>--find-terrain</c>).</para>
     /// </summary>
     public static class AreaInstance
     {
         public const int AreaInfoPtr      = 0x0A0;  // ✓ → AreaInfo; +0x00 → UTF-16 "Code\0Name\0" (Code validated 'G1_town'). Below the 0.5.4 insertion — unchanged.
-        public const int LocalPlayer      = 0x5B8;  // ✓ → player Entity. Was 0x5A0; +0x18 for 0.5.4 (= ServerDataPtr+0x20).
-        public const int ServerDataPtr    = 0x598;  // ✓ → ServerData (gateway to player inventories; +0x20 here = LocalPlayer @ 0x5B8). Was 0x580; +0x18 for 0.5.4. PlayerServerDataVec @ +0x48 unchanged.
-        public const int AwakeEntities    = 0x6D8;  // ✓ StdMap of live entities (id→EntityPtr). Was 0x6C0; +0x18 for 0.5.4.
-        public const int SleepingEntities = 0x6E8;  // ✓ StdMap. Was 0x6D0; +0x18 for 0.5.4 (inferred from the uniform AreaInstance shift; confirm via --rarity).
-        public const int TerrainMetadata  = 0x8B8;  // ✓ TerrainStruct base. Was 0x8A0; +0x18 for 0.5.4 (prior-art's 0xD20 drifted).
+        public const int LocalPlayer      = 0x5C0;  // ✓ → player Entity. 2026-07-16 patch shifted +0x08 (was 0x5B8); 2026-06-25 shifted +0x18 (was 0x5A0).
+        public const int ServerDataPtr    = 0x5A0;  // ✓ → ServerData (gateway to player inventories; +0x20 here = LocalPlayer @ 0x5C0). 2026-07-16 patch shifted +0x08 (was 0x598); 2026-06-25 shifted +0x18 (was 0x580). PlayerServerDataVec @ +0x48 unchanged.
+        public const int AwakeEntities    = 0x6E0;  // ✓ StdMap of live entities (id→EntityPtr). 2026-07-16 patch shifted +0x08 (was 0x6D8); 2026-06-25 shifted +0x18 (was 0x6C0).
+        public const int SleepingEntities = 0x6F0;  // ✓ StdMap. 2026-07-16 patch shifted +0x08 (was 0x6E8); 2026-06-25 shifted +0x18 (was 0x6D0).
+        public const int TerrainMetadata  = 0x8C0;  // ✓ TerrainStruct base. 2026-07-16 patch shifted +0x08 (was 0x8B8); 2026-06-25 shifted +0x18 (was 0x8A0).
         public const int CurrentAreaLevel = 0x0C4;  // ✓ int — per-area, validated 27/32 (prior-art's 0xBC drifted). Below the 0.5.4 insertion — unchanged.
         public const int CurrentAreaHash  = 0x11C;  // ✓ uint — per-area random hash (prior-art's 0xFC drifted; +0x120 paired seed). Below the 0.5.4 insertion — unchanged.
     }
 
-    /// <summary>Entity StdMap conventions. Maps live at AreaInstance+0x6D8 (Awake) / +0x6E8 (Sleeping) on 0.5.4.</summary>
+    /// <summary>Entity StdMap conventions. Maps live at AreaInstance+0x6E0 (Awake) / +0x6F0 (Sleeping) on 2026-07-16.</summary>
     public static class EntityList
     {
         public const int StdMapSize = 0x10; // each StdMap is {Head ptr, int Size, pad} = 16 bytes
@@ -307,7 +308,7 @@ public static class Poe2
 
     /// <summary>Player inventory chain. ✓ validated live 2026-06-16 (--inventory): every inventory
     /// (equipment + backpack + flasks + stash-style) resolved with correct box dimensions and items.
-    /// Chain: AreaInstance +0x598 → ServerData; ServerData +0x48 → StdVector PlayerServerData, [0] →
+    /// Chain: AreaInstance +0x5A0 → ServerData; ServerData +0x48 → StdVector PlayerServerData, [0] →
     /// ServerDataStructure; ServerDataStructure +0x320 → StdVector PlayerInventories (InventoryArrayStruct,
     /// stride 0x18). Each InventoryArrayStruct: +0x00 int InventoryId (Inventories.dat index: 1=Main,
     /// 2=BodyArmour, 3=Weapon1, 5=Helm, 6=Amulet, 7/8=Rings, 9=Gloves, 10=Boots, 11=Belt, 12=Flask…),
@@ -397,7 +398,7 @@ public static class Poe2
     }
 
     /// <summary>
-    /// TerrainStruct (base at AreaInstance+0x8B8). Validated live: TotalTiles (54,48) → 2592 tiles
+    /// TerrainStruct (base at AreaInstance+0x8C0 as of 2026-07-16 patch). Validated live: TotalTiles (54,48) → 2592 tiles
     /// (matches TileDetails count); walkable grid 685584 bytes; BytesPerRow 621 → cellsPerRow 1242;
     /// grid 1242×1104 = (54×23)×(48×23). PoE2 has FOUR grid layers (0xD0/0xE8/0x100/0x118), so
     /// BytesPerRow sits at 0x130 — not GH2's 0x100.
