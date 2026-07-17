@@ -9,7 +9,7 @@
 <style id="user-palette-styles"></style>
 </head>
 <body>
-<a id="updateBanner" href="#" target="_blank" rel="noopener" hidden
+<a id="updateBanner" data-panel-id="dashboard-update-banner" href="#" target="_blank" rel="noopener" hidden
    style="display:none;align-items:center;gap:10px;padding:9px 16px;margin:0;background:#e0b341;color:#1a1400;font-weight:600;text-decoration:none">
   <span>&#x2B06; Update available</span><span id="updateMsg" style="font-weight:400"></span><span style="margin-left:auto;text-decoration:underline">Download &rarr;</span>
 </a>
@@ -83,7 +83,7 @@
     </aside>
 
     <main>
-      <div class="tabs">
+      <div class="tabs" data-panel-id="dashboard-nav-tabstrip">
         <button class="tab on" data-tab="filters">Rules</button>
         <button class="tab" data-tab="landmarks">Landmarks</button>
         <button class="tab" data-tab="atlas">Atlas</button>
@@ -108,7 +108,7 @@
 <div id="navDestinationHint" hidden></div>
 <div id="sessionWidgetHint" hidden></div>
 
-      <div id="cartographerHint" class="cartographer-hint" hidden>
+      <div id="cartographerHint" data-panel-id="dashboard-hint-cartographer" class="cartographer-hint" hidden>
         <span>&#x1F5FA;&#xFE0F; New in v0.40: your maps get drawn. Check the Cartographer tab.</span>
         <button type="button" id="cartographerHintClose" class="hint-close">&#x00D7;</button>
       </div>
@@ -118,7 +118,7 @@
           <div class="card" style="grid-column:1/-1">
             <h3>Display Rules <span class="tag">&middot; one ordered ruleset &mdash; first match wins</span></h3>
             <div class="row"><div class="rl hint-row">The single source of truth for how every entity draws. Each entity is matched <b>top&ndash;to&ndash;bottom</b>; the <b>first enabled rule that matches</b> decides everything &mdash; its icon &amp; color, whether it&rsquo;s hidden, whether it shows an HP bar, and whether it&rsquo;s auto-pathed. Reorder with &#9650;/&#9660; to change precedence. A rule matches on any mix of <i>type, metadata terms, monster mods (auras/buffs), rarity, reaction, life, chest/POI/encounter state</i>; a blank condition means &ldquo;any&rdquo;. No more conflicting filters &mdash; if two rules could match, the higher one wins.</div></div>
-            <div id="drList"></div>
+            <div id="drList" data-panel-id="dashboard-rules-list"></div>
             <div class="controls" style="margin:8px 0 0">
               <button class="addbtn" id="drPick" style="width:auto;margin:0;padding:9px 16px">+ Add from game data…</button>
               <button class="addbtn" id="drAdd" style="width:auto;margin:0;padding:9px 16px">+ Add blank rule</button>
@@ -308,8 +308,8 @@
             <div class="row"><div class="rl">Supporter code<small>Paste the code emailed after your Ko&#8209;fi donation. Cosmetic-only unlock &mdash; base tool is identical for everyone. <a href="https://ko-fi.com/lutherrotmg" target="_blank" rel="noopener" style="color:var(--gold-bright);text-decoration:none">Ko&#8209;fi &rarr;</a></small></div>
               <input class="numin" type="text" data-set="supporterCode" placeholder="paste code here" style="width:180px;font-family:monospace">
               <span id="supporterCodeState" style="font-size:11px;color:var(--ink-faint);letter-spacing:.14em;text-transform:uppercase;margin-left:8px"></span></div>
-            <div id="dashboardPaletteHint"></div>
-            <div id="dashboardPaletteWrap"><div class="row"><div class="rl">Dashboard palette<small>Supporter-only; click a swatch to preview. Falls back to Default when the code is missing.</small></div>
+            <div id="dashboardPaletteHint" data-panel-id="dashboard-hint-supporter"></div>
+            <div id="dashboardPaletteWrap" data-panel-id="dashboard-palette-picker"><div class="row"><div class="rl">Dashboard palette<small>Supporter-only; click a swatch to preview. Falls back to Default when the code is missing.</small></div>
               <div style="display:flex;flex-direction:column;gap:6px">
                 <select class="numin" data-set="dashboardPalette" style="width:180px">
                   <option value="">Default</option>
@@ -324,7 +324,7 @@
                   <option value="trial-ordeal">Trial Ordeal</option>
                   <option value="blight-bloom">Blight Bloom</option>
                 </select>
-                <div id="palettePreview" class="palette-preview" role="listbox" aria-label="Palette preview"></div>
+                <div id="palettePreview" data-panel-id="dashboard-palette-preview" class="palette-preview" role="listbox" aria-label="Palette preview"></div>
                 <div class="palette-share" data-forge-share>
                   <div class="palette-share-row">
                     <textarea id="paletteShareCode" class="palette-share-code" spellcheck="false" autocomplete="off" rows="2" placeholder="RUNE1-...-...  (paste a code here to import, or click Copy to share the current palette)" aria-label="Palette share code"></textarea>
@@ -339,14 +339,14 @@
             <div class="row"><div class="lbl">Color Forge &mdash; Preset Gallery</div>
               <div class="col" style="flex:1">
                 <div class="hint">Click a preset to clone it as an editable starting point.</div>
-                <div id="forgePresetGallery" class="forge-preset-gallery" role="list" aria-label="Forge preset gallery"></div>
+                <div id="forgePresetGallery" data-panel-id="dashboard-preset-gallery" class="forge-preset-gallery" role="list" aria-label="Forge preset gallery"></div>
               </div>
             </div>
             <div class="row" id="colorForgeRow">
               <div class="lbl">Color Forge</div>
               <div class="col" style="flex:1">
                 <button type="button" id="forgeToggle" class="btn">Open Color Forge</button>
-                <div id="forgePanel" class="forge-panel" hidden>
+                <div id="forgePanel" data-panel-id="dashboard-forge-panel" class="forge-panel" hidden>
                   <div class="forge-header">
                     <input type="text" id="forgeName" class="numin" placeholder="Preset name (e.g. midnight-forge)" maxlength="32" style="width:220px">
                     <select id="forgeLoad" class="numin" style="width:200px"><option value="">Load from&hellip;</option></select>
@@ -1010,7 +1010,7 @@
         </section>
 
         <!-- CODEX-PANEL-START -->
-        <section class="view" data-view="codex" data-panel="codex" hidden>
+        <section class="view" data-view="codex" data-panel="codex" data-panel-id="dashboard-codex-tab" hidden>
           <div class="codex-controls">
             <label>Character <input type="text" id="codex-character-input" maxlength="40" pattern="[A-Za-z0-9_-]{1,40}"></label>
             <button type="button" id="codex-load-btn">Load</button>
@@ -1036,7 +1036,7 @@
               <label>Zone <select id="cartoZoneSelect"></select></label>
               <span id="cartoInfo"></span>
             </div>
-            <canvas id="cartoCanvas" width="512" height="512" class="carto-canvas"></canvas>
+            <canvas id="cartoCanvas" data-panel-id="dashboard-cartographer-canvas" width="512" height="512" class="carto-canvas"></canvas>
             <div class="carto-playback">
               <button type="button" id="cartoPlay" class="carto-btn">Play</button>
               <button type="button" id="cartoPause" class="carto-btn" hidden>Pause</button>
@@ -1111,7 +1111,7 @@
               <button id="btnRfNewPreset" class="btn">+ New preset</button>
               <span id="rfCapChip" class="chip"></span>
             </div>
-            <div id="rfPresetList"></div>
+            <div id="rfPresetList" data-panel-id="dashboard-radar-filter-list"></div>
           </div>
         </section>
 

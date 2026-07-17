@@ -2321,6 +2321,14 @@ loadSupporters();
   };
 })();
 
+/* v0.41 B2 Panel inventory: enumerate and query [data-panel-id] elements. */
+(() => {
+  window.__panelInventory = {
+    list: () => Array.from(document.querySelectorAll('[data-panel-id]')).map(el => el.getAttribute('data-panel-id')).filter(Boolean),
+    get: (slug) => document.querySelector('[data-panel-id="' + slug + '"]')
+  };
+})();
+
 /* v0.41 S3 SupporterHint inline card: renders a hint card into mountEl when the user
    is not a supporter. Idempotent — safe to call repeatedly with the same element. */
 window.__supporterHint = (() => {
