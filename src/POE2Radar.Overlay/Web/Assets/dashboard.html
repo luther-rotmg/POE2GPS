@@ -1024,6 +1024,20 @@
               <span id="cartoInfo"></span>
             </div>
             <canvas id="cartoCanvas" width="512" height="512" class="carto-canvas"></canvas>
+            <div class="carto-playback">
+              <button type="button" id="cartoPlay" class="carto-btn">Play</button>
+              <button type="button" id="cartoPause" class="carto-btn" hidden>Pause</button>
+              <button type="button" id="cartoFirst" class="carto-btn">|&lt;&lt;</button>
+              <button type="button" id="cartoLast" class="carto-btn">&gt;&gt;|</button>
+              <input type="range" id="cartoScrub" min="0" max="0" value="0" style="flex:1">
+              <select id="cartoSpeed">
+                <option value="1">1x</option>
+                <option value="4">4x</option>
+                <option value="16">16x</option>
+                <option value="max">Max</option>
+              </select>
+              <span id="cartoTimestamp">0.0s</span>
+            </div>
           </div>
         </section>
 

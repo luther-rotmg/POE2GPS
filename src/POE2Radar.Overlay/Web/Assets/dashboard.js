@@ -3563,6 +3563,16 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   const zoneCache = new Map();   // character -> zones[]
   const tracksCache = new Map();  // "character|zone" -> samples[]
 
+  // P5 route replay state
+  let _playbackIndex = 0;
+  let _playing = false;
+  let _speedMode = '1';
+  const SPEED_PRESETS = ['1', '4', '16', 'max'];
+  let _rafHandle = null;
+  let _heatmapCache = null;       // cached heatmap ImageBitmap or offscreen canvas
+  let _heatmapSamples = null;     // samples used for the cached heatmap
+  let _currentSamples = null;     // currently loaded samples for route rendering
+
   function setInfo(msg) { if (info) info.textContent = msg; }
 
   function clearCanvas() {
@@ -3625,16 +3635,35 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   }
 
   function loadTracks(character, zone) {
+    stopPlayback();
+    _playbackIndex = 0;
+    _heatmapCache = null;
+    _heatmapSamples = null;
+    _currentSamples = null;
+    const scrub = document.getElementById('cartoScrub');
+    if (scrub) { scrub.min = '0'; scrub.max = '0'; scrub.value = '0'; }
+    const tsEl = document.getElementById('cartoTimestamp');
+    if (tsEl) tsEl.textContent = '0.0s';
     if (!character || !zone) { clearCanvas(); setInfo(''); return; }
     const key = character + '|' + zone;
-    if (tracksCache.has(key)) { renderHeatmap(tracksCache.get(key), canvas); return; }
+    if (tracksCache.has(key)) { 
+      const samples = tracksCache.get(key);
+      _currentSamples = samples;
+      renderHeatmap(samples, canvas);
+      const scrub = document.getElementById('cartoScrub');
+      if (scrub && samples.length > 0) { scrub.min = '0'; scrub.max = String(samples.length - 1); scrub.value = '0'; }
+      return;
+    }
     try {
       fetch('/api/tracks?character=' + encodeURIComponent(character) + '&zone=' + encodeURIComponent(zone))
         .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(j => {
           const samples = Array.isArray(j.samples) ? j.samples : [];
           tracksCache.set(key, samples);
+          _currentSamples = samples;
           renderHeatmap(samples, canvas);
+          const scrub = document.getElementById('cartoScrub');
+          if (scrub && samples.length > 0) { scrub.min = '0'; scrub.max = String(samples.length - 1); scrub.value = '0'; }
         })
         .catch(() => { clearCanvas(); setInfo('no data'); });
     } catch (e) { clearCanvas(); setInfo('no data'); }
@@ -3691,6 +3720,135 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
       c2d.fillRect(cx * CELL, cy * CELL, CELL, CELL);
     }
     setInfo(samples.length + ' samples');
+    // Cache the heatmap render for route overlay (offscreen canvas)
+    const offscreen = document.createElement('canvas');
+    offscreen.width = canvas.width;
+    offscreen.height = canvas.height;
+    const offCtx = offscreen.getContext('2d');
+    if (offCtx) {
+      offCtx.drawImage(canvas, 0, 0);
+      _heatmapCache = offscreen;
+    }
+    _heatmapSamples = samples;
+  }
+
+  // P5 route replay: draws a dotted path from sample[0] to sample[currentIndex] + marker
+  function renderRoute(samples, index, canvas) {
+    if (!canvas) return;
+    const c2d = canvas.getContext('2d');
+    if (!c2d) return;
+    if (!samples || samples.length === 0 || index < 0 || index >= samples.length) return;
+
+    // Render cached heatmap base (if available)
+    if (_heatmapCache) {
+      c2d.clearRect(0, 0, canvas.width, canvas.height);
+      c2d.drawImage(_heatmapCache, 0, 0);
+    }
+
+    // Normalize coordinates to grid space (same as heatmap projection)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const s of samples) {
+      if (s.x < minX) minX = s.x;
+      if (s.y < minY) minY = s.y;
+      if (s.x > maxX) maxX = s.x;
+      if (s.y > maxY) maxY = s.y;
+    }
+    const rangeX = (maxX - minX) || 1;
+    const rangeY = (maxY - minY) || 1;
+
+    function toGrid(s) {
+      return {
+        gx: Math.min(GRID - 1, Math.max(0, Math.floor(((s.x - minX) / rangeX) * GRID))) * CELL + CELL / 2,
+        gy: Math.min(GRID - 1, Math.max(0, Math.floor(((s.y - minY) / rangeY) * GRID))) * CELL + CELL / 2
+      };
+    }
+
+    c2d.save();
+    c2d.globalAlpha = 0.85;
+
+    // Draw dotted path from 0 to index
+    c2d.beginPath();
+    c2d.strokeStyle = '#f5c94f';
+    c2d.lineWidth = 1.5;
+    c2d.setLineDash([3, 4]);
+    const start = toGrid(samples[0]);
+    c2d.moveTo(start.gx, start.gy);
+    for (let i = 1; i <= index; i++) {
+      const p = toGrid(samples[i]);
+      c2d.lineTo(p.gx, p.gy);
+    }
+    c2d.stroke();
+
+    // Draw marker at currentIndex
+    const mp = toGrid(samples[index]);
+    c2d.setLineDash([]);
+    c2d.fillStyle = '#f5c94f';
+    c2d.beginPath();
+    c2d.arc(mp.gx, mp.gy, 4, 0, Math.PI * 2);
+    c2d.fill();
+
+    c2d.restore();
+
+    // Update timestamp
+    const tsEl = document.getElementById('cartoTimestamp');
+    if (tsEl) tsEl.textContent = (samples[index].t / 1000).toFixed(1) + 's';
+  }
+
+  function stopPlayback() {
+    if (_rafHandle) {
+      cancelAnimationFrame(_rafHandle);
+      _rafHandle = null;
+    }
+    _playing = false;
+    const playBtn = document.getElementById('cartoPlay');
+    const pauseBtn = document.getElementById('cartoPause');
+    if (playBtn) playBtn.hidden = false;
+    if (pauseBtn) pauseBtn.hidden = true;
+  }
+
+  function startPlayback() {
+    const samples = _currentSamples;
+    if (!samples || samples.length === 0) return;
+    // If at end, reset to start
+    if (_playbackIndex >= samples.length - 1) {
+      _playbackIndex = 0;
+    }
+    stopPlayback();
+    _playing = true;
+    const playBtn = document.getElementById('cartoPlay');
+    const pauseBtn = document.getElementById('cartoPause');
+    if (playBtn) playBtn.hidden = true;
+    if (pauseBtn) pauseBtn.hidden = false;
+
+    function tick() {
+      if (!_playing) return;
+      const sp = _currentSamples;
+      if (!sp || sp.length === 0) { stopPlayback(); return; }
+
+      let advance;
+      if (_speedMode === 'max') {
+        advance = 1; // 1 sample per frame
+      } else {
+        const speed = parseInt(_speedMode, 10) || 1;
+        advance = Math.max(1, Math.round(speed / 60));
+      }
+
+      _playbackIndex = Math.min(_playbackIndex + advance, sp.length - 1);
+      renderRoute(sp, _playbackIndex, canvas);
+
+      // Update scrub slider
+      const scrub = document.getElementById('cartoScrub');
+      if (scrub) scrub.value = _playbackIndex;
+
+      if (_playbackIndex >= sp.length - 1) {
+        stopPlayback();
+        return;
+      }
+
+      _rafHandle = requestAnimationFrame(tick);
+    }
+
+    _rafHandle = requestAnimationFrame(tick);
   }
 
   // ── wire-up (runs once on script load) ──
@@ -3701,6 +3859,49 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
     document.querySelectorAll('.tab[data-tab="cartographer"]').forEach(t => t.addEventListener('click', () => {
       if (!__loaded) { __loaded = true; loadCharacters(); }
     }));
+
+    // P5 playback controls
+    const playBtn = document.getElementById('cartoPlay');
+    if (playBtn) playBtn.addEventListener('click', startPlayback);
+
+    const pauseBtn = document.getElementById('cartoPause');
+    if (pauseBtn) pauseBtn.addEventListener('click', stopPlayback);
+
+    const firstBtn = document.getElementById('cartoFirst');
+    if (firstBtn) firstBtn.addEventListener('click', () => {
+      const samples = _currentSamples;
+      if (!samples || samples.length === 0) return;
+      stopPlayback();
+      _playbackIndex = 0;
+      renderRoute(samples, 0, canvas);
+      const scrub = document.getElementById('cartoScrub');
+      if (scrub) scrub.value = '0';
+    });
+
+    const lastBtn = document.getElementById('cartoLast');
+    if (lastBtn) lastBtn.addEventListener('click', () => {
+      const samples = _currentSamples;
+      if (!samples || samples.length === 0) return;
+      stopPlayback();
+      _playbackIndex = samples.length - 1;
+      renderRoute(samples, _playbackIndex, canvas);
+      const scrub = document.getElementById('cartoScrub');
+      if (scrub) scrub.value = String(_playbackIndex);
+    });
+
+    const scrub = document.getElementById('cartoScrub');
+    if (scrub) scrub.addEventListener('input', () => {
+      const samples = _currentSamples;
+      if (!samples || samples.length === 0) return;
+      stopPlayback();
+      _playbackIndex = parseInt(scrub.value, 10);
+      renderRoute(samples, _playbackIndex, canvas);
+    });
+
+    const speedSel = document.getElementById('cartoSpeed');
+    if (speedSel) speedSel.addEventListener('change', () => {
+      _speedMode = speedSel.value;
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
