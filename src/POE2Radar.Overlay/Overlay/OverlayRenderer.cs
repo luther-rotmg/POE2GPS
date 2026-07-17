@@ -108,6 +108,9 @@ public sealed class OverlayRenderer : IDisposable
     private readonly Dictionary<Web.DisplayRule, Color4> _ruleColorMemo = new(ReferenceEqualityComparer.Instance);
     private int _ruleColorGen = -1;
 
+    // R3.1: render-thread stopwatch for pulse effect alpha modulation.
+    private readonly System.Diagnostics.Stopwatch _renderStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
     public OverlayRenderer(OverlayWindow window) { _window = window; }
 
     private void EnsureResources()
@@ -1674,8 +1677,16 @@ public sealed class OverlayRenderer : IDisposable
                 }
                 if (hide) continue;
 
+                // R3.1: check for ring/label/pulse effects before drawing
+                RuleEffectApplier.HasEffect<RingEffect>(reEffects, out var ringE);
+                RuleEffectApplier.HasEffect<LabelEffect>(reEffects, out var labelE);
+                RuleEffectApplier.HasEffect<PulseEffect>(reEffects, out var pulseE);
+
                 var p = Project(new NumVec2(e.Grid.X, e.Grid.Y), player, center, scale);
                 _bStyle!.Color = GetRuleColor(rule);   // D2: memoized (base color)
+                // R3.1: pulse modulates the base color's alpha (before tint override)
+                if (pulseE is not null)
+                    _bStyle.Color = RuleEffectApplier.ApplyPulseAlpha(_bStyle.Color, pulseE, _renderStopwatch.ElapsedMilliseconds);
                 if (tint.HasValue)
                     _bStyle.Color = tint.Value;         // TintEffect overrides base color
                 var iconEntry = _entityIconRegistry?.Resolve(e.Category, e.Rarity, e.Metadata);
@@ -1699,8 +1710,21 @@ public sealed class OverlayRenderer : IDisposable
                 {
                     DrawIcon(rt, rule.Shape, p, rule.Size, _bStyle, filled: true);
                 }
-                if (!string.IsNullOrEmpty(rule.Label))
-                    rt.DrawText(rule.Label, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
+                // R3.1: ring effect — draw ellipse around entity after icon, restore brush color
+                if (ringE is not null)
+                {
+                    var ringColor = RuleEffectApplier.HexToColor4(ringE.Color);
+                    var prevColor = _bStyle.Color;
+                    _bStyle.Color = ringColor;
+                    rt.DrawEllipse(new Ellipse(new System.Numerics.Vector2(p.X, p.Y), rule.Size * 1.4f, rule.Size * 1.4f), _bStyle, 2f);
+                    _bStyle.Color = prevColor;
+                }
+                // R3.1: label effect — override rule.Label with expanded tokens
+                var effectiveLabel = labelE is not null
+                    ? RuleEffectApplier.ExpandLabelTokens(labelE.Text, entityView, snapView)
+                    : rule.Label;
+                if (!string.IsNullOrEmpty(effectiveLabel))
+                    rt.DrawText(effectiveLabel, _tf!, new Rect(p.X + 7, p.Y - 7, p.X + 240, p.Y + 9), _bStyle, DrawTextOptions.Clip);
             }
         }
         catch (System.InvalidOperationException) { /* concurrent modification during render — drop remaining dots this frame */ }
