@@ -4345,3 +4345,89 @@ document.getElementById('btnSaveSessionPng')?.addEventListener('click', saveSess
   else init();
 })();
 // RADAR-FILTER-JS-END
+
+/* v0.41 B3 Zone-Aware Layouts auto-swap: polls /api/state every 2 seconds,
+   on zone change applies the matching overlay-layout preset (supporter-gated). */
+(() => {
+  let _lastAppliedZone = null;
+  let _layoutsCache = null;
+  let _pollTimer = null;
+
+  async function refreshLayouts() {
+    try {
+      const r = await fetch('/api/overlay-layouts', { cache: 'no-store' });
+      if (!r.ok) return;
+      _layoutsCache = await r.json();
+    } catch (e) { /* silent */ }
+  }
+
+  function matchZone(pattern, zoneCode) {
+    if (!pattern || !zoneCode) return false;
+    const escaped = pattern
+      .replace(/\*/g, '\x00STAR\x00')
+      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\x00STAR\x00/g, '.*');
+    return new RegExp('^' + escaped + '$', 'i').test(zoneCode);
+  }
+
+  function applyLayoutForZone(zoneCode) {
+    try {
+      if (!window.__supporterGate || !window.__supporterGate.isSupporter()) return;
+      if (!_layoutsCache || !_layoutsCache.presets || !_layoutsCache.presets.length) return;
+      const preset = _layoutsCache.presets.find(p => matchZone(p.match, zoneCode));
+      if (!preset || !preset.panels) {
+        // No preset matches current zone: reset all panels to CSS default
+        const allPanels = window.__panelInventory && window.__panelInventory.list();
+        if (allPanels) {
+          allPanels.forEach(slug => {
+            const el = window.__panelInventory.get(slug);
+            if (el) {
+              el.style.display = '';
+              el.style.transform = '';
+            }
+          });
+        }
+        return;
+      }
+      for (const [slug, panelState] of Object.entries(preset.panels)) {
+        const el = window.__panelInventory.get(slug);
+        if (!el) continue;
+        if (panelState.Visible === false) {
+          el.style.display = 'none';
+        } else if (panelState.Visible === true) {
+          el.style.display = '';
+        }
+        if (panelState.X != null || panelState.Y != null) {
+          const x = panelState.X != null ? panelState.X : 0;
+          const y = panelState.Y != null ? panelState.Y : 0;
+          el.style.transform = 'translate(' + x + 'px, ' + y + 'px)';
+        }
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  async function pollZoneAndApply() {
+    try {
+      const r = await fetch('/api/state', { cache: 'no-store' });
+      if (!r.ok) return;
+      const s = await r.json();
+      const areaCode = s.areaCode || '';
+      if (areaCode !== _lastAppliedZone) {
+        _lastAppliedZone = areaCode;
+        applyLayoutForZone(areaCode);
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  // Startup: ensure supporter gate is fresh, fetch layouts, run initial zone check, then poll.
+  (async () => {
+    if (window.__supporterGate) {
+      try { await window.__supporterGate.refresh(); } catch (e) {}
+    }
+    await refreshLayouts();
+    await pollZoneAndApply();
+    _pollTimer = setInterval(pollZoneAndApply, 2000);
+  })();
+
+  window.__reloadOverlayLayouts = refreshLayouts;
+})();
