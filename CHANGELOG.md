@@ -3,6 +3,18 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.3] — 2026-07-17 "Atlas Detection Fix"
+
+*The web UI wrongly said "atlas closed" for anyone whose UI child structure drifted with the 2026-07-16 game patch. Auto-recovers now.*
+
+### Fixed
+
+- 🗺 **Atlas open-detection auto-recovers from UI child-index drift.** The atlas panel lives at `UiRoot` child index 22 (validated 2026-06-08); today's game patch (same one v0.40.1 chased for AreaInstance offsets) shifted UI children on some setups so index 22 no longer points at it — result: "atlas closed — open it in-game + Refresh" even when the atlas is wide open. Fix: `AtlasPanelOpen()` now checks the 18-child signature at the primary index, and if it doesn't match, scans ±6 neighbor indices for the panel. First success is cached; subsequent calls hit the fast path. Fail-safe: still degrades to "closed" if the panel truly isn't findable (no per-tick BFS).
+
+### Upgrade
+
+Recommended if you saw "atlas closed" reported despite having the atlas open in-game.
+
 ## [0.41.2] — 2026-07-17 "Scrollable Tabstrip"
 
 *Fix for the v0.41.0 tabstrip overflow.*

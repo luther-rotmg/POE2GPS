@@ -846,16 +846,62 @@ public sealed class Poe2Atlas
     /// the atlas is closed. The atlas panel is a persistent UiRoot child at a fixed index
     /// (<see cref="Poe2.AtlasPanel.UiRootChildIndex"/>) whose visible bit toggles with the panel — so this
     /// is ~4 reads. Validates the indexed element is a real UiElement (Self==self) first; returns false on
-    /// any read failure (fail-safe: a drifted index degrades to feature-off, not a per-tick BFS).</summary>
+    /// any read failure (fail-safe: a drifted index degrades to feature-off, not a per-tick BFS).
+    /// <para>v0.41.3 defensive fallback: if the primary child at <see cref="Poe2.AtlasPanel.UiRootChildIndex"/>
+    /// doesn't have the atlas panel's <see cref="Poe2.AtlasPanel.ExpectedChildCount"/> (18) signature, scan
+    /// a small window of neighboring child indices for one that does — patch-day child-index drift
+    /// (2026-07-16 game patch drifted this by +1 for some users) auto-recovers without a full BFS.
+    /// The neighbor cache <c>_lastFoundAtlasChildIndex</c> is preferred on subsequent calls; the primary
+    /// index is only retried once per zone change.</para></summary>
+    private int _lastFoundAtlasChildIndex = -1;
     private bool AtlasPanelOpen(nint uiRoot)
     {
         if (uiRoot == 0) return false;
         var first = Ptr(uiRoot + Poe2.UiElement.Children);
         if (first == 0) return false;
-        var panel = Ptr(first + (nint)(Poe2.AtlasPanel.UiRootChildIndex * 8));
-        if (panel == 0 || Ptr(panel + Poe2.UiElement.Self) != panel) return false;   // not a UiElement
+
+        // Fast path: use cached auto-discovered index if we have one; else the hardcoded primary index.
+        var primary = _lastFoundAtlasChildIndex >= 0 ? _lastFoundAtlasChildIndex : Poe2.AtlasPanel.UiRootChildIndex;
+        if (TryReadPanelVisibleBit(first, primary, out var visPrimary, out var isSignaturePrimary))
+        {
+            if (isSignaturePrimary) { _lastFoundAtlasChildIndex = primary; return visPrimary; }
+        }
+
+        // Slow path (patch-day drift): scan a ±6 window around the primary index for the signature match.
+        // 18-child count is a strong signature per Poe2.AtlasPanel.ExpectedChildCount docs; the true atlas
+        // panel is a *persistent* direct child so it always exists at *some* nearby index.
+        var basis = Poe2.AtlasPanel.UiRootChildIndex;
+        for (int offset = 1; offset <= 6; offset++)
+        {
+            foreach (var candidate in new[] { basis + offset, basis - offset })
+            {
+                if (candidate < 0) continue;
+                if (TryReadPanelVisibleBit(first, candidate, out var vis, out var isSig) && isSig)
+                {
+                    _lastFoundAtlasChildIndex = candidate;
+                    return vis;
+                }
+            }
+        }
+        return false;
+    }
+
+    private bool TryReadPanelVisibleBit(nint firstChildPtr, int index, out bool visible, out bool matchesSignature)
+    {
+        visible = false; matchesSignature = false;
+        var panel = Ptr(firstChildPtr + (nint)(index * 8));
+        if (panel == 0 || Ptr(panel + Poe2.UiElement.Self) != panel) return false;
+
+        // Signature: this element has exactly ExpectedChildCount (18) children.
+        var childBegin = Ptr(panel + Poe2.UiElement.Children);
+        var childEnd   = Ptr(panel + Poe2.UiElement.ChildrenEnd);
+        if (childBegin == 0 || childEnd == 0) return false;
+        var childCount = (int)((childEnd - childBegin) / 8);
+        matchesSignature = (childCount == Poe2.AtlasPanel.ExpectedChildCount);
+
         if (!_reader.TryReadStruct<uint>(panel + Poe2.UiElement.Flags, out var fl)) return false;
-        return ((fl >> Poe2.UiElement.FlagVisibleBit) & 1) != 0;
+        visible = ((fl >> Poe2.UiElement.FlagVisibleBit) & 1) != 0;
+        return true;
     }
 
     /// <summary>True iff the element and all ancestors (via Parent +0xB8) have the local visible bit set
