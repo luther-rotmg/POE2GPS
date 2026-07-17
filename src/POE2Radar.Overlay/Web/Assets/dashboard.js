@@ -4969,3 +4969,169 @@ const NavDestinations = (() => {
   // Module-scoped 2s poll interval
   setInterval(refreshNavDestChips, 2000);
 })();
+
+/* ── v0.41 D3 Session Widget: floating metric chip strip + dashboard editor.
+     Renders selected metric chips into #sessionWidget (positioned fixed overlay).
+     Supporter-gated — non-supporters see nothing via the widget render, and the
+     dashboard editor tab shows a supporter hint instead. ── */
+(() => {
+  const CHIP_DEFS = {
+    'drops':               { label: 'Drops',       field: ['session','dropCount'] },
+    'xp-gained':           { label: 'XP gained',   field: ['session','sessionXpDelta'] },
+    'bosses-killed':       { label: 'Bosses',      field: ['session','bossesKilledThisSession'] },
+    'deaths':              { label: 'Deaths',      field: ['session','deaths'] },
+    'time-in-zone':        { label: 'Time in zone',field: ['session','zoneElapsed'] },
+    'avg-map-clear-time':  { label: 'Maps/hr',     field: ['session','mapsPerHour'] },
+  };
+
+  function resolveField(obj, path) {
+    for (const seg of path) {
+      if (obj == null) return null;
+      obj = obj[seg];
+    }
+    return obj;
+  }
+
+  function formatChipValue(id, raw) {
+    if (raw == null) return '—';
+    switch (id) {
+      case 'time-in-zone': {
+        const s = parseInt(raw, 10);
+        if (isNaN(s)) return String(raw);
+        const m = Math.floor(s / 60);
+        const sec = s % 60;
+        return m + 'm ' + sec + 's';
+      }
+      case 'avg-map-clear-time': {
+        const v = parseFloat(raw);
+        return isNaN(v) ? '—' : v.toFixed(1);
+      }
+      default: return String(raw);
+    }
+  }
+
+  function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  async function fetchConfig() {
+    try {
+      const r = await fetch('/api/session-widget', { cache: 'no-store' });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) { return null; }
+  }
+
+  async function refreshWidget() {
+    try {
+      // Supporter gate: early return + hide
+      if (!window.__supporterGate || !window.__supporterGate.isSupporter()) {
+        const mount = document.getElementById('sessionWidget');
+        if (mount) mount.hidden = true;
+        return;
+      }
+
+      // Fetch config and state
+      const [config, stateData] = await Promise.all([
+        fetchConfig(),
+        fetch('/api/state', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null)
+      ]);
+
+      const chips = (config && config.chips) || [];
+      const mount = document.getElementById('sessionWidget');
+      if (!mount) return;
+
+      if (!chips.length || !stateData) {
+        mount.hidden = true;
+        return;
+      }
+
+      const x = (config && config.x != null) ? config.x : 12;
+      const y = (config && config.y != null) ? config.y : 12;
+      mount.style.left = x + 'px';
+      mount.style.top = y + 'px';
+
+      mount.innerHTML = chips.map(id => {
+        const def = CHIP_DEFS[id];
+        if (!def) return '';
+        const raw = resolveField(stateData, def.field);
+        const val = formatChipValue(id, raw);
+        return '<span class="sw-chip"><span class="sw-label">' + esc(def.label) + ':</span> <span class="sw-value">' + esc(val) + '</span></span>';
+      }).join('');
+
+      mount.hidden = false;
+    } catch (e) {
+      const mount = document.getElementById('sessionWidget');
+      if (mount) mount.hidden = true;
+    }
+  }
+
+  async function loadWidgetEditor() {
+    const config = await fetchConfig();
+    const chips = (config && config.chips) || [];
+    document.querySelectorAll('[data-widget-chip]').forEach(cb => {
+      cb.checked = chips.indexOf(cb.getAttribute('data-widget-chip')) >= 0;
+    });
+    const xInp = document.getElementById('widgetX');
+    const yInp = document.getElementById('widgetY');
+    if (xInp) xInp.value = (config && config.x != null) ? config.x : 12;
+    if (yInp) yInp.value = (config && config.y != null) ? config.y : 12;
+  }
+
+  async function saveWidgetEditor() {
+    const chips = [];
+    document.querySelectorAll('[data-widget-chip]:checked').forEach(cb => {
+      chips.push(cb.getAttribute('data-widget-chip'));
+    });
+    const x = parseInt(document.getElementById('widgetX')?.value, 10) || 0;
+    const y = parseInt(document.getElementById('widgetY')?.value, 10) || 0;
+    const body = { chips, x, y };
+    try {
+      const r = await fetch('/api/session-widget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const status = document.getElementById('widgetStatus');
+      if (r.ok) {
+        if (status) { status.textContent = '✓ Saved'; status.className = 'widget-status ok'; }
+        refreshWidget();
+      } else {
+        if (status) { status.textContent = 'Save failed'; status.className = 'widget-status err'; }
+      }
+    } catch (e) {
+      const status = document.getElementById('widgetStatus');
+      if (status) { status.textContent = 'Save failed (network)'; status.className = 'widget-status err'; }
+    }
+  }
+
+  function renderHintOrEditor() {
+    const hintMount = document.getElementById('sessionWidgetHint');
+    if (!window.__supporterGate || !window.__supporterGate.isSupporter()) {
+      if (hintMount) {
+        try { window.__supporterHint.render(hintMount); } catch (e) {}
+        hintMount.hidden = false;
+      }
+      return;
+    }
+    if (hintMount) {
+      hintMount.hidden = true;
+      hintMount.innerHTML = '';
+    }
+    loadWidgetEditor();
+  }
+
+  // ── wire-up ──
+  function init() {
+    const saveBtn = document.getElementById('btnWidgetSave');
+    if (saveBtn) saveBtn.addEventListener('click', saveWidgetEditor);
+
+    document.querySelectorAll('.tab[data-tab="widget"]').forEach(t => t.addEventListener('click', () => {
+      renderHintOrEditor();
+    }));
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+
+  // 2s poll for widget refresh
+  setInterval(refreshWidget, 2000);
+})();

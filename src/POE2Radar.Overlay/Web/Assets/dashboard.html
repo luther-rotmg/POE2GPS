@@ -101,6 +101,7 @@
             <button class="tab" data-tab="radar-filter">Radar Filter</button>
              <button class="tab" data-tab="layouts">Layouts</button>
              <button class="tab" data-tab="nav">Nav</button>
+             <button class="tab" data-tab="widget">Widget</button>
          <a class="dlink" href="https://discord.gg/32qdzWRja3" target="_blank" rel="noopener" title="Join the POE2GPS Discord">&#128172; Discord</a>
       </div>
 
@@ -109,6 +110,7 @@
 <div id="overlayLayoutHint" hidden></div>
 <div id="navDestinationHint" hidden></div>
 <div id="sessionWidgetHint" hidden></div>
+<div id="sessionWidget" class="session-widget" hidden></div>
 
       <div id="cartographerHint" data-panel-id="dashboard-hint-cartographer" class="cartographer-hint" hidden>
         <span>&#x1F5FA;&#xFE0F; New in v0.40: your maps get drawn. Check the Cartographer tab.</span>
@@ -1146,6 +1148,38 @@
                <span id="navCapChip" class="chip">destinations: 0 / 50</span>
              </div>
              <div id="navList"></div>
+           </div>
+         </section>
+
+         <!-- v0.41 D3 Session Widget dashboard tab: floating metric chip strip + editor.
+              Consumes /api/session-widget (D_API) CRUD; supporter-gated via S3 __supporterHint.
+              Mount for the supporter hint is the existing #sessionWidgetHint div (above the views);
+              tab activation renders the hint there for non-supporters, or loads the editor for supporters. -->
+         <section class="view" data-view="widget" hidden>
+           <div class="widget-tab">
+             <div class="widget-header">
+               <span class="widget-title">Session Widget</span>
+             </div>
+             <div id="widgetEditor">
+               <div class="widget-section-title">Metric chips to show</div>
+               <div class="widget-chip-list">
+                 <label class="widget-editor-row"><input type="checkbox" data-widget-chip="drops"> Drop count</label>
+                 <label class="widget-editor-row"><input type="checkbox" data-widget-chip="xp-gained"> XP gained</label>
+                 <label class="widget-editor-row"><input type="checkbox" data-widget-chip="bosses-killed"> Bosses killed</label>
+                 <label class="widget-editor-row"><input type="checkbox" data-widget-chip="deaths"> Deaths</label>
+                 <label class="widget-editor-row"><input type="checkbox" data-widget-chip="time-in-zone"> Time in zone</label>
+                 <label class="widget-editor-row"><input type="checkbox" data-widget-chip="avg-map-clear-time"> Avg map clear time</label>
+               </div>
+               <div class="widget-section-title">Position</div>
+               <div class="widget-position-row">
+                 <label>X <input type="number" id="widgetX" class="numin" value="12"></label>
+                 <label>Y <input type="number" id="widgetY" class="numin" value="12"></label>
+               </div>
+               <div class="widget-save-row">
+                 <button id="btnWidgetSave" class="btn">Save</button>
+                 <span id="widgetStatus" class="widget-status"></span>
+               </div>
+             </div>
            </div>
          </section>
 

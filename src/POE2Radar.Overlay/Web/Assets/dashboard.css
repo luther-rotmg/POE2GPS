@@ -721,3 +721,51 @@
    /* v0.41 C3 Nav Destinations overlay chip: floating discoverability strip */
   .nav-dest-chips { position: fixed; top: 12px; right: 12px; z-index: 900; display: flex; flex-direction: column; gap: 4px; }
   .nav-dest-chip { background: var(--panel); border: 1px solid var(--gold); color: var(--gold); padding: 4px 10px; border-radius: 12px; font-size: 12px; }
+
+/* v0.41 D3 Session Widget: floating chip strip over the game window */
+.session-widget {
+  position: fixed;
+  z-index: 899;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+.session-widget[hidden] { display: none; }
+.sw-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border: 1px solid var(--gold-deep);
+  border-radius: 12px;
+  background: rgba(200,160,73,.08);
+  color: var(--gold);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.sw-chip .sw-label { color: var(--ink-dim); }
+.sw-chip .sw-value { color: var(--gold-bright); font-weight: 600; }
+
+/* Widget dashboard editor tab */
+.widget-tab { display: flex; flex-direction: column; gap: 14px; }
+.widget-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.widget-title { font-family: 'Cinzel','Georgia',serif; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+.widget-section-title { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--gold-bright); font-weight: 600; margin: 8px 0 4px; }
+.widget-chip-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border: 1px solid var(--line-soft); border-radius: 3px; background: var(--panel2); }
+.widget-editor-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink); cursor: pointer; }
+.widget-editor-row input[type="checkbox"] { cursor: pointer; }
+.widget-position-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+.widget-position-row label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-dim); }
+.widget-position-row .numin { width: 72px; }
+.widget-save-row { display: flex; align-items: center; gap: 10px; padding-top: 6px; }
+.widget-save-row .btn { background: var(--panel2); color: var(--gold-bright); border: 1px solid var(--gold-deep); padding: 7px 16px; cursor: pointer; border-radius: 2px; font-family: inherit; font-size: 12px; }
+.widget-save-row .btn:hover { background: var(--gold-deep); color: var(--bg); }
+.widget-status { font-size: 11px; color: var(--ink-dim); min-height: 14px; flex: 1; }
+.widget-status.ok { color: var(--good); }
+.widget-status.err { color: #d94a4a; }
