@@ -3,6 +3,40 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.40.0] — 2026-07-17 "Cartographer"
+
+*Every zone you cleared, drawn.*
+
+### Added — 🗺 **Cartographer** *(movement heatmap + route replay)*
+
+- 🗺 **Movement heatmap.** New Cartographer tab in Settings shows which parts of each zone you've walked, colored by density (log-normalized 64×64 grid, transparent→dark-blue→teal→yellow→warm-orange viridis ramp). The tool has been silently sampling your position at 1 Hz since v0.40 launched — run the same map twice and coverage builds up over time.
+- ▶️ **Route replay.** Play / Pause / Jump-first / Jump-last controls plus a scrub slider let you replay your movement through any zone you've cleared. Watch where you backtracked, spot side rooms you missed. Speed presets: 1×, 4×, 16×, and Max (roughly 60 samples/sec at 60 FPS — 30 minutes of gameplay replays in ~30 seconds). Timestamp readout stays in sync with the scrub position.
+- 🔐 **Loopback-gated `/api/tracks`.** Character-name query is served only to localhost — same privacy posture as v0.37 Codex. Position samples never leave your machine. `/state` continues to strip character identity.
+- 🎯 **Additive.** No overlay changes; ignore the tab and nothing about your rig changes. Sample rate is a fixed 1 Hz on the render thread (30× downsampled from the world tick) — cheap enough to leave running forever.
+- 💡 **Discoverability card** on the dashboard first-load flags the new feature for existing users. Dismissable with `[×]`; the dismissal persists via `localStorage`.
+
+### Under the hood
+
+- New `POE2Radar.Core.Tracks` namespace: `TrackSample` record + `TrackStore` static class handles append/load/list against `config/tracks/<sanitized-character>/<zone-code>.jsonl`. Character-name + zone-code sanitize via the same letter/digit/underscore/hyphen rule as codex + palettes. 10K-sample ring cap with read-rewrite trim keeps the newest 9K on overflow. All exceptions swallowed on the render hot path.
+- New `TrackRecorder` — 30-tick character-name stability gate (v0.37 pattern) + 1-Hz `Stopwatch` downsample gate + zone-change clock reset. Wired into RadarApp's per-tick observer next to `SessionEventLog`.
+- New `/api/tracks?character=<name>&zone=<code>` (loopback-gated), `/api/tracks/characters`, `/api/tracks/zones?character=<name>` (both also loopback-gated). Non-GET methods return 405.
+- New Cartographer dashboard IIFE: cascading character/zone selects → 64×64 density render → offscreen heatmap cache → route dotted-line overlay + gold marker at scrubbed sample index. `requestAnimationFrame` loop drives playback advance.
+
+### Tests
+
+- 51 new xUnit facts across `TrackStoreTests` (16: append/roundtrip/sanitize/ring-cap/perf-under-cadence-budget), `TrackRecorderTests` (9: stability-gate/downsample/zone-change/silent-exception/happy-path), `ApiTracksEndpointTests` (13: 3 routes × gate/missing-param/happy/method), `DashboardCartographerTabTests` (6: HTML/JS/CSS structural), `DashboardCartographerReplayTests` (4: playback controls + speed presets + JS symbols), `DashboardCartographerHintTests` (3: hint card + dismiss). Full suite grows from 1061 to 1112 (all green).
+
+### Known limitations
+
+- **Per-session split** — currently multiple runs of the same zone APPEND to the same track file (density accumulates). A "session filter" UI (view only the last N sessions) is v0.40.1 scope.
+- **Overlay heatmap layer** — v1 is dashboard-only. A translucent grid drawn on the actual overlay is v0.41 scope.
+- **Export as PNG / GIF** for streaming clip use — v0.40.1.
+- **Cross-zone aggregate** ("all your Delirium mirror clears overlaid") — v0.40.1.
+
+### Upgrade
+
+Fully additive — no config migration required. Position sampling starts writing the moment your character name stabilizes; if you don't want it, ignore the new dashboard tab. Existing installs upgrade cleanly.
+
 ## [0.39.1] — 2026-07-17 "Ring, Label, Pulse"
 
 *The rest of the effects, wired.*
