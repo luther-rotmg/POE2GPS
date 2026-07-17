@@ -3,6 +3,37 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.0] — 2026-07-17 "Supporter Bundle"
+
+*Focused play. Your loadout follows your zone.*
+
+### Added — 🎯 **Four supporter-tier features** *(free tier byte-identical to v0.40.1)*
+
+- 🎯 **Focused Radar Filter** — per-zone whitelist / blacklist. Blacklist entities skip the render walk entirely (real FPS win in town: a hideout with 40 decorative NPCs / vendor pets / critters now costs zero draw time). Configurable via a new **Radar Filter** tab in Settings with per-preset match pattern (glob: `*_town`, `T17_*`, `Delirium_*`, or exact zone code) + whitelist chips + blacklist chips + add-from-current-zone helper. First-match-wins on zone entry; caps: 20 presets, 50 patterns per list.
+- 🧩 **Zone-Aware Overlay Layouts** — save up to 10 dashboard-panel loadouts and let them auto-swap on zone entry. Town preset hides drop timeline + boss HP + XP chart; boss-arena preset hides everything except vitals + boss HP; maps get your full loadout. New **Layouts** tab with capture-current-layout helper (snapshots visible panels into a draft preset). Same wildcard-glob matcher as Radar Filter.
+- 📍 **Custom Auto-Nav Destinations** — name any grid position ("chest room at 145,220 in T17-Necropolis"). New **Nav** tab with per-row inline editor + capture-current-position helper (pre-fills zoneCode + coords from `/api/state`). Overlay draws cyan diamond markers with `→ <name>` labels; floating chip strip in top-right shows saved destinations for the current zone. Cap: 50 destinations.
+- 📊 **Session Stat Widget** — floating dashboard-chrome widget with 6 configurable chips (drops / XP gained / bosses killed / deaths / time-in-zone / avg-map-clear-time). New **Widget** tab picks which chips render + x/y position. Refreshes every 2s; hidden entirely for non-supporters.
+
+### Under the hood
+
+- New `POE2Radar.Core.Support.SupporterGate` static — canonical replacement for the scattered `s.isSupporter` predicate. Existing v0.35 palette gate refactored to use it behind the scenes (user-visible behavior unchanged). JS mirror `window.__supporterGate.isSupporter()` for the 4 UI features + retrofit.
+- New `POE2Radar.Core.Zones.ZoneCodeMatcher` static — wildcard-glob matcher (`*_town`, `T17_*`, `*`) reused by A + B for zone-code matching. Case-sensitive, null-safe.
+- New `window.__supporterHint` JS component — inline card ("Supporter feature — Save your Ko-fi code in Settings to unlock this.") that renders in the editor's place for non-supporters. Retrofitted into the v0.35 palette-select gate (no more silent-revert UX).
+- New `window.__panelInventory` JS helper + 12 stable `data-panel-id` handles on canonical dashboard panels — foundation for Layouts auto-swap (B3) and future Layout Designer work.
+- 4 new `POE2Radar.Core.*` stores (RadarFilters / OverlayLayouts / NavDestinations / SessionWidget) — all whole-file `config/*.json` envelopes with atomic `.tmp` + `File.Move` writes, mirroring v0.39 `RulesFileStore` pattern.
+- 4 new HTTP endpoint families in `ApiServer.cs` — `/api/radar-filters`, `/api/overlay-layouts`, `/api/nav-destinations` (per-id CRUD + `?zone=` filter), `/api/session-widget` (single-record + bundled `allowedChips` metadata). Loopback-Host-gated writes; standard 400/403/405 semantics.
+- Renderer wire-ups: blacklist early-continue in `OverlayRenderer.cs` entity draw loop (saves both `Rules.TryMatch` cost and `EntityView` allocation for skipped entities) + Nav Destination markers drawn after the tile-landmark loop.
+- LayoutAutoSwap IIFE polls `/api/state` every 2s; on zone change, GETs `/api/overlay-layouts`, first-matching preset applies via `window.__panelInventory.get(slug)`.
+- SessionMetricProviders — 6 pure formatters (CultureInfo.InvariantCulture, thousand-separators, mm:ss / Hh Mm time buckets, em-dash fallback for missing data).
+
+### Tests
+
+- ~230 new xUnit facts across 15 new test files. Full suite grows from **1112 → 1370** (+258 tests, all green, 2 pre-existing SSE skips).
+
+### Upgrade
+
+Fully additive — no config migration. Free-tier experience is byte-identical to v0.40.1. Every supporter feature is dormant until a valid Ko-fi code is present in Settings; when it is, the new tabs light up. Existing v0.35 palette gate keeps working exactly as before (retrofit is behind-the-scenes).
+
 ## [0.40.1] — 2026-07-17 "Patch-Day Hotfix"
 
 *Path of Exile 2 shifted five internal offsets today; POE2GPS follows.*
