@@ -3,6 +3,23 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.4] — 2026-07-17 "Atlas Detection — Wider Scan"
+
+*v0.41.3's ±6 / exact-18-children window still missed the patch-day drift for some users. Wider now.*
+
+### Fixed
+
+- 🗺 **Atlas open-detection now scans all first 60 UiRoot children** (up from ±6 around index 22) and accepts child count in [8, 30] as the panel signature (previously required exact 18). The 2026-07-16 game patch appears to have restructured the atlas panel itself (new child count), not just its parent index — the exact-18 signature failed for candidates the widened scan would otherwise have found.
+- 🩺 **New `atlasProbe` field on `/api/atlas`** exposes the primary index, cached auto-discovered index, chosen index, chosen visibility bit, and the child-count histogram of the first 60 UiRoot children. Users still seeing false "atlas closed" can copy-paste that payload and I can pin down where the panel drifted to.
+
+### Under the hood
+
+- `Poe2Atlas.LastProbe` publishes the most recent scan's diagnostic snapshot; `RadarApp.AtlasJson()` includes it in the /api/atlas response body.
+
+### Upgrade
+
+Recommended if v0.41.3 still shows "atlas closed" despite the atlas being open. Share the `atlasProbe.childCounts` array if it still misses.
+
 ## [0.41.3] — 2026-07-17 "Atlas Detection Fix"
 
 *The web UI wrongly said "atlas closed" for anyone whose UI child structure drifted with the 2026-07-16 game patch. Auto-recovers now.*

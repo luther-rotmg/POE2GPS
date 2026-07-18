@@ -3576,6 +3576,16 @@ public sealed class RadarApp : IDisposable
                 unlocked = nodes.Count(n => n.Unlocked),
                 biomes = nodes.GroupBy(n => (int)n.Biome).OrderBy(g => g.Key).ToDictionary(g => g.Key.ToString(), g => g.Count()),
             },
+            // v0.41.4 field diagnostic: exposes atlas-panel-open child-index scan results so users
+            // reporting "atlas closed" false positives can share the payload for offset re-discovery.
+            atlasProbe = new
+            {
+                primaryIndex   = _atlas.LastProbe.PrimaryIndex,
+                cachedIndex    = _atlas.LastProbe.CachedIndex,
+                chosenIndex    = _atlas.LastProbe.ChosenIndex,
+                chosenVisible  = _atlas.LastProbe.ChosenVisible,
+                childCounts    = _atlas.LastProbe.CandidateChildCounts,
+            },
             // Every distinct content tag currently on the atlas (+ count), for the dashboard's filter /
             // highlight-rule pickers. These are the readable content/mechanic names (Powerful Map Boss,
             // Breach, Delirium, …) resolved from each node's EndgameMapAtlas row.
