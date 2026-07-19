@@ -2427,4 +2427,91 @@ public sealed class Poe2Live
         return code.StartsWith("MapHideout", System.StringComparison.Ordinal)
             && code.EndsWith("_Claimable", System.StringComparison.Ordinal);
     }
+
+    // v0.41.6 field diagnostic: entity-side patch-day drift probe. Follows the same "diagnostic-
+    // first, targeted fix later" pattern as v0.41.5's atlasProbe (see memory:
+    // diagnostic-probe-before-speculative-fix). Reports raw addresses + candidate-offset sweeps
+    // for both the Life.Health VitalStruct and Render.CurrentWorldPosition on the top N entities
+    // currently tracked in AwakeEntities (per the last Entities() walk).
+    public sealed record EntityProbeSample(
+        string EntityAddr,
+        string RenderAddr,
+        string LifeAddr,
+        int    HpCurCurrentOffset,
+        int    HpMaxCurrentOffset,
+        // life-health sweep: {0x1A8, 0x1B0, 0x1B8, 0x1C0, 0x1C8}. Each entry:
+        // "0x1B0={cur=234,max=500}" or "0x1B8={read-fail}".
+        string[] LifeHealthSweep,
+        // render-position sweep: {0x128, 0x130, 0x138, 0x140, 0x148}. Each entry:
+        // "0x138=(x,y,z)" or "0x140={read-fail}".
+        string[] RenderPositionSweep);
+
+    /// <summary>v0.41.6: dumps a handful of entity structs with candidate offset sweeps so field
+    /// reports can identify entity-side offset drift after game patches. Reads a random sample of
+    /// up to <paramref name="maxSamples"/> entities from the last Entities()/AwakeEntities walk.
+    /// Read-only: does not mutate any cached state.</summary>
+    public List<EntityProbeSample> ProbeEntities(int maxSamples = 5)
+    {
+        var samples = new List<EntityProbeSample>();
+        var lifeSweepOffsets   = new int[] { 0x1A8, 0x1B0, 0x1B8, 0x1C0, 0x1C8 };
+        var renderSweepOffsets = new int[] { 0x128, 0x130, 0x138, 0x140, 0x148 };
+
+        var count = 0;
+        foreach (var kv in _lifeAddr)
+        {
+            if (count >= maxSamples) break;
+            var entity = kv.Key;
+            var life   = kv.Value;
+            _renderAddr.TryGetValue(entity, out var render);
+
+            var lifeSweep = new string[lifeSweepOffsets.Length];
+            for (int i = 0; i < lifeSweepOffsets.Length; i++)
+            {
+                var off = lifeSweepOffsets[i];
+                if (life == 0) { lifeSweep[i] = $"0x{off:X}=life-null"; continue; }
+                if (!_reader.TryReadStruct<VitalStruct>(life + off, out var v))
+                {
+                    lifeSweep[i] = $"0x{off:X}=read-fail";
+                }
+                else
+                {
+                    lifeSweep[i] = $"0x{off:X}={{cur={v.Current},max={v.Max}}}";
+                }
+            }
+
+            var posSweep = new string[renderSweepOffsets.Length];
+            for (int i = 0; i < renderSweepOffsets.Length; i++)
+            {
+                var off = renderSweepOffsets[i];
+                if (render == 0) { posSweep[i] = $"0x{off:X}=render-null"; continue; }
+                if (!_reader.TryReadStruct<Vector3>(render + off, out var w))
+                {
+                    posSweep[i] = $"0x{off:X}=read-fail";
+                }
+                else
+                {
+                    posSweep[i] = $"0x{off:X}=({w.X:F2},{w.Y:F2},{w.Z:F2})";
+                }
+            }
+
+            int hpCur = 0, hpMax = 0;
+            if (life != 0 && _reader.TryReadStruct<VitalStruct>(life + _healthOff, out var vitals))
+            {
+                hpCur = vitals.Current; hpMax = vitals.Max;
+            }
+
+            samples.Add(new EntityProbeSample(
+                EntityAddr: $"0x{entity:X}",
+                RenderAddr: $"0x{render:X}",
+                LifeAddr:   $"0x{life:X}",
+                HpCurCurrentOffset: hpCur,
+                HpMaxCurrentOffset: hpMax,
+                LifeHealthSweep:    lifeSweep,
+                RenderPositionSweep: posSweep));
+
+            count++;
+        }
+
+        return samples;
+    }
 }

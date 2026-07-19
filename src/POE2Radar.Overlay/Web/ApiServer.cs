@@ -171,7 +171,11 @@ public sealed class ApiServer : IDisposable
         // param; returns the JSON-shaped payload for that character (empty envelope if unknown).
         Func<string, object>? codexProvider = null,
         // v0.39 Rules Engine: config directory for rules.json persistence.
-        string? rulesConfigDir = null)
+        string? rulesConfigDir = null,
+        // v0.41.6 field diagnostic: dumps a sample of tracked entities with candidate offset
+        // sweeps for Life.Health + Render.CurrentWorldPosition — used to identify patch-day
+        // drift on entity-side offsets. Loopback-gated (raw pointers in the response).
+        Func<object>? entityProbeProvider = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -213,8 +217,11 @@ public sealed class ApiServer : IDisposable
         _iconRegistry = iconRegistry;
         _codexProvider = codexProvider;
         _rulesConfigDir = rulesConfigDir ?? Path.Combine(AppContext.BaseDirectory, "config");
+        _entityProbe = entityProbeProvider;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
+
+    private readonly Func<object>? _entityProbe;
 
     public void Start()
     {
@@ -918,6 +925,30 @@ public sealed class ApiServer : IDisposable
                     campaignGuideLicense     = DashboardHtml.CampaignGuideLicense, // TODO(syrairc-license)
                     campaignGuideCommit      = DashboardHtml.CampaignGuideCommit,  // TODO(syrairc-hash)
                 }, Json));
+                break;
+
+            case "/api/entity-probe":
+                // v0.41.6 field diagnostic. Loopback-gated (dumps raw pointers). Wrapped in
+                // try/catch so a game-memory read failure inside ProbeEntities never surfaces
+                // as a raw stack trace — the endpoint should always return a JSON envelope.
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (_entityProbe is null)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "entity probe unavailable" }, Json));
+                    break;
+                }
+                try
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(_entityProbe.Invoke(), Json));
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
                 break;
 
             case "/api/atlas":
