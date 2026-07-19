@@ -955,7 +955,9 @@ public sealed class RadarApp : IDisposable
                                    }
                                    return devices;
                                },
-                               monolithProbeReader: _readerApi);
+                               monolithProbeReader: _readerApi,
+                                atlasGraphProbeProvider: () => _atlas.FirstNodeAddr,
+                                atlasGraphProbeReader: _readerApi);
         // v0.39 R3: load + compile rules engine ruleset at startup.
         // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
         try

@@ -1155,4 +1155,28 @@ public sealed class Poe2Atlas
 
         return _nodeCanvas != 0;
     }
+
+    /// <summary>
+    /// Returns the address of the first atlas node UiElement under the cached node canvas,
+    /// or 0 when the canvas is not yet detected / the atlas is closed. Used by the B3a
+    /// /api/probe/atlas-graph diagnostic endpoint to feed AtlasGraphProber sweeps.
+    /// Thread-safe (uses <see cref="_nodeLock"/>).
+    /// </summary>
+    public nint FirstNodeAddr
+    {
+        get
+        {
+            lock (_nodeLock)
+            {
+                if (_nodeCanvas == 0) return 0;
+                var first = Ptr(_nodeCanvas + Poe2.UiElement.Children);
+                if (first == 0) return 0;
+                if (!_reader.TryReadStruct<nint>(_nodeCanvas + Poe2.UiElement.ChildrenEnd, out var last))
+                    return 0;
+                var count = (long)(last - first) / 8;
+                if (count <= 0 || count > 20000) return 0;
+                return Ptr(first);
+            }
+        }
+    }
 }

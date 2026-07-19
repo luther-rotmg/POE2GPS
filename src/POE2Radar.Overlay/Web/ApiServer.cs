@@ -127,6 +127,9 @@ public sealed class ApiServer : IDisposable
     // v0.42 B4a: Monolith probe provider. Returns current device address list (up to 5).
     private readonly Func<IReadOnlyList<nint>>? _monolithProbe;
     private readonly MemoryReader? _monolithProbeReader;
+    // v0.42 B3a: Atlas-graph probe provider. Returns current first atlas node element address (or 0 if not set).
+    private readonly Func<nint>? _atlasGraphProbe;
+    private readonly MemoryReader? _atlasGraphProbeReader;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -193,7 +196,12 @@ public sealed class ApiServer : IDisposable
         // Loopback-gated (raw pointers in the response).
         Func<IReadOnlyList<nint>>? monolithProbeProvider = null,
         // v0.42 B4a: MemoryReader for monolith probe reads. Uses the same reader as _liveApi.
-        MemoryReader? monolithProbeReader = null)
+        MemoryReader? monolithProbeReader = null,
+        // v0.42 B3a: Atlas-graph probe provider. Returns current first atlas node element address (or 0 if not set).
+        // Loopback-gated (raw pointers in the response).
+        Func<nint>? atlasGraphProbeProvider = null,
+        // v0.42 B3a: MemoryReader for atlas-graph probe reads. Uses the same reader as _liveApi.
+        MemoryReader? atlasGraphProbeReader = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -240,6 +248,8 @@ public sealed class ApiServer : IDisposable
         _areaProbeReader = areaProbeReader;
         _monolithProbe = monolithProbeProvider;
         _monolithProbeReader = monolithProbeReader;
+        _atlasGraphProbe = atlasGraphProbeProvider;
+        _atlasGraphProbeReader = atlasGraphProbeReader;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1080,6 +1090,61 @@ public sealed class ApiServer : IDisposable
                         samples.Add(deviceSamples);
                     }
                     var json = SerializeProbeResponse("Poe2.RuneStation", samples, Json);
+                    Write(ctx, 200, json);
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
+                break;
+
+            case "/api/probe/atlas-graph":
+                // v0.42 B3a: Atlas-graph diagnostic endpoint. Loopback-gated (dumps raw pointers).
+                // Returns sweep results at candidate offsets for 3 AtlasNode fields (ConnectionsVec,
+                // GridPos, Biome). Probe-only — no auto-heal in this bead.
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (_atlasGraphProbe is null)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "atlas-graph probe unavailable" }, Json));
+                    break;
+                }
+                try
+                {
+                    var firstNode = _atlasGraphProbe.Invoke();
+                    var reader = _atlasGraphProbeReader;
+                    var connectionsVec = reader != null
+                        ? AtlasGraphProber.SweepConnectionsVec(firstNode, reader)
+                        : Array.Empty<ProbeSample<StdVecShape>>();
+                    var gridPos = reader != null
+                        ? AtlasGraphProber.SweepGridPos(firstNode, reader)
+                        : Array.Empty<ProbeSample<GridPosShape>>();
+                    var biome = reader != null
+                        ? AtlasGraphProber.SweepBiome(firstNode, reader)
+                        : Array.Empty<ProbeSample<int>>();
+
+                    var samples = new List<object>
+                    {
+                        new
+                        {
+                            firstNodeAddr = $"0x{firstNode:X}",
+                            sweeps = new
+                            {
+                                connectionsVec,
+                                gridPos,
+                                biome
+                            }
+                        }
+                    };
+                    var json = SerializeProbeResponse("Poe2.AtlasGraph", samples, Json);
                     Write(ctx, 200, json);
                 }
                 catch (Exception ex)
