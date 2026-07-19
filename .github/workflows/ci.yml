@@ -3,7 +3,23 @@ name: ci
 on:
   push:
     branches: [ main ]
+    # Cost optimization: skip CI entirely on docs-only / scratchpad-only / changelog-only pushes.
+    # These paths never change runtime behavior, so the build+test suite adds zero signal at
+    # ~2 Windows-minutes/run (billed 2x). Release tags still trigger release.yml separately.
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'docs/**'
+      - 'scratchpad/**'
+      - '**/*.md'
   pull_request:
+
+# Cost optimization: cancel in-progress CI when a newer commit lands on the same branch.
+# Prevents e.g. v0.41.4→v0.41.5→v0.41.6 back-to-back pushes from queuing 3 full runs when
+# only the newest one carries signal.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-test-gate:
@@ -13,6 +29,16 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+
+      # Cost optimization: cache NuGet packages so `dotnet restore` skips network round-trips.
+      # Cache key includes the cs/csproj/slnx hash so cache invalidates only on real dep changes.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx', '**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - name: Compliance gate self-test
         shell: pwsh
@@ -37,4 +63,4 @@ jobs:
         run: dotnet build POE2Radar.slnx -c Release
 
       - name: Test
-        run: dotnet test POE2Radar.slnx -c Release
+        run: dotnet test POE2Radar.slnx -c Release --no-build
