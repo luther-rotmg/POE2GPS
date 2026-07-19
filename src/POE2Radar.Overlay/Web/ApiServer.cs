@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using POE2Radar.Core;
 using POE2Radar.Core.Campaign;
 using POE2Radar.Core.Config;
 using POE2Radar.Core.Game;
@@ -120,6 +121,9 @@ public sealed class ApiServer : IDisposable
     private readonly IconRegistry? _iconRegistry;
     // v0.39 Rules Engine: config directory for rules.json persistence.
     private readonly string _rulesConfigDir;
+    // v0.42 B1a: AreaInstance probe provider. Returns current _lastAreaInstance (or 0 if not set).
+    private readonly Func<nint>? _areaProbe;
+    private readonly MemoryReader? _areaProbeReader;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -176,7 +180,12 @@ public sealed class ApiServer : IDisposable
         // v0.41.6 field diagnostic: dumps a sample of tracked entities with candidate offset
         // sweeps for Life.Health + Render.CurrentWorldPosition — used to identify patch-day
         // drift on entity-side offsets. Loopback-gated (raw pointers in the response).
-        Func<object>? entityProbeProvider = null)
+        Func<object>? entityProbeProvider = null,
+        // v0.42 B1a: AreaInstance probe provider and MemoryReader. Returns current _lastAreaInstance (or 0 if not set).
+        // Loopback-gated (raw pointers in the response).
+        Func<nint>? areaProbeProvider = null,
+        // v0.42 B1a: MemoryReader for area probe reads. Uses the same reader as _liveApi.
+        MemoryReader? areaProbeReader = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -219,6 +228,8 @@ public sealed class ApiServer : IDisposable
         _codexProvider = codexProvider;
         _rulesConfigDir = rulesConfigDir ?? Path.Combine(AppContext.BaseDirectory, "config");
         _entityProbe = entityProbeProvider;
+        _areaProbe = areaProbeProvider;
+        _areaProbeReader = areaProbeReader;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -945,6 +956,73 @@ public sealed class ApiServer : IDisposable
                 try
                 {
                     Write(ctx, 200, JsonSerializer.Serialize(_entityProbe.Invoke(), Json));
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
+                break;
+
+            case "/api/probe/area":
+                // v0.42 B1a: AreaInstance diagnostic endpoint. Loopback-gated (dumps raw pointers).
+                // Returns sweep results at candidate offsets for 5 AreaInstance fields.
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (_areaProbe is null)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "area probe unavailable" }, Json));
+                    break;
+                }
+                try
+                {
+                    var areaInstance = _areaProbe.Invoke();
+                    var samples = new List<object>();
+                    if (areaInstance != 0)
+                    {
+                        // Use the MemoryReader provided via constructor (from _readerApi)
+                        // If no reader was provided, the probe will fail gracefully on reads
+                        var reader = _areaProbeReader;
+                        if (reader == null)
+                        {
+                            Write(ctx, 200, JsonSerializer.Serialize(new { note = "area probe unavailable - no reader" }, Json));
+                            break;
+                        }
+                        samples.Add(new
+                        {
+                            field = "awakeEntities",
+                            samples = AreaInstanceProber.SweepAwakeEntities(areaInstance, reader)
+                        });
+                        samples.Add(new
+                        {
+                            field = "sleepingEntities",
+                            samples = AreaInstanceProber.SweepSleepingEntities(areaInstance, reader)
+                        });
+                        samples.Add(new
+                        {
+                            field = "localPlayer",
+                            samples = AreaInstanceProber.SweepLocalPlayer(areaInstance, reader)
+                        });
+                        samples.Add(new
+                        {
+                            field = "serverDataPtr",
+                            samples = AreaInstanceProber.SweepServerDataPtr(areaInstance, reader)
+                        });
+                        samples.Add(new
+                        {
+                            field = "terrainMetadata",
+                            samples = AreaInstanceProber.SweepTerrainMetadata(areaInstance, reader)
+                        });
+                    }
+                    var json = SerializeProbeResponse("Poe2.AreaInstance", samples, Json);
+                    Write(ctx, 200, json);
                 }
                 catch (Exception ex)
                 {

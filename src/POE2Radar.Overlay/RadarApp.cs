@@ -934,11 +934,14 @@ public sealed class RadarApp : IDisposable
                              },
                               dropsProvider: () => new { drops = _dropTimeline.Snapshot() },
                               codexProvider: (character) => new { events = _sessionEventLog.SnapshotForCharacter(character) },
-                              rulesConfigDir: ConfigDir,
-                              // v0.41.6 field diagnostic: dumps candidate offset sweeps for the
-                              // top ~5 tracked entities so patch-day drift on Life.Health /
-                              // Render.CurrentWorldPosition can be pinpointed remotely.
-                              entityProbeProvider: () => new { samples = _live.ProbeEntities(maxSamples: 5) });
+                               rulesConfigDir: ConfigDir,
+                               // v0.41.6 field diagnostic: dumps candidate offset sweeps for the
+                               // top ~5 tracked entities so patch-day drift on Life.Health /
+                               // Render.CurrentWorldPosition can be pinpointed remotely.
+                               entityProbeProvider: () => new { samples = _live.ProbeEntities(maxSamples: 5) },
+                               // v0.42 B1a: AreaInstance probe provider and MemoryReader.
+                               areaProbeProvider: () => _lastAreaInstance,
+                               areaProbeReader: _readerApi);
         // v0.39 R3: load + compile rules engine ruleset at startup.
         // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
         try
