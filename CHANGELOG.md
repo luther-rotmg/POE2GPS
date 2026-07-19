@@ -3,6 +3,33 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.7] — 2026-07-18 "Controller-Mode Atlas Diagnostic + Entity Probe"
+
+*Widens the atlas open-detection scan + adds a new `/api/entity-probe` endpoint for offset-drift diagnostics on entities.*
+
+### Added
+
+- 🩺 **New `/api/entity-probe` endpoint** returns per-entity structured samples of the Life + Render component offset sweeps used by the overlay: HP current + max reads, world position reads, and the candidate offsets tried on each. Loopback-Host-gated (raw pointers). Consumers seeing missing HP bars or garbage entity positions can hit this endpoint + share the payload to identify which entity-component offset drifted.
+
+### Fixed
+
+- 🎮 **Controller-mode "atlas closed" false-positive.** Field payload showed my v0.41.5 code correctly finding an 18-child-signature-matching panel at UiRoot index 22 (the historical atlas panel location) but its visible bit reading FALSE despite the atlas being open. Root cause: PoE2's controller UI is structurally a different subsystem from keyboard UI (gamepad-first radial atlas vs. keyboard/mouse atlas), and the true atlas panel for controller mode may sit past the first 60 children my old scan covered.
+
+### Changed
+
+- 🩺 **`atlasProbe` scan window widened** from static 60 → `min(200, actual-child-count)`. UiRoot's real direct-child count is now surfaced as `atlasProbe.totalUiRootChildren` in the payload — readers see "we scanned N of M children" and can request wider coverage if needed.
+- 🩺 **New `atlasProbe.signatureMatches` array** reports every scanned index whose child count falls in the `[8, 30]` signature window AND its current visible bit. Format: `"index=22 childCount=18 visible=false"`. Hit `/api/atlas` twice (atlas open + atlas closed) and diffing this array reveals which index's visible flag flips — that's the true atlas panel for the current UI mode.
+
+### Under the hood
+
+- New `EntityProbeSample` sealed record (7 positional fields: EntityAddr / RenderAddr / LifeAddr / HpCurCurrentOffset / HpMaxCurrentOffset / LifeHealthSweep / RenderPositionSweep) + `Poe2Live.ProbeEntities(int maxSamples = 5)` method sample up to 5 tracked entities from the render loop's caches.
+- `AtlasProbeInfo` record struct grows from 11 → 13 positional fields (added `SignatureMatchingCandidates` + `TotalUiRootChildren` appended so existing JSON consumers don't miss fields).
+- 27 new xUnit reflection facts across `EntityProbeSampleTests` + `AtlasProbeInfoTests` lock both records' positional shapes so future refactors can't silently break `/api/entity-probe` + `/api/atlas` consumers.
+
+### Upgrade
+
+Recommended for anyone still seeing "atlas closed" despite the atlas being open — especially controller-mode users. Also useful for any support conversation about missing HP bars or garbage entity positions (the new `/api/entity-probe` endpoint gives me actionable diagnostic).
+
 ## [0.41.5] — 2026-07-17 "Atlas Detection — Deep Probe"
 
 *Field diagnostic: v0.41.4 confirmed the atlas scan is short-circuiting on a null Children pointer. This drop adds a raw-offset sweep so we can see which offset the game patch shifted `UiElement.Children` to.*
