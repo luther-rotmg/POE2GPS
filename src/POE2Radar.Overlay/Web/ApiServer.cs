@@ -130,6 +130,11 @@ public sealed class ApiServer : IDisposable
     // v0.42 B3a: Atlas-graph probe provider. Returns current first atlas node element address (or 0 if not set).
     private readonly Func<nint>? _atlasGraphProbe;
     private readonly MemoryReader? _atlasGraphProbeReader;
+    // v0.42 B5a: UiElement.Flags snapshot recorder + reader providers.
+    // Recorder: records a snapshot and returns the formatted response object.
+    // Reader: returns the current list of recent snapshots (oldest-first, cap 2).
+    private readonly Func<object>? _uiFlagsSnapshotRecorder;
+    private readonly Func<IReadOnlyList<POE2Radar.Core.Diagnostics.FlagsSnapshot>>? _uiFlagsSnapshotReader;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -201,7 +206,13 @@ public sealed class ApiServer : IDisposable
         // Loopback-gated (raw pointers in the response).
         Func<nint>? atlasGraphProbeProvider = null,
         // v0.42 B3a: MemoryReader for atlas-graph probe reads. Uses the same reader as _liveApi.
-        MemoryReader? atlasGraphProbeReader = null)
+        MemoryReader? atlasGraphProbeReader = null,
+        // v0.42 B5a: UiElement.Flags snapshot recorder. Called for ?snapshot=1. Returns the formatted
+        // response object (the most-recent snapshot or an error payload when the panel is unresolved).
+        Func<object>? uiFlagsSnapshotRecorder = null,
+        // v0.42 B5a: UiElement.Flags snapshot reader. Called for no-arg mode. Returns the current list
+        // of recent flag snapshots (oldest-first, cap 2).
+        Func<IReadOnlyList<POE2Radar.Core.Diagnostics.FlagsSnapshot>>? uiFlagsSnapshotReader = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -250,6 +261,8 @@ public sealed class ApiServer : IDisposable
         _monolithProbeReader = monolithProbeReader;
         _atlasGraphProbe = atlasGraphProbeProvider;
         _atlasGraphProbeReader = atlasGraphProbeReader;
+        _uiFlagsSnapshotRecorder = uiFlagsSnapshotRecorder;
+        _uiFlagsSnapshotReader = uiFlagsSnapshotReader;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1146,6 +1159,73 @@ public sealed class ApiServer : IDisposable
                     };
                     var json = SerializeProbeResponse("Poe2.AtlasGraph", samples, Json);
                     Write(ctx, 200, json);
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
+                break;
+
+            case "/api/probe/uielement":
+                // v0.42 B5a: UiElement.Flags diagnostic endpoint. Two modes:
+                //   ?snapshot=1  — records a snapshot and returns it
+                //   no-arg       — returns the two most-recent snapshots
+                // Loopback-gated (raw pointers in the response).
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                try
+                {
+                    if (q["snapshot"] == "1")
+                    {
+                        // ── snapshot mode ──
+                        if (_uiFlagsSnapshotRecorder is null)
+                        {
+                            Write(ctx, 200, JsonSerializer.Serialize(new
+                            {
+                                family = "Poe2.UiElement.Flags",
+                                mode = "snapshot",
+                                note = "probe unavailable"
+                            }, Json));
+                            break;
+                        }
+                        var payload = _uiFlagsSnapshotRecorder.Invoke();
+                        Write(ctx, 200, JsonSerializer.Serialize(payload, Json));
+                    }
+                    else
+                    {
+                        // ── read mode (no-arg) ──
+                        if (_uiFlagsSnapshotReader is null)
+                        {
+                            Write(ctx, 200, JsonSerializer.Serialize(new
+                            {
+                                family = "Poe2.UiElement.Flags",
+                                mode = "read",
+                                note = "probe unavailable"
+                            }, Json));
+                            break;
+                        }
+                        var snapshots = _uiFlagsSnapshotReader.Invoke();
+                        var snapshotsJson = snapshots.Select(s => new
+                        {
+                            atlasPanelAddr = $"0x{s.AtlasPanelAddr:X}",
+                            takenUtc = s.TakenUtc.ToString("O"),
+                            words = s.WordsPerOffset.OrderBy(kv => kv.Key).Select(kv => new
+                            {
+                                offset = $"0x{kv.Key:X}",
+                                word = $"0x{kv.Value:X8}"
+                            })
+                        }).ToArray();
+                        var json = SerializeProbeResponse("Poe2.UiElement.Flags", snapshotsJson, Json);
+                        Write(ctx, 200, json);
+                    }
                 }
                 catch (Exception ex)
                 {

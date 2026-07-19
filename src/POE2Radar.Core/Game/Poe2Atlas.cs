@@ -313,6 +313,10 @@ public sealed class Poe2Atlas
     // during DetectNodeClass (vtable-independent — see Poe2.AtlasGraph.CurrentMarkerNodePtr). *(marker+0x300)
     // is the node the player is currently in (the route's true start).
     private nint _currentMarker;
+    // The most-recently resolved atlas panel UiElement address (0 = unresolved).
+    // Updated inside AtlasPanelOpen whenever a candidate is chosen. Exposed for
+    // the /api/probe/uielement diagnostic endpoint (B5a).
+    private nint _atlasPanelAddr;
 
     /// <summary>Cheap "is the Atlas screen open?" check (the persistent panel's visible bit, ~4 reads) —
     /// the same gate <see cref="ReadNodes"/> uses internally, exposed so callers can tell a TRANSIENT empty
@@ -978,6 +982,7 @@ public sealed class Poe2Atlas
                 _lastFoundAtlasChildIndex = p.idx;
                 chosen = p.idx;
                 chosenVis = p.vis;
+                _atlasPanelAddr = Ptr(first + (nint)(p.idx * 8));
             }
         }
 
@@ -1155,6 +1160,15 @@ public sealed class Poe2Atlas
 
         return _nodeCanvas != 0;
     }
+
+    /// <summary>
+    /// Returns the address of the most-recently resolved atlas panel UiElement,
+    /// or 0 when the panel has never been found this session / the atlas is closed.
+    /// Updated inside <see cref="AtlasPanelOpen"/> whenever a candidate is chosen.
+    /// Thread-safe (only written under <see cref="_lock"/>; reads are lock-free but
+    /// a stale read is harmless — address is either valid or 0).
+    /// </summary>
+    public nint AtlasPanelAddr => _atlasPanelAddr;
 
     /// <summary>
     /// Returns the address of the first atlas node UiElement under the cached node canvas,

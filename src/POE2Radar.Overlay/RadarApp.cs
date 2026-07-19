@@ -955,9 +955,43 @@ public sealed class RadarApp : IDisposable
                                    }
                                    return devices;
                                },
-                               monolithProbeReader: _readerApi,
-                                atlasGraphProbeProvider: () => _atlas.FirstNodeAddr,
-                                atlasGraphProbeReader: _readerApi);
+monolithProbeReader: _readerApi,
+                                 atlasGraphProbeProvider: () => _atlas.FirstNodeAddr,
+                                 atlasGraphProbeReader: _readerApi,
+                                // v0.42 B5a: UiElement.Flags snapshot recorder + reader.
+                                // Recorder: records a snapshot on Poe2Live and returns the formatted
+                                // response (or an error payload when AtlasPanelAddr is 0).
+                                uiFlagsSnapshotRecorder: () =>
+                                {
+                                    _live.RecordUiFlagsSnapshot();
+                                    var snaps = _live.GetRecentUiFlagsSnapshots();
+                                    var latest = snaps.Count > 0 ? snaps[^1] : null;
+                                    if (latest == null || latest.AtlasPanelAddr == 0)
+                                    {
+                                        return new
+                                        {
+                                            family = "Poe2.UiElement.Flags",
+                                            mode = "snapshot",
+                                            atlasPanelAddr = "0x0",
+                                            error = "atlas-panel-unresolved",
+                                            snapshotsHeld = snaps.Count,
+                                        };
+                                    }
+                                    return new
+                                    {
+                                        family = "Poe2.UiElement.Flags",
+                                        mode = "snapshot",
+                                        atlasPanelAddr = $"0x{latest.AtlasPanelAddr:X}",
+                                        takenUtc = latest.TakenUtc.ToString("O"),
+                                        wordsRecorded = latest.WordsPerOffset.OrderBy(kv => kv.Key).Select(kv => new
+                                        {
+                                            offset = $"0x{kv.Key:X}",
+                                            word = $"0x{kv.Value:X8}",
+                                        }),
+                                        snapshotsHeld = snaps.Count,
+                                    };
+                                },
+                                uiFlagsSnapshotReader: () => _live.GetRecentUiFlagsSnapshots());
         // v0.39 R3: load + compile rules engine ruleset at startup.
         // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
         try
@@ -3751,6 +3785,8 @@ public sealed class RadarApp : IDisposable
         var nodes = _atlas.ReadNodes(inGameState,
             _settings.AtlasShowContentIcons,
             _settings.AtlasAutoRoute || _settings.AtlasHideCompleted || _settings.AtlasHideAccessible);
+        // v0.42 B5a: propagate the atlas panel address to Poe2Live for the probe endpoint.
+        _live.AtlasPanelAddr = _atlas.AtlasPanelAddr;
         if (nodes.Count == 0)
         {
             // Empty read: ride over TRANSIENT misses (a node read hiccupping ~1×/sec was the ~0.1s route

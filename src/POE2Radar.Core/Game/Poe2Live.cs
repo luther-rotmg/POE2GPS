@@ -102,6 +102,13 @@ public sealed class Poe2Live
     private int _vitalBadReadCount;   // owned by this instance's thread
     private const int VitalBadReadThreshold = 3;
 
+    // ── v0.42 B5a: UiElement.Flags snapshot ring buffer ──
+    private readonly List<POE2Radar.Core.Diagnostics.FlagsSnapshot> _uiFlagsSnapshot = new();
+    private readonly object _uiFlagsSnapshotLock = new();
+    // Cached atlas panel UiElement address, updated by RadarApp from Poe2Atlas.AtlasPanelAddr.
+    // Used by RecordUiFlagsSnapshot() to locate the panel's flag words. 0 = unresolved.
+    private nint _atlasPanelAddr;
+
     public Poe2Live(MemoryReader reader, nint gameStateSlot)
     {
         _reader = reader;
@@ -2616,5 +2623,36 @@ public sealed class Poe2Live
         }
 
         return samples;
+    }
+
+    // ── v0.42 B5a: UiElement.Flags snapshot surface ──
+
+    /// <summary>The currently-cached atlas panel UiElement address, or 0 if unresolved.
+    /// Set by RadarApp from Poe2Atlas.AtlasPanelAddr after the atlas subsystem resolves it.</summary>
+    public nint AtlasPanelAddr { get => _atlasPanelAddr; set => _atlasPanelAddr = value; }
+
+    /// <summary>Record a snapshot of the current atlas panel's flag words.
+    /// Looks up the cached <see cref="AtlasPanelAddr"/>, calls
+    /// <see cref="UiElementFlagsProber.TakeSnapshot"/> with it and the memory reader,
+    /// and appends the result to the ring buffer (cap 2, drop-oldest). Thread-safe.</summary>
+    public void RecordUiFlagsSnapshot()
+    {
+        var snapshot = POE2Radar.Core.Diagnostics.UiElementFlagsProber.TakeSnapshot(_atlasPanelAddr, _reader);
+        lock (_uiFlagsSnapshotLock)
+        {
+            _uiFlagsSnapshot.Add(snapshot);
+            while (_uiFlagsSnapshot.Count > 2)
+                _uiFlagsSnapshot.RemoveAt(0);
+        }
+    }
+
+    /// <summary>Returns a defensive copy of the recorded flag snapshots, oldest-first.
+    /// Thread-safe (copies under the lock).</summary>
+    public IReadOnlyList<POE2Radar.Core.Diagnostics.FlagsSnapshot> GetRecentUiFlagsSnapshots()
+    {
+        lock (_uiFlagsSnapshotLock)
+        {
+            return _uiFlagsSnapshot.ToArray();
+        }
     }
 }
