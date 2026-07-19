@@ -22,7 +22,7 @@ public sealed class EntityProbeSampleTests
         Assert.True(type.IsSealed, "EntityProbeSample should be sealed record");
     }
 
-    [Fact]
+    [Fact(Skip = "shadowed by EntityChainSweepTests.EntityProbeSample_HasElevenPositionalFields after B2a extension")]
     public void EntityProbeSample_HasSevenPositionalFields()
     {
         var type = typeof(Poe2Live).GetNestedType("EntityProbeSample")!;
@@ -52,6 +52,10 @@ public sealed class EntityProbeSampleTests
         Assert.Equal("HpMaxCurrentOffset", paramNames[4]);
         Assert.Equal("LifeHealthSweep", paramNames[5]);
         Assert.Equal("RenderPositionSweep", paramNames[6]);
+        Assert.Equal("EntityDetailsSweep", paramNames[7]);
+        Assert.Equal("ComponentListSweep", paramNames[8]);
+        Assert.Equal("EntityDetailsNameSweep", paramNames[9]);
+        Assert.Equal("ComponentLookUpBucketSweep", paramNames[10]);
     }
 
     [Fact]
@@ -125,13 +129,18 @@ public sealed class EntityProbeSampleTests
     [Fact]
     public void EntityProbeSample_ConstructedRecord_RoundTripsAllFields()
     {
-        // Sanity check: manually construct a sample via reflection and verify all 7 fields
+        // Sanity check: manually construct a sample via reflection and verify all 11 fields
         // read back their input. Catches any accidental setter/init issue in future edits.
         var type = typeof(Poe2Live).GetNestedType("EntityProbeSample")!;
         var lifeSweep = new[] { "0x1B0={cur=234,max=500}" };
         var posSweep = new[] { "0x138=(1.5,2.5,3.5)" };
+        var detailsSweep = new[] { "0x08=0x7ffe1234", "0x00={read-fail}", "0x10=0x0", "0x18=0x0" };
+        var compListSweep = new[] { "0x10=count=5", "0x08={read-fail}", "0x18={read-fail}", "0x20={read-fail}", "0x28={read-fail}" };
+        var nameSweep = new[] { "0x08=Metadata/Monsters/Foo", "0x00={read-fail}", "0x10={read-fail}", "0x18={read-fail}" };
+        var bucketSweep = new[] { "0x28=0x7ffe1234/entries=3", "0x20={read-fail}", "0x30={read-fail}", "0x38={read-fail}" };
         var instance = Activator.CreateInstance(type,
-            "0xABCD", "0x1234", "0x5678", 234, 500, lifeSweep, posSweep);
+            "0xABCD", "0x1234", "0x5678", 234, 500, lifeSweep, posSweep,
+            detailsSweep, compListSweep, nameSweep, bucketSweep);
         Assert.NotNull(instance);
 
         Assert.Equal("0xABCD", type.GetProperty("EntityAddr")!.GetValue(instance));
@@ -141,6 +150,10 @@ public sealed class EntityProbeSampleTests
         Assert.Equal(500, type.GetProperty("HpMaxCurrentOffset")!.GetValue(instance));
         Assert.Same(lifeSweep, type.GetProperty("LifeHealthSweep")!.GetValue(instance));
         Assert.Same(posSweep, type.GetProperty("RenderPositionSweep")!.GetValue(instance));
+        Assert.Same(detailsSweep, type.GetProperty("EntityDetailsSweep")!.GetValue(instance));
+        Assert.Same(compListSweep, type.GetProperty("ComponentListSweep")!.GetValue(instance));
+        Assert.Same(nameSweep, type.GetProperty("EntityDetailsNameSweep")!.GetValue(instance));
+        Assert.Same(bucketSweep, type.GetProperty("ComponentLookUpBucketSweep")!.GetValue(instance));
     }
 
     [Theory]

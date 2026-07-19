@@ -2444,7 +2444,19 @@ public sealed class Poe2Live
         string[] LifeHealthSweep,
         // render-position sweep: {0x128, 0x130, 0x138, 0x140, 0x148}. Each entry:
         // "0x138=(x,y,z)" or "0x140={read-fail}".
-        string[] RenderPositionSweep);
+        string[] RenderPositionSweep,
+        // entity-details-ptr sweep: entity + {0x00, 0x08, 0x10, 0x18}. Each entry:
+        // "0x08=0x7ffe1234" or "0x10={read-fail}".
+        string[] EntityDetailsSweep,
+        // entity-details component-list sweep: entityDetails + {0x08, 0x10, 0x18, 0x20, 0x28}. Each entry:
+        // "0x10=count=42" or "0x20={read-fail}".
+        string[] ComponentListSweep,
+        // entity-details name (StdWString) sweep: entityDetails + {0x00, 0x08, 0x10, 0x18}. Each entry:
+        // "0x08=Metadata/Monsters/Foo" or "0x10={read-fail}".
+        string[] EntityDetailsNameSweep,
+        // component-lookup bucket sweep: componentLookUp + {0x20, 0x28, 0x30, 0x38}. Each entry:
+        // "0x28=0x7ffe1234/entries=12" or "0x30={read-fail}".
+        string[] ComponentLookUpBucketSweep);
 
     /// <summary>v0.41.6: dumps a handful of entity structs with candidate offset sweeps so field
     /// reports can identify entity-side offset drift after game patches. Reads a random sample of
@@ -2500,6 +2512,93 @@ public sealed class Poe2Live
                 hpCur = vitals.Current; hpMax = vitals.Max;
             }
 
+            // ── entity-details-ptr sweep: entity + {0x00, 0x08, 0x10, 0x18} ──
+            var detailsPtrOffsets = new int[] { 0x00, 0x08, 0x10, 0x18 };
+            var detailsSweep = new string[detailsPtrOffsets.Length];
+            for (int i = 0; i < detailsPtrOffsets.Length; i++)
+            {
+                var off = detailsPtrOffsets[i];
+                if (!_reader.TryReadStruct<nint>(entity + off, out var detailsPtr))
+                {
+                    detailsSweep[i] = $"0x{off:X}={{read-fail}}";
+                }
+                else
+                {
+                    detailsSweep[i] = $"0x{off:X}=0x{detailsPtr:X}";
+                }
+            }
+
+            // Configured chase: entity + 0x08 → EntityDetails (for downstream sweeps)
+            var entityDetails = Ptr(entity + Poe2.Entity.EntityDetailsPtr);
+
+            // ── component-list sweep: entityDetails + {0x08, 0x10, 0x18, 0x20, 0x28} ──
+            var compListOffsets = new int[] { 0x08, 0x10, 0x18, 0x20, 0x28 };
+            var compListSweep = new string[compListOffsets.Length];
+            for (int i = 0; i < compListOffsets.Length; i++)
+            {
+                var off = compListOffsets[i];
+                if (entityDetails == 0)
+                {
+                    compListSweep[i] = $"0x{off:X}=entityDetails-null";
+                    continue;
+                }
+                if (!_reader.TryReadStruct<StdVector>(entityDetails + off, out var vec))
+                {
+                    compListSweep[i] = $"0x{off:X}={{read-fail}}";
+                }
+                else
+                {
+                    var entryCount = ((long)vec.Last - (long)vec.First) / 8;
+                    compListSweep[i] = $"0x{off:X}=count={entryCount}";
+                }
+            }
+
+            // ── entity-details name sweep: entityDetails + {0x00, 0x08, 0x10, 0x18} ──
+            var nameOffsets = new int[] { 0x00, 0x08, 0x10, 0x18 };
+            var nameSweep = new string[nameOffsets.Length];
+            for (int i = 0; i < nameOffsets.Length; i++)
+            {
+                var off = nameOffsets[i];
+                if (entityDetails == 0)
+                {
+                    nameSweep[i] = $"0x{off:X}=entityDetails-null";
+                    continue;
+                }
+                var name = ReadStdWString(entityDetails + off);
+                if (string.IsNullOrEmpty(name))
+                {
+                    nameSweep[i] = $"0x{off:X}={{read-fail}}";
+                }
+                else
+                {
+                    nameSweep[i] = $"0x{off:X}={name}";
+                }
+            }
+
+            // ── component-lookup bucket sweep: componentLookUp + {0x20, 0x28, 0x30, 0x38} ──
+            var bucketOffsets = new int[] { 0x20, 0x28, 0x30, 0x38 };
+            var bucketSweep = new string[bucketOffsets.Length];
+            var lookup = entityDetails == 0 ? 0 : Ptr(entityDetails + Poe2.EntityDetails.ComponentLookUpPtr);
+            for (int i = 0; i < bucketOffsets.Length; i++)
+            {
+                var off = bucketOffsets[i];
+                if (lookup == 0)
+                {
+                    bucketSweep[i] = $"0x{off:X}=lookup-null";
+                    continue;
+                }
+                if (!_reader.TryReadStruct<nint>(lookup + off, out var bFirst) ||
+                    !_reader.TryReadStruct<nint>(lookup + off + 8, out var bLast))
+                {
+                    bucketSweep[i] = $"0x{off:X}={{read-fail}}";
+                }
+                else
+                {
+                    var entries = bFirst == 0 ? 0 : ((long)bLast - (long)bFirst) / Poe2.ComponentLookUp.EntryStride;
+                    bucketSweep[i] = $"0x{off:X}=0x{bFirst:X}/entries={entries}";
+                }
+            }
+
             samples.Add(new EntityProbeSample(
                 EntityAddr: $"0x{entity:X}",
                 RenderAddr: $"0x{render:X}",
@@ -2507,7 +2606,11 @@ public sealed class Poe2Live
                 HpCurCurrentOffset: hpCur,
                 HpMaxCurrentOffset: hpMax,
                 LifeHealthSweep:    lifeSweep,
-                RenderPositionSweep: posSweep));
+                RenderPositionSweep: posSweep,
+                EntityDetailsSweep:       detailsSweep,
+                ComponentListSweep:       compListSweep,
+                EntityDetailsNameSweep:   nameSweep,
+                ComponentLookUpBucketSweep: bucketSweep));
 
             count++;
         }
