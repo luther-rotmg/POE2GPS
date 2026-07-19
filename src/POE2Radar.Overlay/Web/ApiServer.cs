@@ -124,6 +124,9 @@ public sealed class ApiServer : IDisposable
     // v0.42 B1a: AreaInstance probe provider. Returns current _lastAreaInstance (or 0 if not set).
     private readonly Func<nint>? _areaProbe;
     private readonly MemoryReader? _areaProbeReader;
+    // v0.42 B4a: Monolith probe provider. Returns current device address list (up to 5).
+    private readonly Func<IReadOnlyList<nint>>? _monolithProbe;
+    private readonly MemoryReader? _monolithProbeReader;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -185,7 +188,12 @@ public sealed class ApiServer : IDisposable
         // Loopback-gated (raw pointers in the response).
         Func<nint>? areaProbeProvider = null,
         // v0.42 B1a: MemoryReader for area probe reads. Uses the same reader as _liveApi.
-        MemoryReader? areaProbeReader = null)
+        MemoryReader? areaProbeReader = null,
+        // v0.42 B4a: Monolith probe provider. Returns current device address list (up to 5).
+        // Loopback-gated (raw pointers in the response).
+        Func<IReadOnlyList<nint>>? monolithProbeProvider = null,
+        // v0.42 B4a: MemoryReader for monolith probe reads. Uses the same reader as _liveApi.
+        MemoryReader? monolithProbeReader = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -230,6 +238,8 @@ public sealed class ApiServer : IDisposable
         _entityProbe = entityProbeProvider;
         _areaProbe = areaProbeProvider;
         _areaProbeReader = areaProbeReader;
+        _monolithProbe = monolithProbeProvider;
+        _monolithProbeReader = monolithProbeReader;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1022,6 +1032,54 @@ public sealed class ApiServer : IDisposable
                         });
                     }
                     var json = SerializeProbeResponse("Poe2.AreaInstance", samples, Json);
+                    Write(ctx, 200, json);
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
+                break;
+
+            case "/api/probe/monolith":
+                // v0.42 B4a: Monolith/RuneStation diagnostic endpoint. Loopback-gated (dumps raw pointers).
+                // For each device, runs ListenerSub and RuneStride sweeps at candidate offsets.
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (_monolithProbe is null)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "monolith probe unavailable" }, Json));
+                    break;
+                }
+                try
+                {
+                    var devices = _monolithProbe.Invoke();
+                    var reader = _monolithProbeReader;
+                    var samples = new List<object>();
+                    foreach (var deviceAddr in devices)
+                    {
+                        var deviceSamples = new
+                        {
+                            deviceAddr = $"0x{deviceAddr:X}",
+                            listenerSubSweep = reader != null
+                                ? MonolithProber.SweepListenerSub(deviceAddr, reader)
+                                : Array.Empty<ProbeSample<nint>>(),
+                            runeStrideSweep = reader != null
+                                ? MonolithProber.SweepRuneStride(deviceAddr, reader)
+                                : Array.Empty<ProbeSample<int>>(),
+                            configuredListenerSub = $"0x{Poe2.RuneStation.ListenerSub:X}",
+                            configuredRuneStride = $"0x{Poe2.RuneStation.RuneStride:X}"
+                        };
+                        samples.Add(deviceSamples);
+                    }
+                    var json = SerializeProbeResponse("Poe2.RuneStation", samples, Json);
                     Write(ctx, 200, json);
                 }
                 catch (Exception ex)

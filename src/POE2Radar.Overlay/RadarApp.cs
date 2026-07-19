@@ -941,7 +941,21 @@ public sealed class RadarApp : IDisposable
                                entityProbeProvider: () => new { samples = _live.ProbeEntities(maxSamples: 5) },
                                // v0.42 B1a: AreaInstance probe provider and MemoryReader.
                                areaProbeProvider: () => _lastAreaInstance,
-                               areaProbeReader: _readerApi);
+                               areaProbeReader: _readerApi,
+                               // v0.42 B4a: Monolith device probe provider and MemoryReader.
+                               // Returns addresses of up to 5 Expedition2Encounter entities.
+                               monolithProbeProvider: () =>
+                               {
+                                   var devices = new List<nint>();
+                                   foreach (var e in _entities)
+                                   {
+                                       if (e.Metadata.IndexOf("Expedition2Encounter", StringComparison.OrdinalIgnoreCase) >= 0)
+                                           devices.Add(e.Address);
+                                       if (devices.Count >= 5) break;
+                                   }
+                                   return devices;
+                               },
+                               monolithProbeReader: _readerApi);
         // v0.39 R3: load + compile rules engine ruleset at startup.
         // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
         try
