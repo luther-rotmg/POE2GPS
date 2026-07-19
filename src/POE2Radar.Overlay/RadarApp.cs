@@ -995,7 +995,10 @@ monolithProbeReader: _readerApi,
                                 // v0.42 B6a: Item probe provider + reader + component resolver.
                                 itemProbeProvider: () => _live.GetLastGroundItemsSnapshot(),
                                 itemProbeReader: _readerApi,
-                                itemProbeComponentResolver: (entity, name) => _liveApi.ResolveComponent(entity, name));
+                                itemProbeComponentResolver: (entity, name) => _liveApi.ResolveComponent(entity, name),
+                                // v0.42 B8a: Buffs probe provider + reader.
+                                buffsProbeProvider: () => _live.BuffsProbePairs,
+                                buffsProbeReader: _readerApi);
         // v0.39 R3: load + compile rules engine ruleset at startup.
         // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
         try
@@ -2641,6 +2644,10 @@ monolithProbeReader: _readerApi,
         var cfg = _settings.BuffNameplates;
         _live.EnableBuffReads = cfg.Enabled;      // gate the read (stealth): off → Poe2Live.Buffs no-ops
         if (!cfg.Enabled) { _buffsSeen = System.Array.Empty<(string, string)>(); return specs; }
+
+        // v0.42 B8a: reset the side-observation snapshot before this cycle's Buffs() calls.
+        _live.ResetBuffsProbePairs();
+
         var threshold = cfg.Tier switch
         {
             "All" => POE2Radar.Core.Game.BuffTier.Minor,

@@ -140,6 +140,10 @@ public sealed class ApiServer : IDisposable
     private readonly MemoryReader? _itemProbeReader;
     // v0.42 B6a: Component resolver for item probe (wraps Poe2Live.ResolveComponent).
     private readonly Func<nint, string, nint>? _itemProbeComponentResolver;
+    // v0.42 B8a: Buffs probe provider. Returns up to 8 (eliteAddr, buffsCompAddr) pairs from the
+    // most-recent buff-read cycle. Loopback-gated (raw pointers in the response).
+    private readonly Func<IReadOnlyList<(nint eliteAddr, nint buffsCompAddr)>>? _buffsProbe;
+    private readonly MemoryReader? _buffsProbeReader;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -223,7 +227,10 @@ public sealed class ApiServer : IDisposable
         // v0.42 B6a: MemoryReader for item probe reads.
         MemoryReader? itemProbeReader = null,
         // v0.42 B6a: Component resolver for item probe (wraps Poe2Live.ResolveComponent).
-        Func<nint, string, nint>? itemProbeComponentResolver = null)
+        Func<nint, string, nint>? itemProbeComponentResolver = null,
+        // v0.42 B8a: Buffs probe provider + memory reader.
+        Func<IReadOnlyList<(nint eliteAddr, nint buffsCompAddr)>>? buffsProbeProvider = null,
+        MemoryReader? buffsProbeReader = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -277,6 +284,8 @@ public sealed class ApiServer : IDisposable
         _itemProbe = itemProbeProvider;
         _itemProbeReader = itemProbeReader;
         _itemProbeComponentResolver = itemProbeComponentResolver;
+        _buffsProbe = buffsProbeProvider;
+        _buffsProbeReader = buffsProbeReader;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1314,6 +1323,77 @@ public sealed class ApiServer : IDisposable
                         samples.Add(sample);
                     }
                     var json = SerializeProbeResponse("Poe2.Items", samples, Json);
+                    Write(ctx, 200, json);
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
+                break;
+
+            case "/api/probe/buffs":
+                // v0.42 B8a: BuffsComponent diagnostic endpoint. Loopback-gated (dumps raw pointers).
+                // For each (eliteAddr, buffsCompAddr) pair from the provider (up to 8), runs the
+                // BuffVector and Definition sweeps at candidate offsets. Probe-only — no auto-heal.
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (_buffsProbe is null)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "buffs probe unavailable" }, Json));
+                    break;
+                }
+                try
+                {
+                    var pairs = _buffsProbe.Invoke();
+                    var reader = _buffsProbeReader;
+                    var samples = new List<object>();
+                    foreach (var (eliteAddr, buffsCompAddr) in pairs)
+                    {
+                        if (buffsCompAddr == 0) continue;
+
+                        // Read the currently-configured BuffVector at +0x160 for informational display
+                        nint configuredFirstPtr = 0;
+                        int configuredCount = 0;
+                        if (reader != null)
+                        {
+                            if (reader.TryReadStruct<nint>(buffsCompAddr + Poe2.BuffsComponent.BuffVector, out var cf))
+                            {
+                                configuredFirstPtr = cf;
+                                if (cf != 0 && reader.TryReadStruct<nint>(
+                                    buffsCompAddr + Poe2.BuffsComponent.BuffVector + 8, out var cl))
+                                {
+                                    configuredCount = (int)(((long)cl - (long)cf) / 8);
+                                }
+                            }
+                        }
+
+                        // firstStatusEffect for DefinitionSweep: if configuredFirstPtr is valid
+                        var firstStatusEffect = configuredFirstPtr;
+
+                        var sample = new
+                        {
+                            eliteAddr = $"0x{eliteAddr:X}",
+                            buffsCompAddr = $"0x{buffsCompAddr:X}",
+                            buffVectorFirstPtr = configuredFirstPtr != 0 ? $"0x{configuredFirstPtr:X}" : "0x0",
+                            buffVectorCount = configuredCount,
+                            buffVectorSweep = reader != null
+                                ? BuffProber.SweepBuffVector(buffsCompAddr, reader)
+                                : Array.Empty<ProbeSample<StdVecShape>>(),
+                            definitionSweep = reader != null && firstStatusEffect != 0
+                                ? BuffProber.SweepDefinition(firstStatusEffect, reader)
+                                : Array.Empty<ProbeSample<nint>>(),
+                        };
+                        samples.Add(sample);
+                    }
+                    var json = SerializeProbeResponse("Poe2.BuffsComponent", samples, Json);
                     Write(ctx, 200, json);
                 }
                 catch (Exception ex)

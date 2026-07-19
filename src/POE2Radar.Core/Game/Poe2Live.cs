@@ -60,6 +60,12 @@ public sealed class Poe2Live
 
     private readonly Dictionary<nint, nint> _buffsAddr = new();    // entity → Buffs component (0 = none)
     private readonly Dictionary<nint, string> _buffId = new();     // StatusEffect addr → id (static per instance)
+    // v0.42 B8a: side-observation snapshot for /api/probe/buffs diagnostic.
+    // ResetBuffsProbePairs() is called by RadarApp before the BuildBuffSpecs loop;
+    // Buffs() appends (entity, comp) pairs up to 8 as a side effect.
+    private readonly List<(nint Entity, nint BuffsComp)> _buffsProbePairs = new();
+    internal void ResetBuffsProbePairs() => _buffsProbePairs.Clear();
+    internal IReadOnlyList<(nint Entity, nint BuffsComp)> BuffsProbePairs => _buffsProbePairs;
 
     private readonly Dictionary<nint, string[]> _mods = new();     // entity → affix mod ids (static per spawn; cached; empty = no mods)
     private readonly Dictionary<nint, (Rarity rarity, string? art, bool identified, string? name, IReadOnlyList<RawAffix>? affixes)> _itemIdent = new(); // WorldItem entity → dropped-item identity (static; cached)
@@ -133,7 +139,7 @@ public sealed class Poe2Live
         _gameStateSlot = gameStateSlot;
         _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
         _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear();
-        _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear(); _buffsAddr.Clear(); _buffId.Clear();
+        _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear(); _buffsAddr.Clear(); _buffId.Clear(); _buffsProbePairs.Clear();
         _entCacheKey = 0;
         _league = ""; _leagueFor = -1;
         _areaCode = ""; _areaCodeFor = -1;
@@ -499,7 +505,7 @@ public sealed class Poe2Live
         if (areaInstance != _entCacheKey)
         {
             _renderAddr.Clear(); _lifeAddr.Clear(); _posAddr.Clear(); _ompAddr.Clear(); _chestAddr.Clear(); _openedChests.Clear(); _completedPois.Clear(); _iconState.Clear();
-            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear(); _buffsAddr.Clear(); _buffId.Clear();
+            _category.Clear(); _meta.Clear(); _iconAddr.Clear(); _rarity.Clear(); _reaction.Clear(); _mods.Clear(); _itemIdent.Clear(); _idAt.Clear(); _monolithCache.Clear(); _buffsAddr.Clear(); _buffId.Clear(); _buffsProbePairs.Clear();
             _entCacheKey = areaInstance;
         }
 
@@ -790,6 +796,9 @@ public sealed class Poe2Live
         if (!EnableBuffReads) return result;
         if (!_buffsAddr.TryGetValue(entity, out var comp)) { comp = ResolveComponent(entity, "Buffs"); _buffsAddr[entity] = comp; }
         if (comp == 0) return result;
+
+        // v0.42 B8a: side-observation record for /api/probe/buffs diagnostic (cap 8).
+        if (_buffsProbePairs.Count < 8) _buffsProbePairs.Add((entity, comp));
 
         var first = Ptr(comp + Poe2.BuffsComponent.BuffVector);
         if (first == 0 || !_reader.TryReadStruct<nint>(comp + Poe2.BuffsComponent.BuffVector + 8, out var last) || last == 0) return result;
