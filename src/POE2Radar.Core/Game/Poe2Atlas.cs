@@ -924,30 +924,44 @@ public sealed class Poe2Atlas
         int chosen  = -1;
         bool chosenVis = false;
 
-        // Fast path: cached auto-discovered index.
+        // v0.41.8 fix: controller-mode field payload showed MULTIPLE indices matching the [8, 30]-
+        // child signature — historical index 22 stays visible=false in controller mode (keyboard-
+        // mode-only artifact), while the TRUE controller-mode atlas panel sits at index 97 (also 18
+        // children) and toggles visible correctly. The old logic picked closest-to-primary → always
+        // index 22 → dashboard incorrectly reported "atlas closed."
+        //
+        // New logic: cached-index fast path (byte-identical when cache is warm), else scan every
+        // signature-matching candidate and prefer one with visible=true (that's the true atlas panel
+        // for this UI mode). Fall back to first-any-match only when NO signature match is visible.
+
         if (cached >= 0 && TryReadPanelVisibleBit(first, cached, out var visC, out var sigC) && sigC)
         {
             chosen = cached; chosenVis = visC;
         }
-        else if (TryReadPanelVisibleBit(first, primary, out var visP, out var sigP) && sigP)
-        {
-            _lastFoundAtlasChildIndex = primary; chosen = primary; chosenVis = visP;
-        }
         else
         {
-            // Slow path: scan up to scanWidth children; prefer indices closer to primary.
+            (int idx, bool vis)? firstVisibleMatch = null;
+            (int idx, bool vis)? firstAnyMatch = null;
+
             var ordered = new List<int>();
             for (int i = 0; i < scanWidth; i++) ordered.Add(i);
             ordered.Sort((a, b) => Math.Abs(a - primary) - Math.Abs(b - primary));
 
             foreach (var candidate in ordered)
             {
-                if (candidate == cached || candidate == primary) continue;
                 if (TryReadPanelVisibleBit(first, candidate, out var vis, out var sig) && sig)
                 {
-                    _lastFoundAtlasChildIndex = candidate; chosen = candidate; chosenVis = vis;
-                    break;
+                    firstAnyMatch ??= (candidate, vis);
+                    if (vis) { firstVisibleMatch = (candidate, vis); break; }
                 }
+            }
+
+            var pick = firstVisibleMatch ?? firstAnyMatch;
+            if (pick is { } p)
+            {
+                _lastFoundAtlasChildIndex = p.idx;
+                chosen = p.idx;
+                chosenVis = p.vis;
             }
         }
 

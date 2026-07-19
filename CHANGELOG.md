@@ -3,6 +3,24 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.8] — 2026-07-19 "Controller-Mode Atlas Fix"
+
+*Actually FIXES the controller-mode "atlas closed" false-positive after v0.41.7's diagnostic pinpointed the true panel index.*
+
+### Fixed
+
+- 🎮 **Controller-mode users no longer see "atlas closed" when their atlas is open.** v0.41.7's diagnostic proved the theory: UiRoot has multiple `[8, 30]`-child-signature-matching panels. In controller mode, the historical index 22 panel (18 children) stays `visible=false` — it's a keyboard-mode-only artifact — while the true controller-mode atlas panel sits at a different index (index 97 in the reference field payload, also with 18 children) and correctly toggles `visible=true`.
+- 🎯 **Selection logic now prefers `visible=true` among signature matches.** The scan enumerates every `[8, 30]`-child candidate in UiRoot's children, picks the first one whose visible bit is on, and caches its index. Falls back to the first-any-signature-match only when nothing is currently visible (atlas genuinely closed). Keyboard-mode users still land on index 22 as before — its visible bit toggles correctly when the atlas is open on keyboard mode.
+
+### Under the hood
+
+- Rewrote the slow-path scan in `Poe2Atlas.AtlasPanelOpen` to enumerate all signature-matching candidates and pick by `visible=true` preference instead of first-signature-match-wins-by-distance.
+- Cache remains keyed on `_lastFoundAtlasChildIndex`; a mid-session mode swap (keyboard ↔ controller) triggers a slow-path rescan when the cached index goes non-signature — normal case is the cache-hit fast path (unchanged perf).
+
+### Upgrade
+
+**Recommended for all controller-mode users.** If you were still seeing "atlas closed" on v0.41.7 despite the atlas being open, this build fixes it directly — no diagnostic-and-diff step required.
+
 ## [0.41.7] — 2026-07-18 "Controller-Mode Atlas Diagnostic + Entity Probe"
 
 *Widens the atlas open-detection scan + adds a new `/api/entity-probe` endpoint for offset-drift diagnostics on entities.*
