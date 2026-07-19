@@ -3585,6 +3585,14 @@ public sealed class RadarApp : IDisposable
                 chosenIndex    = _atlas.LastProbe.ChosenIndex,
                 chosenVisible  = _atlas.LastProbe.ChosenVisible,
                 childCounts    = _atlas.LastProbe.CandidateChildCounts,
+                // v0.41.5 richer diagnostics: raw pointers + offset sweep so field reports can
+                // reveal which offset the 2026-07-16 patch shifted UiElement.Children to.
+                uiRootAddr           = _atlas.LastProbe.UiRootAddr,
+                childrenBeginAddr    = _atlas.LastProbe.ChildrenBeginAddr,
+                childrenEndAddr      = _atlas.LastProbe.ChildrenEndAddr,
+                childrenOffsetHex    = "0x" + _atlas.LastProbe.ChildrenOffsetHex.ToString("X"),
+                childrenEndOffsetHex = "0x" + _atlas.LastProbe.ChildrenEndOffsetHex.ToString("X"),
+                probeAtOffsets       = _atlas.LastProbe.ProbeAtOffsets,
             },
             // Every distinct content tag currently on the atlas (+ count), for the dashboard's filter /
             // highlight-rule pickers. These are the readable content/mechanic names (Powerful Map Boss,

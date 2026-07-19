@@ -3,6 +3,23 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.5] — 2026-07-17 "Atlas Detection — Deep Probe"
+
+*Field diagnostic: v0.41.4 confirmed the atlas scan is short-circuiting on a null Children pointer. This drop adds a raw-offset sweep so we can see which offset the game patch shifted `UiElement.Children` to.*
+
+### Changed
+
+- 🩺 **`/api/atlas` `atlasProbe` field is now much richer.** Adds `uiRootAddr`, `childrenBeginAddr`, `childrenEndAddr` (raw pointers so you can see whether we short-circuited on `uiRoot == 0` vs `children == 0`), `childrenOffsetHex` / `childrenEndOffsetHex` (the offsets we tried), and `probeAtOffsets` — a sweep of 10 plausible offsets around the current 0x10 with what each reads back (`0x18=0x7ffe1234 (18 slots)` or `0x18=null`). The offset that shows a non-null pointer with a reasonable slot count is where the atlas panel Children StdVector actually lives now.
+
+### Under the hood
+
+- New `Poe2Atlas.SweepChildrenCandidateOffsets(uiRoot)` — reads `*(uiRoot + off)` for `off` in `{0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48}` and reports each result as a compact string.
+- `LastProbe` is populated even on early-return so field diagnostics are never blank.
+
+### Upgrade
+
+Recommended for anyone still seeing "atlas closed" after v0.41.4. Paste your `/api/atlas` response back and I'll pin down the new offset.
+
 ## [0.41.4] — 2026-07-17 "Atlas Detection — Wider Scan"
 
 *v0.41.3's ±6 / exact-18-children window still missed the patch-day drift for some users. Wider now.*

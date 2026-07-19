@@ -862,16 +862,42 @@ public sealed class Poe2Atlas
         int CachedIndex,
         int ChosenIndex,
         bool ChosenVisible,
-        int[] CandidateChildCounts);
+        int[] CandidateChildCounts,
+        // v0.41.5: raw pointer diagnostic for cases where the scan never runs (uiRoot == 0 or
+        // UiRoot's Children offset itself has drifted so the vector begin/end reads back 0).
+        // Values are hex strings so the payload is readable when pasted.
+        string UiRootAddr,
+        string ChildrenBeginAddr,
+        string ChildrenEndAddr,
+        int    ChildrenOffsetHex,
+        int    ChildrenEndOffsetHex,
+        // ProbeAtOffsets sweeps common candidate offsets for Children begin — if the raw offset
+        // 0x10 reads back 0, one of these might be the new location post-patch. Format:
+        // "0x10=0x7ffe1234 (18 slots)" etc.
+        string[] ProbeAtOffsets);
 
     public AtlasProbeInfo LastProbe { get; private set; } =
-        new(Poe2.AtlasPanel.UiRootChildIndex, -1, -1, false, Array.Empty<int>());
+        new(Poe2.AtlasPanel.UiRootChildIndex, -1, -1, false, Array.Empty<int>(),
+            "0x0", "0x0", "0x0", Poe2.UiElement.Children, Poe2.UiElement.ChildrenEnd, Array.Empty<string>());
 
     private bool AtlasPanelOpen(nint uiRoot)
     {
-        if (uiRoot == 0) return false;
-        var first = Ptr(uiRoot + Poe2.UiElement.Children);
-        if (first == 0) return false;
+        // v0.41.5 diagnostic: always populate LastProbe with the raw pointer info before any early
+        // return, so field reports show whether we short-circuited on uiRoot==0 vs first==0.
+        var first = uiRoot == 0 ? 0 : Ptr(uiRoot + Poe2.UiElement.Children);
+        var last  = uiRoot == 0 ? 0 : Ptr(uiRoot + Poe2.UiElement.ChildrenEnd);
+        var probeSweep = uiRoot == 0 ? Array.Empty<string>() : SweepChildrenCandidateOffsets(uiRoot);
+
+        if (uiRoot == 0 || first == 0)
+        {
+            LastProbe = new AtlasProbeInfo(
+                Poe2.AtlasPanel.UiRootChildIndex, _lastFoundAtlasChildIndex, -1, false,
+                Array.Empty<int>(),
+                $"0x{uiRoot:X}", $"0x{first:X}", $"0x{last:X}",
+                Poe2.UiElement.Children, Poe2.UiElement.ChildrenEnd,
+                probeSweep);
+            return false;
+        }
 
         var primary = Poe2.AtlasPanel.UiRootChildIndex;
         var cached  = _lastFoundAtlasChildIndex;
@@ -916,9 +942,38 @@ public sealed class Poe2Atlas
             var e = Ptr(p + Poe2.UiElement.ChildrenEnd);
             counts[i] = (b == 0 || e == 0) ? -1 : (int)((e - b) / 8);
         }
-        LastProbe = new AtlasProbeInfo(primary, _lastFoundAtlasChildIndex, chosen, chosenVis, counts);
+        LastProbe = new AtlasProbeInfo(
+            primary, _lastFoundAtlasChildIndex, chosen, chosenVis, counts,
+            $"0x{uiRoot:X}", $"0x{first:X}", $"0x{last:X}",
+            Poe2.UiElement.Children, Poe2.UiElement.ChildrenEnd,
+            probeSweep);
 
         return chosen >= 0 && chosenVis;
+    }
+
+    /// <summary>v0.41.5 field-diagnostic sweep: read <c>*(uiRoot + off)</c> for a range of plausible
+    /// StdVector-begin offsets and report which ones look non-null + how many 8-byte pointer slots
+    /// exist between begin and the presumed end (off+8). If the game patch shifted UiElement.Children
+    /// away from the current 0x10, the shifted offset will show a non-null result with a reasonable
+    /// child count — LO can then update Poe2Offsets to match.</summary>
+    private string[] SweepChildrenCandidateOffsets(nint uiRoot)
+    {
+        // Common shift amounts from patch drift: +/-0x08, +/-0x10, and offsets nearby the current 0x10.
+        int[] candidateOffsets = { 0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, 0x38, 0x40, 0x48 };
+        var results = new List<string>(candidateOffsets.Length);
+        foreach (var off in candidateOffsets)
+        {
+            var b = Ptr(uiRoot + off);
+            var e = Ptr(uiRoot + off + 8);
+            if (b == 0)
+            {
+                results.Add($"0x{off:X2}=null");
+                continue;
+            }
+            var slots = (e == 0 || e < b) ? -1 : (int)((e - b) / 8);
+            results.Add($"0x{off:X2}=0x{b:X} ({slots} slots)");
+        }
+        return results.ToArray();
     }
 
     private bool TryReadPanelVisibleBit(nint firstChildPtr, int index, out bool visible, out bool matchesSignature)
