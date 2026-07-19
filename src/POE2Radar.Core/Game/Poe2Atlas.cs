@@ -924,15 +924,21 @@ public sealed class Poe2Atlas
         int chosen  = -1;
         bool chosenVis = false;
 
-        // v0.41.8 fix: controller-mode field payload showed MULTIPLE indices matching the [8, 30]-
-        // child signature — historical index 22 stays visible=false in controller mode (keyboard-
-        // mode-only artifact), while the TRUE controller-mode atlas panel sits at index 97 (also 18
-        // children) and toggles visible correctly. The old logic picked closest-to-primary → always
-        // index 22 → dashboard incorrectly reported "atlas closed."
+        // v0.41.9 fix: v0.41.8's "prefer visible=true among [8, 30]-child signature matches" wasn't
+        // specific enough — controller-mode payload showed indices 17 (9 children, visible), 19 (9,
+        // visible), 22 (18, invisible), and 97 (18, visible). Sorted by distance-from-primary=22,
+        // the v0.41.8 code hit index 19 (9 children, visible=true) before index 97, cached the wrong
+        // index, kept reporting "atlas closed."
         //
-        // New logic: cached-index fast path (byte-identical when cache is warm), else scan every
-        // signature-matching candidate and prefer one with visible=true (that's the true atlas panel
-        // for this UI mode). Fall back to first-any-match only when NO signature match is visible.
+        // v0.41.9 uses a tier-preference: EXACT 18-child count (the true atlas panel signature —
+        // both historical index 22 AND controller index 97 have exactly 18) beats the looser [8, 30]
+        // range. Within each tier, prefer visible=true, then closer-to-primary. Loose range remains
+        // as final fallback for future patches that might shift the child count by 1-2.
+        //
+        //   Tier 1: childCount == 18 AND visible=true → strongest match
+        //   Tier 2: childCount == 18 (any visibility) → historical signature match
+        //   Tier 3: childCount in [8, 30] AND visible=true → loose fallback with visibility
+        //   Tier 4: childCount in [8, 30] (any visibility) → last resort
 
         if (cached >= 0 && TryReadPanelVisibleBit(first, cached, out var visC, out var sigC) && sigC)
         {
@@ -940,8 +946,10 @@ public sealed class Poe2Atlas
         }
         else
         {
-            (int idx, bool vis)? firstVisibleMatch = null;
-            (int idx, bool vis)? firstAnyMatch = null;
+            (int idx, bool vis)? tier1 = null; // exact 18 + visible
+            (int idx, bool vis)? tier2 = null; // exact 18
+            (int idx, bool vis)? tier3 = null; // [8,30] + visible
+            (int idx, bool vis)? tier4 = null; // [8,30]
 
             var ordered = new List<int>();
             for (int i = 0; i < scanWidth; i++) ordered.Add(i);
@@ -949,14 +957,22 @@ public sealed class Poe2Atlas
 
             foreach (var candidate in ordered)
             {
-                if (TryReadPanelVisibleBit(first, candidate, out var vis, out var sig) && sig)
+                if (!TryReadPanelVisibleBit(first, candidate, out var vis, out var sig) || !sig) continue;
+                var childCount = ReadElementChildCount(first, candidate);
+                if (childCount == Poe2.AtlasPanel.ExpectedChildCount)
                 {
-                    firstAnyMatch ??= (candidate, vis);
-                    if (vis) { firstVisibleMatch = (candidate, vis); break; }
+                    if (vis) tier1 ??= (candidate, vis);
+                    tier2 ??= (candidate, vis);
+                    if (tier1 is not null) break; // best possible tier found, stop
+                }
+                else
+                {
+                    if (vis) tier3 ??= (candidate, vis);
+                    tier4 ??= (candidate, vis);
                 }
             }
 
-            var pick = firstVisibleMatch ?? firstAnyMatch;
+            var pick = tier1 ?? tier2 ?? tier3 ?? tier4;
             if (pick is { } p)
             {
                 _lastFoundAtlasChildIndex = p.idx;
@@ -1019,6 +1035,18 @@ public sealed class Poe2Atlas
             results.Add($"0x{off:X2}=0x{b:X} ({slots} slots)");
         }
         return results.ToArray();
+    }
+
+    /// <summary>v0.41.9: read the child count of a candidate panel without touching visibility/signature
+    /// state. Used by the tier selector to distinguish exact-18 matches from looser [8, 30] matches.</summary>
+    private int ReadElementChildCount(nint firstChildPtr, int index)
+    {
+        var panel = Ptr(firstChildPtr + (nint)(index * 8));
+        if (panel == 0 || Ptr(panel + Poe2.UiElement.Self) != panel) return -1;
+        var childBegin = Ptr(panel + Poe2.UiElement.Children);
+        var childEnd   = Ptr(panel + Poe2.UiElement.ChildrenEnd);
+        if (childBegin == 0 || childEnd == 0) return -1;
+        return (int)((childEnd - childBegin) / 8);
     }
 
     private bool TryReadPanelVisibleBit(nint firstChildPtr, int index, out bool visible, out bool matchesSignature)

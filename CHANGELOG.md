@@ -3,6 +3,32 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.41.9] — 2026-07-19 "Controller-Mode Atlas Fix (Tier-Preference)"
+
+*v0.41.8's "prefer visible=true" wasn't specific enough — controller-mode UI has multiple visible panels matching the loose child-count signature. This drop uses a proper tier preference.*
+
+### Fixed
+
+- 🎮 **Controller-mode `atlas closed` false-positive — actually fixed this time.** Field payload confirmed: when the atlas is open in controller mode, UiRoot has multiple `[8, 30]`-child-signature-matching visible panels (index 17 with 9 children, index 19 with 9 children, index 97 with 18 children). v0.41.8's "first visible signature match by distance-from-primary" logic picked index 19 (visible, 9 children, close to primary=22) before reaching index 97 — landed on the wrong panel, cached it, kept reporting "atlas closed."
+
+### Changed
+
+- 🎯 **Selection now uses a 4-tier preference:**
+  1. `childCount == 18` AND `visible = true` → strongest match (the true atlas panel — both keyboard index 22 AND controller index 97 have exactly 18 children)
+  2. `childCount == 18` regardless of visibility → historical signature match
+  3. `childCount in [8, 30]` AND `visible = true` → loose fallback with visibility
+  4. `childCount in [8, 30]` → last resort
+  Within each tier, closer-to-primary=22 wins the ordering. Exact-18 beats any loose match, so the algorithm now walks past visible 9-child panels to reach the 18-child atlas panel.
+
+### Under the hood
+
+- New private helper `Poe2Atlas.ReadElementChildCount(firstChildPtr, index)` reads just the child count of a candidate panel without touching the visibility/signature state, keeping the tier logic clean.
+- Cached fast-path unchanged — this only affects the slow-path scan that runs on cache miss or after a UI-mode swap.
+
+### Upgrade
+
+**Recommended for controller-mode users.** If v0.41.8 still showed "atlas closed," this build lands the correct panel (index 97 or wherever your controller-mode atlas actually is) via strict-18 preference.
+
 ## [0.41.8] — 2026-07-19 "Controller-Mode Atlas Fix"
 
 *Actually FIXES the controller-mode "atlas closed" false-positive after v0.41.7's diagnostic pinpointed the true panel index.*
