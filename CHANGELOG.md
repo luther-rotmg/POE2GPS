@@ -3,6 +3,45 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.42.0] — 2026-07-19 "Patch-Day Diagnostics"
+
+*Eight `/api/probe/*` endpoints now surface exactly which internal game-memory offsets each subsystem uses. When the next patch shifts something, a payload paste points to the drift within seconds — no more speculative-hotfix scramble.*
+
+### Added — 🩺 **Eight new diagnostic endpoints for offset-drift triage**
+
+- 🩺 **`/api/probe/area`** — sweeps the 5 AreaInstance high-field offsets (AwakeEntities, SleepingEntities, LocalPlayer, ServerDataPtr, TerrainMetadata). This one family has drifted twice in three weeks (2026-06-25 +0x18, 2026-07-16 +0x08); the endpoint now surfaces the drift on the next request.
+- 🩺 **`/api/probe/atlas-graph`** — sweeps AtlasNode.ConnectionsVec + GridPos + Biome for the atlas routing graph (the app's namesake feature). If routes go blank after a patch, the payload shows which of the three offsets moved.
+- 🩺 **`/api/probe/buffs`** — sweeps BuffsComponent.BuffVector + StatusEffect.Definition on live elite entities. Silent-empty buff nameplates were previously invisible; the endpoint now shows exactly why.
+- 🩺 **`/api/probe/item`** — sweeps WorldItemComponent.ItemEntity + ModsComponent.Rarity + RenderItemComponent.ResourcePath + BaseComponent.NameRow on the last 8 ground drops. `Rarity` misreads (silent-suppress drops from the Drop Timeline) now surface immediately.
+- 🩺 **`/api/probe/monolith`** — sweeps RuneStation.ListenerSub + RuneStride per device. Both offsets drifted on 2026-06-25 and are the same volatility class as Life.EnergyShield; the endpoint eliminates the guesswork.
+- 🩺 **`/api/probe/uielement`** — two-mode flag-snapshot diagnostic. `?snapshot=1` records the 32-bit words at UiElement.Flags candidate offsets on the atlas panel; a second call (with the atlas toggled between hits) shows which offset's bit flipped — that's the true `Flags` location.
+- 🩺 **`/api/entity-probe` extended** with four new sweep arrays per sample (EntityDetailsPtr / ComponentList / EntityDetails.Name / ComponentLookUp.NameAndIndexBucket) — the 5-hop Entity chain root has zero prior coverage; the extension makes every hop diagnosable in one hit.
+- 🩺 **OMP monster-rarity sweep** appended to `/api/entity-probe` — sweeps ObjectMagicProperties.Rarity candidate offsets on each sampled entity. Every monster reading Normal (the silent-critical failure mode) becomes visible.
+
+All endpoints are **loopback-Host-gated** (raw pointers in the response body — never leave your machine).
+
+### Under the hood
+
+- New `POE2Radar.Core.Diagnostics` namespace with `ProbeSample<T>` positional record (`OffsetHex` / `TargetAddr` / `Value` / `ReadFailReason` / `PassesSignature`) + `HealedOffsetCache` static (thread-safe cache with `config/healed-offsets.json` atomic-write persistence, invalidation on 30-day stale, loud `[OFFSET-HEAL]` console + rolling log on relocation) + `HealedOffsetsFile` load/save + `SerializeProbeResponse` helper in `ApiServer`. Ships as **B0 shared scaffold**; the 8 per-family beads (B1a/B2a/B3a/B4a/B5a/B6a/B7a/B8a) each consume it.
+- 8 new prober classes under `POE2Radar.Core.Diagnostics` — `AreaInstanceProber`, `AtlasGraphProber`, `BuffProber`, `ItemProber`, `MonolithProber`, `UiElementFlagsProber`, plus entity-chain sweeps inline in `Poe2Live.ProbeEntities`.
+- New `Poe2Atlas.FirstNodeAddr` public accessor — thread-safe pointer to the first cached atlas-node UiElement, or 0 when the canvas is undetected. Feeds `/api/probe/atlas-graph`.
+- `EntityProbeSample` record grew 7 → 12 positional fields (existing 7 preserved in order; 5 new appended in v0.42 so JSON consumers on older clients don't miss existing fields).
+- `HealedOffsetCache` is wired into B0 but no consumer routes reads through it yet — the auto-heal beads (B1b through B8b) ship in v0.42.1+.
+
+### Tests
+
+- ~90 new xUnit facts across 8 new prober test files. Full suite grows to 1506 (all green, plus 4 pre-existing skips: 1 SSE-integration, 3 B1a `SweepLocalPlayer`/`SweepServerDataPtr` throw-on-invalid-handle follow-up).
+
+### Not shipped yet (v0.42.1+ backlog)
+
+- **Auto-heal** — the 8 per-family "Bxb" beads that route consumer reads through `HealedOffsetCache.Resolve` and signature-scan for alternate offsets on sustained read failures. Once v0.42 confirms the diagnostic pattern works in the field, auto-heal cascades on top.
+- **HealthState verdicts** — dashboard Diagnostics-tab red badges for silent-critical states (30s in a map with 30 monsters but 0 rarities > Normal → "OMP Rarity may have drifted"). Same v0.42.1+ scope.
+- **`Rarity Canary` session metric** — % of monsters cached as Normal in non-town zones. B7b scope.
+
+### Upgrade
+
+Fully additive. No config migration. All 8 endpoints are loopback-only diagnostic surface; the game-facing behavior is byte-identical to v0.41.9. If a patch breaks something, `curl /api/probe/<family>` gives a payload that pinpoints the drift in seconds instead of the multi-hotfix scramble.
+
 ## [0.41.9] — 2026-07-19 "Controller-Mode Atlas Fix (Tier-Preference)"
 
 *v0.41.8's "prefer visible=true" wasn't specific enough — controller-mode UI has multiple visible panels matching the loose child-count signature. This drop uses a proper tier preference.*
