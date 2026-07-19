@@ -3597,6 +3597,13 @@ public sealed class RadarApp : IDisposable
                 childrenOffsetHex    = "0x" + _atlas.LastProbe.ChildrenOffsetHex.ToString("X"),
                 childrenEndOffsetHex = "0x" + _atlas.LastProbe.ChildrenEndOffsetHex.ToString("X"),
                 probeAtOffsets       = _atlas.LastProbe.ProbeAtOffsets,
+                // v0.41.7 controller-mode diagnostic: every UiRoot child whose child count matches
+                // the atlas panel's [8, 30] signature AND its current visible bit. Hit /api/atlas
+                // twice (atlas open + atlas closed) and diff — the index whose visible bit flips is
+                // the true atlas panel for the user's UI mode (keyboard vs. controller UIs are
+                // structurally different subsystems).
+                signatureMatches     = _atlas.LastProbe.SignatureMatchingCandidates,
+                totalUiRootChildren  = _atlas.LastProbe.TotalUiRootChildren,
             },
             // Every distinct content tag currently on the atlas (+ count), for the dashboard's filter /
             // highlight-rule pickers. These are the readable content/mechanic names (Powerful Map Boss,

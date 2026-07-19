@@ -852,7 +852,10 @@ public sealed class Poe2Atlas
     /// index is preferred as fast path. Populates <see cref="LastProbe"/> so operators can see
     /// what was tried via <c>/api/atlas</c>.</para></summary>
     private int _lastFoundAtlasChildIndex = -1;
-    private const int ScanWidth = 60;
+    // v0.41.7: widened from 60 to 200 to cover UiRoot's actual child count (~124 observed in controller
+    // mode field reports where the atlas panel may sit past index 60). Bounded by actual child count
+    // at runtime so we never over-scan a smaller list.
+    private const int ScanWidthMax = 200;
     private const int SigMinChildren = 8;
     private const int SigMaxChildren = 30;
 
@@ -874,11 +877,22 @@ public sealed class Poe2Atlas
         // ProbeAtOffsets sweeps common candidate offsets for Children begin — if the raw offset
         // 0x10 reads back 0, one of these might be the new location post-patch. Format:
         // "0x10=0x7ffe1234 (18 slots)" etc.
-        string[] ProbeAtOffsets);
+        string[] ProbeAtOffsets,
+        // v0.41.7: every UiRoot child whose child count falls in the [8, 30] signature window
+        // AND whose visible bit reads TRUE right now. Users hitting /api/atlas twice (atlas open +
+        // atlas closed) can diff which index's visible flag flips — that's the actual atlas panel
+        // for their UI mode. Format: "index=N childCount=CC visible=BOOL". Controller mode field
+        // reports revealed the primary index 22 always reads visible=false; the true atlas panel
+        // may sit at a different index only reachable via this diff.
+        string[] SignatureMatchingCandidates,
+        // v0.41.7: total number of UiRoot direct children (was implicit — surfaced so payload
+        // readers see "we only scanned 60 of 124" or similar and can request wider scan).
+        int TotalUiRootChildren);
 
     public AtlasProbeInfo LastProbe { get; private set; } =
         new(Poe2.AtlasPanel.UiRootChildIndex, -1, -1, false, Array.Empty<int>(),
-            "0x0", "0x0", "0x0", Poe2.UiElement.Children, Poe2.UiElement.ChildrenEnd, Array.Empty<string>());
+            "0x0", "0x0", "0x0", Poe2.UiElement.Children, Poe2.UiElement.ChildrenEnd, Array.Empty<string>(),
+            Array.Empty<string>(), 0);
 
     private bool AtlasPanelOpen(nint uiRoot)
     {
@@ -895,9 +909,15 @@ public sealed class Poe2Atlas
                 Array.Empty<int>(),
                 $"0x{uiRoot:X}", $"0x{first:X}", $"0x{last:X}",
                 Poe2.UiElement.Children, Poe2.UiElement.ChildrenEnd,
-                probeSweep);
+                probeSweep, Array.Empty<string>(), 0);
             return false;
         }
+
+        // v0.41.7: bound scan by ACTUAL child count, not a static cap. UiRoot has ~124 children
+        // in normal cases; controller mode field report confirmed the atlas panel may sit past
+        // index 60 where our old scan gave up.
+        var totalChildren = last > first ? (int)((last - first) / 8) : 0;
+        var scanWidth = Math.Min(ScanWidthMax, Math.Max(60, totalChildren));
 
         var primary = Poe2.AtlasPanel.UiRootChildIndex;
         var cached  = _lastFoundAtlasChildIndex;
@@ -915,10 +935,9 @@ public sealed class Poe2Atlas
         }
         else
         {
-            // Slow path: scan all first ScanWidth children; prefer indices closer to primary.
-            // Sort candidates by distance from primary so the first signature hit is the most likely.
+            // Slow path: scan up to scanWidth children; prefer indices closer to primary.
             var ordered = new List<int>();
-            for (int i = 0; i < ScanWidth; i++) ordered.Add(i);
+            for (int i = 0; i < scanWidth; i++) ordered.Add(i);
             ordered.Sort((a, b) => Math.Abs(a - primary) - Math.Abs(b - primary));
 
             foreach (var candidate in ordered)
@@ -933,20 +952,32 @@ public sealed class Poe2Atlas
         }
 
         // Build diagnostic snapshot (child counts of all scanned indices) for /api/atlas.
-        var counts = new int[ScanWidth];
-        for (int i = 0; i < ScanWidth; i++)
+        var counts = new int[scanWidth];
+        var sigMatches = new List<string>();
+        for (int i = 0; i < scanWidth; i++)
         {
             var p = Ptr(first + (nint)(i * 8));
             if (p == 0 || Ptr(p + Poe2.UiElement.Self) != p) { counts[i] = -1; continue; }
             var b = Ptr(p + Poe2.UiElement.Children);
             var e = Ptr(p + Poe2.UiElement.ChildrenEnd);
-            counts[i] = (b == 0 || e == 0) ? -1 : (int)((e - b) / 8);
+            var count = (b == 0 || e == 0) ? -1 : (int)((e - b) / 8);
+            counts[i] = count;
+            // v0.41.7: record every signature-window match + its current visible bit so field
+            // reports can identify which index's visibility flips between atlas-open and atlas-closed
+            // hits — that's the true atlas panel for the user's UI mode.
+            if (count >= SigMinChildren && count <= SigMaxChildren)
+            {
+                var visBit = _reader.TryReadStruct<uint>(p + Poe2.UiElement.Flags, out var fl)
+                    ? ((fl >> Poe2.UiElement.FlagVisibleBit) & 1) != 0
+                    : false;
+                sigMatches.Add($"index={i} childCount={count} visible={(visBit ? "true" : "false")}");
+            }
         }
         LastProbe = new AtlasProbeInfo(
             primary, _lastFoundAtlasChildIndex, chosen, chosenVis, counts,
             $"0x{uiRoot:X}", $"0x{first:X}", $"0x{last:X}",
             Poe2.UiElement.Children, Poe2.UiElement.ChildrenEnd,
-            probeSweep);
+            probeSweep, sigMatches.ToArray(), totalChildren);
 
         return chosen >= 0 && chosenVis;
     }
