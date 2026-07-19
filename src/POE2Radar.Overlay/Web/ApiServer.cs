@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using POE2Radar.Core.Campaign;
 using POE2Radar.Core.Config;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Diagnostics;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Input;
 using POE2Radar.Core.Icons;
@@ -3184,6 +3185,28 @@ public sealed class ApiServer : IDisposable
             event_count     = eventCount,
             jsonl_gzip_b64  = b64,
         });
+    }
+
+    /// <summary>Serializes a canonical probe endpoint response — a JSON object with the family name,
+    /// current healed offsets (filtered to entries whose symbol starts with the family prefix), and
+    /// the raw samples array. B1..B8 endpoint case blocks call this helper so the response shape
+    /// stays consistent across all probe families.</summary>
+    internal static string SerializeProbeResponse(string family, IReadOnlyList<object> samples, JsonSerializerOptions opts)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            family,
+            healedOffsets = HealedOffsetCache.All
+                .Where(e => e.Symbol.StartsWith(family, StringComparison.OrdinalIgnoreCase))
+                .Select(e => new
+                {
+                    symbol = e.Symbol,
+                    configured = $"0x{e.Configured:X}",
+                    healed = $"0x{e.Healed:X}",
+                    healedUtc = e.HealedUtc.ToString("O")
+                }),
+            samples,
+        }, opts);
     }
 
     /// <summary>Projects <c>_buffsDiag()</c> into the Worker's <c>/submit-buffs</c> pack shape:
