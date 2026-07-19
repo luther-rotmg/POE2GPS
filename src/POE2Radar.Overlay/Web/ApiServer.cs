@@ -135,6 +135,11 @@ public sealed class ApiServer : IDisposable
     // Reader: returns the current list of recent snapshots (oldest-first, cap 2).
     private readonly Func<object>? _uiFlagsSnapshotRecorder;
     private readonly Func<IReadOnlyList<POE2Radar.Core.Diagnostics.FlagsSnapshot>>? _uiFlagsSnapshotReader;
+    // v0.42 B6a: Item probe provider. Returns current ground-item entity addresses (up to 8).
+    private readonly Func<nint[]>? _itemProbe;
+    private readonly MemoryReader? _itemProbeReader;
+    // v0.42 B6a: Component resolver for item probe (wraps Poe2Live.ResolveComponent).
+    private readonly Func<nint, string, nint>? _itemProbeComponentResolver;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -212,7 +217,13 @@ public sealed class ApiServer : IDisposable
         Func<object>? uiFlagsSnapshotRecorder = null,
         // v0.42 B5a: UiElement.Flags snapshot reader. Called for no-arg mode. Returns the current list
         // of recent flag snapshots (oldest-first, cap 2).
-        Func<IReadOnlyList<POE2Radar.Core.Diagnostics.FlagsSnapshot>>? uiFlagsSnapshotReader = null)
+        Func<IReadOnlyList<POE2Radar.Core.Diagnostics.FlagsSnapshot>>? uiFlagsSnapshotReader = null,
+        // v0.42 B6a: Item probe provider. Returns current ground-item entity addresses (up to 8).
+        Func<nint[]>? itemProbeProvider = null,
+        // v0.42 B6a: MemoryReader for item probe reads.
+        MemoryReader? itemProbeReader = null,
+        // v0.42 B6a: Component resolver for item probe (wraps Poe2Live.ResolveComponent).
+        Func<nint, string, nint>? itemProbeComponentResolver = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -263,6 +274,9 @@ public sealed class ApiServer : IDisposable
         _atlasGraphProbeReader = atlasGraphProbeReader;
         _uiFlagsSnapshotRecorder = uiFlagsSnapshotRecorder;
         _uiFlagsSnapshotReader = uiFlagsSnapshotReader;
+        _itemProbe = itemProbeProvider;
+        _itemProbeReader = itemProbeReader;
+        _itemProbeComponentResolver = itemProbeComponentResolver;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1226,6 +1240,81 @@ public sealed class ApiServer : IDisposable
                         var json = SerializeProbeResponse("Poe2.UiElement.Flags", snapshotsJson, Json);
                         Write(ctx, 200, json);
                     }
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
+                break;
+
+            case "/api/probe/item":
+                // v0.42 B6a: Item diagnostic endpoint. Loopback-gated (dumps raw pointers).
+                // Returns sweep results at candidate offsets for 4 component families
+                // (WorldItemComponent.ItemEntity, ModsComponent.Rarity,
+                //  RenderItemComponent.ResourcePath, BaseComponent.NameRow).
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (_itemProbe is null)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "item probe unavailable" }, Json));
+                    break;
+                }
+                try
+                {
+                    var groundItems = _itemProbe.Invoke();
+                    var reader = _itemProbeReader;
+                    var samples = new List<object>();
+                    foreach (var entityAddr in groundItems)
+                    {
+                        // Resolve WorldItem component on the ground-item entity
+                        var wiComp = _itemProbeComponentResolver?.Invoke(entityAddr, "WorldItem") ?? 0;
+
+                        // Resolve inner item entity from WorldItem component
+                        nint itemEntity = 0;
+                        if (wiComp != 0 && reader != null)
+                        {
+                            itemEntity = reader.ReadPointer(wiComp + Poe2.WorldItemComponent.ItemEntity);
+                        }
+
+                        // Resolve Mods, RenderItem, Base on the inner item entity
+                        var modsComp = itemEntity != 0
+                            ? _itemProbeComponentResolver?.Invoke(itemEntity, "Mods") ?? 0
+                            : 0;
+                        var renderItemComp = itemEntity != 0
+                            ? _itemProbeComponentResolver?.Invoke(itemEntity, "RenderItem") ?? 0
+                            : 0;
+                        var baseComp = itemEntity != 0
+                            ? _itemProbeComponentResolver?.Invoke(itemEntity, "Base") ?? 0
+                            : 0;
+
+                        var sample = new
+                        {
+                            worldItemAddr = $"0x{entityAddr:X}",
+                            worldItemItemEntitySweep = reader != null
+                                ? ItemProber.SweepWorldItemItemEntity(wiComp, reader)
+                                : Array.Empty<ProbeSample<nint>>(),
+                            modsRaritySweep = reader != null
+                                ? ItemProber.SweepModsRarity(modsComp, reader)
+                                : Array.Empty<ProbeSample<int>>(),
+                            renderItemResourcePathSweep = reader != null
+                                ? ItemProber.SweepRenderItemResourcePath(renderItemComp, reader)
+                                : Array.Empty<ProbeSample<string>>(),
+                            baseNameRowSweep = reader != null
+                                ? ItemProber.SweepBaseNameRow(baseComp, reader)
+                                : Array.Empty<ProbeSample<string>>()
+                        };
+                        samples.Add(sample);
+                    }
+                    var json = SerializeProbeResponse("Poe2.Items", samples, Json);
+                    Write(ctx, 200, json);
                 }
                 catch (Exception ex)
                 {

@@ -3,6 +3,7 @@ using System.Buffers;
 using POE2Radar.Core.Health;
 
 [assembly: InternalsVisibleTo("POE2Radar.Tests")]
+[assembly: InternalsVisibleTo("Overlay")]
 
 namespace POE2Radar.Core.Game;
 
@@ -108,6 +109,12 @@ public sealed class Poe2Live
     // Cached atlas panel UiElement address, updated by RadarApp from Poe2Atlas.AtlasPanelAddr.
     // Used by RecordUiFlagsSnapshot() to locate the panel's flag words. 0 = unresolved.
     private nint _atlasPanelAddr;
+
+    // ── v0.42 B6a: _lastGroundItems ring buffer ──
+    // Records the last 8 WorldItem container entity addresses seen by ReadItemIdentity,
+    // so the /api/probe/item endpoint has real addresses to sweep against.
+    private readonly nint[] _lastGroundItems = new nint[8];
+    private int _lastGroundItemsWrite;
 
     public Poe2Live(MemoryReader reader, nint gameStateSlot)
     {
@@ -579,6 +586,8 @@ public sealed class Poe2Live
                 itemArt = itemArtTemp;
                 itemIdentified = itemIdentifiedTemp;
                 itemName = itemNameTemp;
+                // Populate the ring buffer with the ground-item entity address for /api/probe/item
+                _lastGroundItems[_lastGroundItemsWrite++ & 7] = entity;
                 // Get affixes from the cache
                 if (_itemIdent.TryGetValue(entity, out var cachedIdentity))
                 {
@@ -1871,7 +1880,7 @@ public sealed class Poe2Live
 
     /// <summary>Resolve a component address by name via EntityDetails → ComponentLookUp (StdBucket) → ComponentList.
     /// Thin wrapper over <see cref="ResolveComponents"/> — all ~14 existing single-name call sites unchanged.</summary>
-    private nint ResolveComponent(nint entity, string name)
+    public nint ResolveComponent(nint entity, string name)
     {
         Span<nint> r = stackalloc nint[1];
         ResolveComponents(entity, new[] { name }, r);
@@ -2654,5 +2663,20 @@ public sealed class Poe2Live
         {
             return _uiFlagsSnapshot.ToArray();
         }
+    }
+
+    /// <summary>Returns a defensive copy of the last ground-item entity addresses seen by
+    /// ReadItemIdentity, skipping zero entries (ring buffer not yet filled). The returned array
+    /// contains only non-zero entries — order is not meaningful (this is a diagnostic sample,
+    /// not a queue).</summary>
+    internal nint[] GetLastGroundItemsSnapshot()
+    {
+        var result = new List<nint>(8);
+        for (var i = 0; i < _lastGroundItems.Length; i++)
+        {
+            var addr = _lastGroundItems[i];
+            if (addr != 0) result.Add(addr);
+        }
+        return result.ToArray();
     }
 }

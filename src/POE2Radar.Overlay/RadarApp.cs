@@ -991,7 +991,11 @@ monolithProbeReader: _readerApi,
                                         snapshotsHeld = snaps.Count,
                                     };
                                 },
-                                uiFlagsSnapshotReader: () => _live.GetRecentUiFlagsSnapshots());
+                                uiFlagsSnapshotReader: () => _live.GetRecentUiFlagsSnapshots(),
+                                // v0.42 B6a: Item probe provider + reader + component resolver.
+                                itemProbeProvider: () => _live.GetLastGroundItemsSnapshot(),
+                                itemProbeReader: _readerApi,
+                                itemProbeComponentResolver: (entity, name) => _liveApi.ResolveComponent(entity, name));
         // v0.39 R3: load + compile rules engine ruleset at startup.
         // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
         try
