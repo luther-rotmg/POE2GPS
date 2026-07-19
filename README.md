@@ -238,6 +238,8 @@ And thanks to **Diamondsr** for sharp bug reports, in-game testing, and running 
 
 Thanks also to **Sidefx** and **Verahsa** for community feedback and continued testing help. 🙏
 
+And a big shout-out to **DaGaz** for the controller-mode atlas detection work — patient repeat-hits on `/api/atlas` with the atlas open + closed produced the field payload that pinpointed the true panel index (child 97 with the exact 18-child signature) and drove the v0.41.9 tier-preference fix. Diagnostics-first debugging at its best. 🎮🔎
+
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE).
