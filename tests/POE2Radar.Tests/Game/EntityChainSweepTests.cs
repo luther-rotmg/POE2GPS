@@ -13,14 +13,14 @@ namespace POE2Radar.Tests.Game;
 public sealed class EntityChainSweepTests
 {
     [Fact]
-    public void EntityProbeSample_HasElevenPositionalFields()
+    public void EntityProbeSample_HasTwelvePositionalFields()
     {
         var type = typeof(Poe2Live).GetNestedType("EntityProbeSample")!;
         var ctor = type.GetConstructors()
             .OrderByDescending(c => c.GetParameters().Length)
             .First();
         var parameters = ctor.GetParameters();
-        Assert.Equal(11, parameters.Length);
+        Assert.Equal(12, parameters.Length);
     }
 
     [Fact]

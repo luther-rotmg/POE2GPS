@@ -2472,7 +2472,10 @@ public sealed class Poe2Live
         string[] EntityDetailsNameSweep,
         // component-lookup bucket sweep: componentLookUp + {0x20, 0x28, 0x30, 0x38}. Each entry:
         // "0x28=0x7ffe1234/entries=12" or "0x30={read-fail}".
-        string[] ComponentLookUpBucketSweep);
+        string[] ComponentLookUpBucketSweep,
+        // omp-rarity sweep: {0x13C, 0x140, 0x144, 0x148, 0x14C, 0x150, 0x160}. Each entry:
+        // "0x144=2" (in-range) or "0x148=out-of-range" or "0x150={read-fail}" or "0x140=omp-null".
+        string[] RarityCandidateSweep);
 
     /// <summary>v0.41.6: dumps a handful of entity structs with candidate offset sweeps so field
     /// reports can identify entity-side offset drift after game patches. Reads a random sample of
@@ -2615,6 +2618,31 @@ public sealed class Poe2Live
                 }
             }
 
+            // ── omp-rarity sweep: {0x13C, 0x140, 0x144, 0x148, 0x14C, 0x150, 0x160} ──
+            var rarityOffsets = new int[] { 0x13C, 0x140, 0x144, 0x148, 0x14C, 0x150, 0x160 };
+            var raritySweep = new string[rarityOffsets.Length];
+            _ompAddr.TryGetValue(entity, out var omp);
+            for (int i = 0; i < rarityOffsets.Length; i++)
+            {
+                var off = rarityOffsets[i];
+                if (omp == 0)
+                {
+                    raritySweep[i] = $"0x{off:X}=omp-null";
+                }
+                else if (!_reader.TryReadStruct<int>(omp + off, out var r))
+                {
+                    raritySweep[i] = $"0x{off:X}={{read-fail}}";
+                }
+                else if (r >= 0 && r <= 3)
+                {
+                    raritySweep[i] = $"0x{off:X}={r}";
+                }
+                else
+                {
+                    raritySweep[i] = $"0x{off:X}=out-of-range";
+                }
+            }
+
             samples.Add(new EntityProbeSample(
                 EntityAddr: $"0x{entity:X}",
                 RenderAddr: $"0x{render:X}",
@@ -2626,7 +2654,8 @@ public sealed class Poe2Live
                 EntityDetailsSweep:       detailsSweep,
                 ComponentListSweep:       compListSweep,
                 EntityDetailsNameSweep:   nameSweep,
-                ComponentLookUpBucketSweep: bucketSweep));
+                ComponentLookUpBucketSweep: bucketSweep,
+                RarityCandidateSweep:     raritySweep));
 
             count++;
         }
