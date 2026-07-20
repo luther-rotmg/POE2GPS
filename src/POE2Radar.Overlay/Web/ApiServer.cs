@@ -477,6 +477,17 @@ public sealed class ApiServer : IDisposable
                         mapsPerHour       = s.Session.MapsPerHour,
                         xpEfficiency      = s.Session.XpEfficiency,
                     },
+                    // v0.42 C1: tick-cadence diagnostic data for support diagnosis. Null when the
+                    // monitor has no meaningful data yet (first ~15 ticks post attach).
+                    tickCadence = s.Cadence is { } tc ? new
+                    {
+                        worldHz       = tc.WorldHz,
+                        effectiveWorldHz = tc.EffectiveWorldHz,
+                        staleTicks    = tc.StaleTicks,
+                        adaptedFpsCap = tc.AdaptedFpsCap,
+                        configuredFpsCap = tc.ConfiguredFpsCap,
+                        monitorHz     = tc.MonitorHz,
+                    } : null,
                 }, Json));
                 break;
             }
@@ -4064,6 +4075,11 @@ public sealed record RadarState(
     public static readonly RadarState Empty =
         new(false, 0, 0, false, 0, System.Numerics.Vector2.Zero,
             Array.Empty<Poe2Live.EntityDot>(), Array.Empty<Poe2Live.Landmark>(), 100, 100, 100, "", "", 0);
+
+    // v0.42 C1: TickCadenceMonitor diagnostic snapshot for /api/state. Null when the monitor
+    // has not yet produced meaningful data (e.g. first ~15 ticks). Added as an object-initializer
+    // property, like <see cref="Paths"/>, so <see cref="RadarState.Empty"/> is type-safe.
+    public TickCadenceSnapshot? Cadence { get; init; }
 
     /// <summary>v0.20.1 T9: selected-target route polylines, projected from
     /// <c>OverlayRenderer.ctx.SelectedPaths</c> in <c>RadarApp.Tick()</c> without any new memory reads.

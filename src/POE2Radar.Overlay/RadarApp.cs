@@ -344,6 +344,10 @@ public sealed class RadarApp : IDisposable
     private volatile bool _attached = true;  // PoE2 process is alive
     private volatile bool _aobScanned;       // the resolver completed at least one scan
     private volatile int  _aobCandidates;    // candidate count from the last scan (0 = pattern matched nothing)
+    // v0.42 C1: auto-throttle the render FPS when world-state reads appear stale (controller-mode
+    // FPS-mismatch symptom). Instance per RadarApp; one per session.
+    private readonly TickCadenceMonitor _cadenceMonitor = new();
+
     private readonly POE2Radar.Core.Health.OffsetHealthMonitor _health =
         POE2Radar.Core.Health.OffsetHealthMonitor.CreateDefault();
     private volatile POE2Radar.Core.Health.HealthState _healthState = POE2Radar.Core.Health.HealthState.Searching;
@@ -461,6 +465,9 @@ public sealed class RadarApp : IDisposable
         _process = process;
         _reader = reader;
         _settings = RadarSettings.Load();
+        // v0.42 C1: apply TickCadenceMonitor thresholds from settings.
+        _cadenceMonitor.StaleFingerprintTickThreshold = _settings.StaleFingerprintTickThreshold;
+        _cadenceMonitor.StaleAdaptCoolDownSeconds = _settings.StaleAdaptCoolDownSeconds;
         _controllerHold = new HoldRepeat(TimeSpan.FromMilliseconds(_settings.CycleHoldDelayMs),
                                          TimeSpan.FromMilliseconds(_settings.CycleHoldIntervalMs));
         _keyboardHold   = new HoldRepeat(TimeSpan.FromMilliseconds(_settings.CycleHoldDelayMs),
@@ -1370,6 +1377,9 @@ monolithProbeReader: _readerApi,
                     }
                     hz = _autoHz;
                 }
+                // v0.42 C1: fold in the TickCadenceMonitor adapted cap when auto-throttle is on.
+                if (_settings.AutoAdaptTickCadence)
+                    hz = Math.Min(hz, _cadenceMonitor.AdaptedFpsCap);
                 var budgetMs = 1000.0 / hz;
                 var remaining = budgetMs - frameSw.Elapsed.TotalMilliseconds;
                 // Coarse-sleep most of the remainder (1 ms accurate now), then spin the last ~1.5 ms for a
@@ -1926,6 +1936,13 @@ monolithProbeReader: _readerApi,
             CampaignGuide: campaignGuideSnapshot)
         {
             Paths = pathsWire,
+            // v0.42 C1: tick-cadence diagnostic snapshot. Uses the monitor's current adapted cap
+            // and the auto-detected Hz (or the configured FpsCap when explicitly set) for the
+            // diagnostic MonitorHz field. The adapted FpsCap is already folded into the render
+            // loop's hz computation via Math.Min — this is purely diagnostic.
+            Cadence = _cadenceMonitor.Snapshot(
+                configuredFpsCap: _settings.FpsCap > 0 ? _settings.FpsCap : _autoHz,
+                monitorHz: _settings.FpsCap > 0 ? _settings.FpsCap : _autoHz),
         };
         _sse?.Publish(_state);
 
@@ -2454,6 +2471,14 @@ monolithProbeReader: _readerApi,
             EntityArrowSpecs: entityArrowSpecs,
             BuffSpecs: buffSpecs,
             PlayerName: _live.PlayerName(localPlayer));  // v0.30 Instinct: char-name key for BossWipeLog
+
+        // v0.42 C1: record a fingerprint for the TickCadenceMonitor. The fingerprint combines entity
+        // count (spawn/death signal), AreaInstance pointer (zone-change signal), local-player address
+        // (death/respawn), and area hash (zone identity) — all values already read by the entity walk
+        // and existing RadarApp state. No new game memory offsets are involved.
+        var awakeHead = _lastAreaInstance;   // the current AreaInstance base (changes on zone transition)
+        var fp = HashCode.Combine(_entities.Count, awakeHead, localPlayer, areaHash);
+        _cadenceMonitor.RecordWorldTick(fp);
     }
 
     /// <summary>

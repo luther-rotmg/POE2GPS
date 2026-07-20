@@ -65,6 +65,26 @@ public sealed class RadarSettings
     //    The heavier entity/terrain walk stays fixed at ~30 Hz regardless. ──
     public int FpsCap { get; set; } = 0;
 
+    // ── v0.42.1: auto-throttle overlay render rate when world-state reads return stale bytes
+    //    (controller-mode FPS-mismatch symptom — HP bars freeze / plugins appear frozen).
+    //    Uses fingerprint observation (no new memory offsets). ──
+
+    /// <summary>v0.42.1: auto-throttle the overlay render rate when world-state reads
+    /// stop returning fresh bytes (controller-mode FPS-mismatch symptom — HP bars stop
+    /// clearing, plugins appear frozen). Default on; set false to keep the classic
+    /// fixed FpsCap behavior.</summary>
+    public bool AutoAdaptTickCadence { get; set; } = true;
+
+    /// <summary>Consecutive world ticks with byte-identical state fingerprint before
+    /// the adaptive throttle engages. 15 = ~500 ms at WorldHz=30. Set higher to be
+    /// more tolerant of legit static scenes (hideouts, menus). NOT applied unless
+    /// <see cref="AutoAdaptTickCadence"/> is on.</summary>
+    public int StaleFingerprintTickThreshold { get; set; } = 15;
+
+    /// <summary>Seconds to wait between throttle adjustments (up or down). Prevents
+    /// oscillation. Only applied when <see cref="AutoAdaptTickCadence"/> is on.</summary>
+    public int StaleAdaptCoolDownSeconds { get; set; } = 10;
+
     // ── Navigation-menu widget: which screen corner it is pinned to.
     //    One of "TopLeft", "TopRight", "BottomLeft", "BottomRight". ──
     public string NavMenuCorner { get; set; } = "TopLeft";
