@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using NumVec2 = System.Numerics.Vector2;
 using POE2Radar.Core;
 using POE2Radar.Core.Game;
+using POE2Radar.Core.Diagnostics;
 using POE2Radar.Core.Health;
 using POE2Radar.Core.Navigation;
 using POE2Radar.Core.Gear;
@@ -998,7 +999,46 @@ monolithProbeReader: _readerApi,
                                 itemProbeComponentResolver: (entity, name) => _liveApi.ResolveComponent(entity, name),
                                 // v0.42 B8a: Buffs probe provider + reader.
                                 buffsProbeProvider: () => _live.BuffsProbePairs,
-                                buffsProbeReader: _readerApi);
+                                buffsProbeReader: _readerApi,
+                                // v0.42 C2: Game-FPS diagnostic provider. Resolves InGameState +
+                                // Camera bases via _liveApi.TryResolve on the API-thread reader stack
+                                // (so the WorldLoop's _reader / render loop's _readerRender never
+                                // contend), runs the 4 two-shot sweeps in parallel (each does one
+                                // sampleDurationMs sleep, so the endpoint returns in ~1 second total),
+                                // and composes the Decision-2 response object. Returns 400 with a
+                                // not-attached body when either base is 0.
+                                gameFpsProbeProvider: () =>
+                                {
+                                    const int sampleDurationMs = 1000;
+                                    if (!_liveApi.TryResolve(out var inGameState, out _, out _) || inGameState == 0)
+                                        return (400, (object)new { error = "not-attached" });
+                                    if (!_readerApi.TryReadStruct<nint>(inGameState + Poe2.InGameState.Camera, out var cameraPtr) || cameraPtr == 0)
+                                        return (400, (object)new { error = "not-attached" });
+
+                                    // 4 sweeps in parallel — each does its own one-second sleep; total
+                                    // endpoint time ≈ 1 second instead of 4. RPM is concurrency-safe on
+                                    // the same handle; TryReadStruct has no per-instance buffers.
+                                    var igIntTask = Task.Run(() => GameFpsProber.SweepInGameStateInt(inGameState, _readerApi, sampleDurationMs));
+                                    var igFloatTask = Task.Run(() => GameFpsProber.SweepInGameStateFloat(inGameState, _readerApi, sampleDurationMs));
+                                    var camIntTask = Task.Run(() => GameFpsProber.SweepCameraInt(cameraPtr, _readerApi, sampleDurationMs));
+                                    var camFloatTask = Task.Run(() => GameFpsProber.SweepCameraFloat(cameraPtr, _readerApi, sampleDurationMs));
+                                    Task.WaitAll(igIntTask, igFloatTask, camIntTask, camFloatTask);
+
+                                    return (200, (object)new
+                                    {
+                                        family = "Poe2.GameFps",
+                                        sampleDurationMs,
+                                        inGameStateAddr = $"0x{inGameState:X}",
+                                        cameraAddr = $"0x{cameraPtr:X}",
+                                        sweeps = new
+                                        {
+                                            inGameStateInt = igIntTask.Result,
+                                            inGameStateFloat = igFloatTask.Result,
+                                            cameraInt = camIntTask.Result,
+                                            cameraFloat = camFloatTask.Result,
+                                        },
+                                    });
+                                });
         // v0.39 R3: load + compile rules engine ruleset at startup.
         // A malformed rules.json won't crash startup — the renderer keeps its Empty default.
         try

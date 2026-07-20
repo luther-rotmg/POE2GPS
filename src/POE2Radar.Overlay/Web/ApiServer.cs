@@ -144,6 +144,11 @@ public sealed class ApiServer : IDisposable
     // most-recent buff-read cycle. Loopback-gated (raw pointers in the response).
     private readonly Func<IReadOnlyList<(nint eliteAddr, nint buffsCompAddr)>>? _buffsProbe;
     private readonly MemoryReader? _buffsProbeReader;
+    // v0.42 C2: Game-FPS diagnostic provider. Returns (statusCode, body) — the lambda resolves
+    // InGameState + Camera bases via _liveApi.TryResolve on the API-thread reader stack, runs the
+    // 4 two-shot sweeps, and composes the Decision-2 response object (or a 400 not-attached body
+    // when either base is 0). Loopback-gated (raw pointers in the response).
+    private readonly Func<(int statusCode, object body)>? _gameFpsProbe;
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly System.Net.Http.HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
@@ -230,7 +235,12 @@ public sealed class ApiServer : IDisposable
         Func<nint, string, nint>? itemProbeComponentResolver = null,
         // v0.42 B8a: Buffs probe provider + memory reader.
         Func<IReadOnlyList<(nint eliteAddr, nint buffsCompAddr)>>? buffsProbeProvider = null,
-        MemoryReader? buffsProbeReader = null)
+        MemoryReader? buffsProbeReader = null,
+        // v0.42 C2: Game-FPS probe provider. Returns (statusCode, body) — the lambda resolves
+        // InGameState + Camera bases via _liveApi.TryResolve on the API-thread reader stack, runs
+        // the 4 two-shot sweeps, and composes the Decision-2 response object (or a 400 not-attached
+        // body when either base is 0). Loopback-gated (raw pointers in the response).
+        Func<(int statusCode, object body)>? gameFpsProbeProvider = null)
     {
         _state = state;
         _atlas = atlasProvider;
@@ -286,6 +296,7 @@ public sealed class ApiServer : IDisposable
         _itemProbeComponentResolver = itemProbeComponentResolver;
         _buffsProbe = buffsProbeProvider;
         _buffsProbeReader = buffsProbeReader;
+        _gameFpsProbe = gameFpsProbeProvider;
         _listener.Prefixes.Add(ApiPrefix.Build(allowLanAccess, port));
     }
 
@@ -1395,6 +1406,39 @@ public sealed class ApiServer : IDisposable
                     }
                     var json = SerializeProbeResponse("Poe2.BuffsComponent", samples, Json);
                     Write(ctx, 200, json);
+                }
+                catch (Exception ex)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "probe exception", error = ex.Message }, Json));
+                }
+                break;
+
+            case "/api/probe/gamefps":
+                // v0.42 C2: Game-FPS diagnostic endpoint (game-render-cadence sweep). Loopback-gated
+                // (dumps raw pointers). Two-shot sampling at candidate offsets on InGameState and
+                // Camera: int + float sweeps, ~1 second total (4 sweeps in parallel, each with one
+                // sampleDurationMs sleep). Diagnostic companion to C1's throttle heuristic — ships
+                // so a support payload can identify the real frame counter/frame-time offset in one
+                // round-trip. No auto-heal, no consumer wiring.
+                if (!IsLoopbackHost(ctx.Request))
+                {
+                    Write(ctx, 403, JsonSerializer.Serialize(new { error = "loopback-only" }, Json));
+                    break;
+                }
+                if (ctx.Request.HttpMethod != "GET")
+                {
+                    Write(ctx, 405, JsonSerializer.Serialize(new { error = "method not allowed" }, Json));
+                    break;
+                }
+                if (_gameFpsProbe is null)
+                {
+                    Write(ctx, 200, JsonSerializer.Serialize(new { note = "gamefps probe unavailable" }, Json));
+                    break;
+                }
+                try
+                {
+                    var (statusCode, body) = _gameFpsProbe.Invoke();
+                    Write(ctx, statusCode, JsonSerializer.Serialize(body, Json));
                 }
                 catch (Exception ex)
                 {
