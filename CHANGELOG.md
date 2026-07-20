@@ -3,6 +3,45 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.42.1] — 2026-07-20 "Controller-Mode Freeze Fix + Cadence Probe"
+
+*Field-diagnosed by streamer @themostepic (playing via Moonlight): when the overlay's render rate is much higher than the game's actual render rate, per-frame memory reads outrun the game's state updates and controller-mode users see HP bars freeze / plugins appear stuck for a couple of seconds. Manual workaround (match the two rates) is now automatic. Ships alongside a diagnostic probe so the "real" game FPS offset can be mapped from a support payload.*
+
+### Fixed
+
+- 🎮 **Controller-mode "HP bars freeze / plugins freeze for a couple of seconds"** — automatic. A new `TickCadenceMonitor` hashes a small state fingerprint (`entityCount + areaInstance + localPlayer + areaHash`) at the end of every world tick; when the fingerprint is byte-identical for 15 consecutive ticks (~500 ms at WorldHz=30) — the "reads returning stale bytes" signature — the render loop drops its effective FPS cap to match the observed change rate (floored at 30) via `Math.Min(configuredCap, adaptedCap)`. A 10-second cooldown of resumed changes restores the cap. Zero new game memory offsets read.
+
+### Added — 🩺 **Diagnostic surface for the real fix**
+
+- 🩺 **`/api/probe/gamefps`** — two-shot sampling (read → sleep 1s → read) at candidate offsets on InGameState (0x40..0x400 step 4) and Camera (0x00..0x200 step 4), both int and float. Signature-passes: a monotonic int with delta ∈ [15, 300] (frame counter or smoothed FPS int) or a float in (0, 1) with < 25% inter-sample jitter (frame time in seconds). Loopback-Host-gated. When a real-world payload identifies the offset, a follow-up bead can replace the C1 fingerprint heuristic with a direct game-FPS read.
+- 🩺 **`tickCadence` block in `/api/state`** — `{worldHz, effectiveWorldHz, staleTicks, adaptedFpsCap, configuredFpsCap, monitorHz}` for support diagnosis when auto-throttle misfires on unusual hardware.
+
+### Config
+
+Three new `RadarSettings` knobs (all default-safe; the fix is on by default):
+
+- `AutoAdaptTickCadence` (bool, default `true`) — the main toggle. Set `false` to restore the classic fixed `FpsCap` behavior.
+- `StaleFingerprintTickThreshold` (int, default `15`) — sensitivity knob. Higher = more tolerant of legit static scenes (deep hideout idle, menu screens); lower = quicker throttle response.
+- `StaleAdaptCoolDownSeconds` (int, default `10`) — anti-oscillation. Minimum seconds between throttle adjustments.
+
+### Under the hood
+
+- Cleanup that landed alongside: `HealedOffsetCache.Persist()` snapshot+write race closed under a dedicated `_persistLock` (was losing one entry in 100 under concurrent `SetHealed` writes); `AreaInstanceProber.SweepLocalPlayer` + `SweepServerDataPtr` swapped from `ReadPointer` (throws on invalid handles) to `TryReadStruct<nint>` (matches `SweepAwakeEntities` "read-fail" convention), unblocking 4 previously-skipped tests; `EntityProbeSample_ConstructedRecord_RoundTripsAllFields` synced to B7a's 12-field record shape.
+- Full sweep of all 6 v0.42 probers confirmed no other unwrapped throwing reads remain.
+- Parallelized the C2 endpoint: the 4 sweeps run in parallel via `Task.Run` — endpoint returns in ~1 second instead of 4. `TryReadStruct` is thread-safe on the same handle.
+
+### Tests
+
+- 18 new xUnit facts (12 for `TickCadenceMonitor` including a concurrent-read tearing regression guard; 6 for `GameFpsProber`). Full suite: **1529 pass / 3 skipped / 0 failed** (baseline 1511; delta = +18).
+
+### Upgrade
+
+Fully additive. No config migration; the fix engages automatically on first attach. If you want the classic behavior back, set `AutoAdaptTickCadence: false` in `radar-settings.json`. If auto-throttle misfires on your setup, hit `curl http://localhost:16311/api/state` — the `tickCadence` block shows what's happening (compare `effectiveWorldHz` to `worldHz=30`; when the two diverge, the throttle engaged).
+
+### Shout-outs
+
+- **@themostepic** — clean field diagnosis of the two-rates-must-match relationship. Turned a "not sure what's happening" report into a one-line reproduction plan.
+
 ## [0.42.0] — 2026-07-19 "Patch-Day Diagnostics"
 
 *Eight `/api/probe/*` endpoints now surface exactly which internal game-memory offsets each subsystem uses. When the next patch shifts something, a payload paste points to the drift within seconds — no more speculative-hotfix scramble.*
