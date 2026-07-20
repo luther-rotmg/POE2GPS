@@ -95,7 +95,15 @@ public static class AreaInstanceProber
         for (var off = 0x5A0; off <= 0x5F0; off += 8)
         {
             var target = areaInstance + off;
-            var ptr = r.ReadPointer(target);
+            // v0.42.1: swap ReadPointer (throws on invalid handles / unmapped pages) for
+            // TryReadStruct so this sweep matches SweepAwakeEntities' "read-fail" convention
+            // and never propagates read exceptions to callers.
+            if (!r.TryReadStruct<nint>(target, out var ptr))
+            {
+                result.Add(new ProbeSample<nint>(
+                    $"0x{off:X}", $"0x{target:X}", 0, "read-fail", false));
+                continue;
+            }
             if (ptr == 0)
             {
                 result.Add(new ProbeSample<nint>(
@@ -104,8 +112,7 @@ public static class AreaInstanceProber
             }
 
             // Chase to +0x08 for EntityDetailsPtr
-            var detailsPtr = r.ReadPointer(ptr + 0x08);
-            if (detailsPtr == 0)
+            if (!r.TryReadStruct<nint>(ptr + 0x08, out var detailsPtr) || detailsPtr == 0)
             {
                 result.Add(new ProbeSample<nint>(
                     $"0x{off:X}", $"0x{target:X}", ptr, "no-details", false));
@@ -113,16 +120,18 @@ public static class AreaInstanceProber
             }
 
             // Chase further to Metadata string (details+0x08 for the string pointer)
-            var metaPtr = r.ReadPointer(detailsPtr + 0x08);
-            if (metaPtr == 0)
+            if (!r.TryReadStruct<nint>(detailsPtr + 0x08, out var metaPtr) || metaPtr == 0)
             {
                 result.Add(new ProbeSample<nint>(
                     $"0x{off:X}", $"0x{target:X}", ptr, "no-metadata", false));
                 continue;
             }
 
-            // Read metadata string (UTF-16, up to 64 chars)
-            var meta = r.ReadStringUtf16(metaPtr, 64);
+            // Read metadata string (UTF-16, up to 64 chars). ReadStringUtf16 may throw on
+            // unmapped pages; swallow so the sweep still surfaces the per-offset row.
+            string meta;
+            try { meta = r.ReadStringUtf16(metaPtr, 64); }
+            catch { meta = string.Empty; }
             var passes = meta.StartsWith("Metadata/", StringComparison.Ordinal);
 
             result.Add(new ProbeSample<nint>(
@@ -143,7 +152,13 @@ public static class AreaInstanceProber
         for (var off = 0x580; off <= 0x5D0; off += 8)
         {
             var target = areaInstance + off;
-            var ptr = r.ReadPointer(target);
+            // v0.42.1: same TryReadStruct swap as SweepLocalPlayer above.
+            if (!r.TryReadStruct<nint>(target, out var ptr))
+            {
+                result.Add(new ProbeSample<nint>(
+                    $"0x{off:X}", $"0x{target:X}", 0, "read-fail", false));
+                continue;
+            }
             if (ptr == 0)
             {
                 result.Add(new ProbeSample<nint>(

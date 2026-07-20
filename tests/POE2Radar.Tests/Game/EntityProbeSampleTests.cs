@@ -56,6 +56,7 @@ public sealed class EntityProbeSampleTests
         Assert.Equal("ComponentListSweep", paramNames[8]);
         Assert.Equal("EntityDetailsNameSweep", paramNames[9]);
         Assert.Equal("ComponentLookUpBucketSweep", paramNames[10]);
+        Assert.Equal("RarityCandidateSweep", paramNames[11]);
     }
 
     [Fact]
@@ -129,7 +130,7 @@ public sealed class EntityProbeSampleTests
     [Fact]
     public void EntityProbeSample_ConstructedRecord_RoundTripsAllFields()
     {
-        // Sanity check: manually construct a sample via reflection and verify all 11 fields
+        // Sanity check: manually construct a sample via reflection and verify all 12 fields
         // read back their input. Catches any accidental setter/init issue in future edits.
         var type = typeof(Poe2Live).GetNestedType("EntityProbeSample")!;
         var lifeSweep = new[] { "0x1B0={cur=234,max=500}" };
@@ -138,9 +139,10 @@ public sealed class EntityProbeSampleTests
         var compListSweep = new[] { "0x10=count=5", "0x08={read-fail}", "0x18={read-fail}", "0x20={read-fail}", "0x28={read-fail}" };
         var nameSweep = new[] { "0x08=Metadata/Monsters/Foo", "0x00={read-fail}", "0x10={read-fail}", "0x18={read-fail}" };
         var bucketSweep = new[] { "0x28=0x7ffe1234/entries=3", "0x20={read-fail}", "0x30={read-fail}", "0x38={read-fail}" };
+        var raritySweep = new[] { "0x144=2", "0x148=out-of-range", "0x150={read-fail}", "0x140=omp-null" };
         var instance = Activator.CreateInstance(type,
             "0xABCD", "0x1234", "0x5678", 234, 500, lifeSweep, posSweep,
-            detailsSweep, compListSweep, nameSweep, bucketSweep);
+            detailsSweep, compListSweep, nameSweep, bucketSweep, raritySweep);
         Assert.NotNull(instance);
 
         Assert.Equal("0xABCD", type.GetProperty("EntityAddr")!.GetValue(instance));
@@ -154,6 +156,7 @@ public sealed class EntityProbeSampleTests
         Assert.Same(compListSweep, type.GetProperty("ComponentListSweep")!.GetValue(instance));
         Assert.Same(nameSweep, type.GetProperty("EntityDetailsNameSweep")!.GetValue(instance));
         Assert.Same(bucketSweep, type.GetProperty("ComponentLookUpBucketSweep")!.GetValue(instance));
+        Assert.Same(raritySweep, type.GetProperty("RarityCandidateSweep")!.GetValue(instance));
     }
 
     [Theory]

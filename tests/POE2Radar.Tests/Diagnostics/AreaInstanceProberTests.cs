@@ -93,7 +93,7 @@ public sealed class AreaInstanceProberTests
         Assert.Equal(15, result.Length);
     }
 
-    [Fact(Skip = "B1a impl throws on invalid handle for LocalPlayer/ServerDataPtr paths (uses different reader method than AwakeEntities). Follow-up: harden SweepLocalPlayer + SweepServerDataPtr to swallow read-failures like SweepAwakeEntities does.")]
+    [Fact]
     public void SweepLocalPlayer_ReturnsExpectedSampleCount()
     {
         var reader = new MemoryReader(CreateZeroHandleProcessHandle());
@@ -102,7 +102,7 @@ public sealed class AreaInstanceProberTests
         Assert.Equal(11, result.Length);
     }
 
-    [Fact(Skip = "B1a impl throws on invalid handle for SweepServerDataPtr. See SweepLocalPlayer skip note.")]
+    [Fact]
     public void SweepServerDataPtr_ReturnsExpectedSampleCount()
     {
         var reader = new MemoryReader(CreateZeroHandleProcessHandle());
@@ -134,7 +134,7 @@ public sealed class AreaInstanceProberTests
         Assert.False(sample.PassesSignature);
     }
 
-    [Fact(Skip = "B1a impl throws on invalid handle for SweepLocalPlayer. See ReturnsExpectedSampleCount skip note.")]
+    [Fact]
     public void SweepLocalPlayer_SampleHasCorrectStructure()
     {
         var reader = new MemoryReader(CreateZeroHandleProcessHandle());
@@ -143,12 +143,15 @@ public sealed class AreaInstanceProberTests
         var sample = result[0];
         Assert.Equal("0x5A0", sample.OffsetHex);
         Assert.StartsWith("0x", sample.TargetAddr);
-        Assert.Equal(0L, sample.Value);
-        Assert.Equal("null-pointer", sample.ReadFailReason);
+        Assert.Equal((nint)0, sample.Value);
+        // Zero-handle reader → TryReadStruct returns false → sweep records "read-fail" (same
+        // convention as SweepAwakeEntities). On a real handle with successfully-read 0 pointer,
+        // this would instead be "null-pointer".
+        Assert.NotNull(sample.ReadFailReason);
         Assert.False(sample.PassesSignature);
     }
 
-    [Fact(Skip = "B1a impl throws on invalid handle for SweepServerDataPtr. See ReturnsExpectedSampleCount skip note.")]
+    [Fact]
     public void SweepServerDataPtr_SampleHasCorrectStructure()
     {
         var reader = new MemoryReader(CreateZeroHandleProcessHandle());
@@ -157,8 +160,8 @@ public sealed class AreaInstanceProberTests
         var sample = result[0];
         Assert.Equal("0x580", sample.OffsetHex);
         Assert.StartsWith("0x", sample.TargetAddr);
-        Assert.Equal(0L, sample.Value);
-        Assert.Equal("null-pointer", sample.ReadFailReason);
+        Assert.Equal((nint)0, sample.Value);
+        Assert.NotNull(sample.ReadFailReason);
         Assert.False(sample.PassesSignature);
     }
 

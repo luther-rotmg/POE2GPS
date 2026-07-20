@@ -21,6 +21,11 @@ public static class HealedOffsetCache
 {
     private static readonly ConcurrentDictionary<string, HealedEntry> _entries = new(StringComparer.Ordinal);
     private static readonly object _logLock = new();
+    // v0.42.1 concurrency fix: Persist() snapshots + writes to disk. Two concurrent SetHealed
+    // calls both invoke Persist() → each snapshots the dictionary at a different point → last
+    // writer wins with a possibly-stale snapshot, losing entries. Serializing the snapshot+write
+    // pair under _persistLock closes the race. Cheap (persistence is already >> in-memory work).
+    private static readonly object _persistLock = new();
     private static string? _configDir;
 
     /// <summary>
@@ -190,7 +195,12 @@ public static class HealedOffsetCache
         var dir = _configDir;
         if (string.IsNullOrEmpty(dir)) return;
 
-        var content = new HealedOffsetsFileContent(1, _entries.Values.ToList().AsReadOnly());
-        HealedOffsetsFile.Save(dir, content);
+        // Guard the snapshot+write pair — concurrent SetHealed calls otherwise each snapshot
+        // the dictionary at different times and race on the file write. See _persistLock XDoc.
+        lock (_persistLock)
+        {
+            var content = new HealedOffsetsFileContent(1, _entries.Values.ToList().AsReadOnly());
+            HealedOffsetsFile.Save(dir, content);
+        }
     }
 }
