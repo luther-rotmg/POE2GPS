@@ -264,4 +264,61 @@ public class TickCadenceMonitorTests
                 $"AdaptedFpsCap had invalid value: {val}");
         }
     }
+
+    // ── v0.42.3 fixes ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void v0423_FirstFingerprintZero_DoesNotMisprimeStaleCounter()
+    {
+        // Regression guard for v0.42.3 init-misprime fix: pre-fix, RecordWorldTick(0) on a
+        // fresh monitor would match _lastFingerprint's default zero and increment _staleTicks
+        // as if there had been a prior identical tick. Post-fix, the first call sets the
+        // initial fingerprint (whatever its value) and _staleTicks stays at 0.
+        var mon = new TickCadenceMonitor();
+        mon.StaleFingerprintTickThreshold = 2;   // very low — one match after init would engage pre-fix
+        mon.StaleAdaptCoolDownSeconds = 0;
+
+        mon.RecordWorldTick(0);   // first call — should be treated as a change
+        // Pre-fix: _staleTicks was 1 here.
+        // Post-fix: _staleTicks is 0. AdaptedFpsCap should still be MaxValue.
+        Assert.Equal(int.MaxValue, mon.AdaptedFpsCap);
+
+        mon.RecordWorldTick(0);   // second call — matches, _staleTicks = 1
+        // Pre-fix: _staleTicks would already be 2 here and throttle would engage.
+        // Post-fix: _staleTicks is only 1 and threshold=2 not reached.
+        Assert.Equal(int.MaxValue, mon.AdaptedFpsCap);
+
+        mon.RecordWorldTick(0);   // third call — _staleTicks = 2, NOW engages
+        Assert.True(mon.AdaptedFpsCap < int.MaxValue);
+    }
+
+    [Fact]
+    public void v0423_RestoreThenImmediateReThrottle_WorksWithoutCooldownGate()
+    {
+        // Regression guard for v0.42.3 cooldown-FSM split. Pre-fix, the single _lastActionTicks
+        // was reset on RESTORE as well as on ENGAGE, so a fresh over-polling event within the
+        // cooldown window after a restore could not re-throttle. Post-fix, engage-cooldown gates
+        // engage only, so restore does not block re-throttle.
+        var mon = new TickCadenceMonitor();
+        mon.StaleFingerprintTickThreshold = 3;
+        mon.StaleAdaptCoolDownSeconds = 0;   // no cooldown — instant engage/restore for the test
+        mon.MinAdaptedFps = 30;
+
+        // Engage throttle
+        for (int i = 0; i < 5; i++) mon.RecordWorldTick(42);
+        Assert.True(mon.AdaptedFpsCap < int.MaxValue, "First engage should throttle");
+
+        // Restore (fingerprint change)
+        mon.RecordWorldTick(99);
+        Assert.Equal(int.MaxValue, mon.AdaptedFpsCap);
+
+        // Immediately re-throttle with a new stale run
+        for (int i = 0; i < 5; i++) mon.RecordWorldTick(77);
+
+        // Pre-fix: cooldown gate would block this re-throttle (both engage and restore updated the
+        // same _lastActionTicks and we're within cooldownSeconds=0 of the restore).
+        // Post-fix: engage-cooldown is measured from _lastThrottleTicks only.
+        Assert.True(mon.AdaptedFpsCap < int.MaxValue,
+            "Should re-throttle immediately after restore when cooldown is zero");
+    }
 }

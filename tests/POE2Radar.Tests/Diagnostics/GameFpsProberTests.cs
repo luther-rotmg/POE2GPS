@@ -217,4 +217,73 @@ public sealed class GameFpsProberTests
             Marshal.FreeHGlobal(buf);
         }
     }
+
+    // ── v0.42.3 fixes ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void v0423_SweepInt_SmoothedFPSCandidate_PassesSmoothedGate()
+    {
+        // v0.42.3 signature-gate extension: a smoothed FPS integer that reads identically (or
+        // near-identically) at both samples and sits in the [15..300] plausible-FPS range now
+        // passes signature. Pre-fix, the monotonic gate required Second > First, which excluded
+        // this case entirely.
+        var reader = new MemoryReader(CreateSelfProcessHandle());
+        var buf = Marshal.AllocHGlobal(0x420);
+        try
+        {
+            for (int i = 0; i < 0x420; i++) Marshal.WriteByte(buf, i, 0);
+            // Write 144 at offset 0x100 twice (before + not mutated between reads → smoothed FPS 144)
+            Marshal.WriteInt32(buf, 0x100, 144);
+
+            var result = GameFpsProber.SweepInGameStateInt(buf, reader, sampleDurationMs: 1);
+            var at0x100 = result.Single(s => s.OffsetHex == "0x100");
+            Assert.Null(at0x100.ReadFailReason);
+            Assert.Equal(144, at0x100.Value.First);
+            Assert.Equal(144, at0x100.Value.Second);
+            Assert.Equal(0, at0x100.Value.Delta);
+            // Post-v0.42.3: passes via smoothed-FPS gate (first in [15..300], second in [15..300], |delta| <= 3)
+            Assert.True(at0x100.PassesSignature,
+                "Smoothed FPS 144/144 in [15..300] should pass v0.42.3 smoothed gate");
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+    }
+
+    [Fact]
+    public void v0423_SweepInt_SmoothedFPSBelowRange_FailsSignature()
+    {
+        // Regression: smoothed value 10/10 is below the 15 FPS floor → should NOT pass.
+        var reader = new MemoryReader(CreateSelfProcessHandle());
+        var buf = Marshal.AllocHGlobal(0x420);
+        try
+        {
+            for (int i = 0; i < 0x420; i++) Marshal.WriteByte(buf, i, 0);
+            Marshal.WriteInt32(buf, 0x100, 10);
+
+            var result = GameFpsProber.SweepInGameStateInt(buf, reader, sampleDurationMs: 1);
+            var at0x100 = result.Single(s => s.OffsetHex == "0x100");
+            Assert.Equal(10, at0x100.Value.First);
+            Assert.Equal(10, at0x100.Value.Second);
+            Assert.False(at0x100.PassesSignature,
+                "Value 10 is below the 15 FPS floor and should not pass the smoothed gate");
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buf);
+        }
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task v0423_SweepInGameStateIntAsync_ReturnsTaskThatCompletes()
+    {
+        // v0.42.3 async overload sanity: SweepXxxAsync returns a Task<...> that awaits and yields
+        // the same shape as the sync overload.
+        var reader = new MemoryReader(CreateZeroHandleProcessHandle());
+        var result = await GameFpsProber.SweepInGameStateIntAsync(0x1000, reader, sampleDurationMs: 1);
+        Assert.NotNull(result);
+        // Every read fails against a zero handle → every sample reports "read-fail".
+        Assert.All(result, s => Assert.Equal("read-fail", s.ReadFailReason));
+    }
 }

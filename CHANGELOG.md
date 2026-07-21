@@ -3,6 +3,36 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.42.3] — 2026-07-21 "Post-Audit Sweep"
+
+*Ran a focused audit over the v0.42.x additions — read-throw defects, concurrency, loopback gates, wire-format compat, config-default drift, C1/C2 edge cases. Everything either clean or fixed here. Highlight: v0.42.2's default flip was inert for the users it was meant to protect (the persisted setting overrode the new default on load). This drop's one-time migration flips it once for everyone, then respects any explicit opt-in going forward.*
+
+### Fixed
+
+- 🎮 **v0.42.2 hotfix was inert for existing users** — HIGH severity. The `RadarSettings` JSON serializer uses `DefaultIgnoreCondition.Never`, so v0.42.1's default `"autoAdaptTickCadence": true` was persisted to every existing user's `radar_settings.json`. When v0.42.2 loaded that file, the persisted `true` overrode the new `false` default → the hotfix did nothing for anyone hit by the C1 regression. New one-time migration flag `AutoAdaptTickCadenceMigratedV0423`: on load, if not yet set, force `AutoAdaptTickCadence = false` and mark the migration done. Users who explicitly re-enable it after v0.42.3 keep their choice.
+- 🩺 **`TickCadenceMonitor` init-fingerprint misprime** — the first `RecordWorldTick(0)` call after startup collided with `_lastFingerprint`'s default zero and started `_staleTicks` off-by-one. Post-fix, the first call always records as a change regardless of numeric value via a `_hasFirstFingerprint` guard.
+- 🩺 **`TickCadenceMonitor` restore-then-re-throttle blocked by shared cooldown** — the single `_lastActionTicks` field was updated on both engage AND restore, so a fresh over-polling event within the cooldown window after a restore could not re-throttle. Split into `_lastThrottleTicks` (gates engage) and `_lastRestoreTicks` (informational only). The anti-oscillation window now applies engage-to-engage where it belongs.
+
+### Added — 🩺 Signature-gate extension
+
+- 🩺 **`/api/probe/gamefps` int sweep** now passes signature for smoothed FPS integers too, not just monotonic frame counters. New gate: `(second > first && delta in [15..300])` OR `(first in [15..300] && second in [15..300] && |delta| <= 3)`. Catches game engines that expose FPS as a rounded/smoothed int alongside a raw frame counter.
+- 🩺 **Async sweep overloads** — `GameFpsProber.SweepXxxAsync` variants use `Task.Delay` instead of `Thread.Sleep`. The `/api/probe/gamefps` endpoint's four concurrent 1-second sweeps no longer pin four ThreadPool threads for the full sample window.
+
+### Tests
+
+- +8 xUnit facts (3 for the migration, 2 for the `TickCadenceMonitor` fixes, 3 for the smoothed-FPS gate + async overloads). Full suite: **1537 pass / 3 skipped / 0 failed** (baseline 1529; delta = +8).
+
+### Under the hood
+
+- Full sweep of all 6 v0.42 probers plus the inline sweeps in `Poe2Live.ProbeEntities` confirmed no unwrapped throwing memory reads (`ReadPointer` / `ReadStringUtf16`) that could propagate exceptions out to callers.
+- All 8 `/api/probe/*` endpoints verified loopback-Host-gated with method-gate + provider-null guard.
+- `HealedOffsetCache` concurrency race (from v0.42.1-wip) confirmed still fixed; instance-scoped diagnostic state (`_lastGroundItems` ring buffer, UiFlags snapshot ring) verified thread-safe under x64 memory model.
+- `RadarState.Cadence` nullable init property has exactly one consumer (`ApiServer` `/api/state`) which uses `is { } tc` null-check pattern. No frontend consumer.
+
+### Upgrade
+
+Fully automatic via the in-app update checker. On first load under v0.42.3, the migration forces `AutoAdaptTickCadence = false` if it isn't already, then sets a flag so subsequent loads don't touch the field. If you explicitly want the C1 auto-throttle behavior, set `"AutoAdaptTickCadence": true` in `radar-settings.json` AFTER v0.42.3 has run once — the migration won't overwrite explicit post-migration opt-ins.
+
 ## [0.42.2] — 2026-07-20 "Quiet Scenes Aren't Stale Bytes"
 
 *Shipped an auto-throttle heuristic yesterday. It false-positives on any 500 ms quiet moment — right after a zone loads while entities are still populating, or just standing still with no monsters nearby — and locks the FPS cap at 30 for 10+ seconds. On a 240 Hz monitor that reads as "overlay stopped working." Flipping the default off until we can rebuild the trigger on a real game-FPS signal (the C2 diagnostic is exactly for finding that offset). All the v0.42.1 code stays in place — opt in with one config line if it worked for you.*

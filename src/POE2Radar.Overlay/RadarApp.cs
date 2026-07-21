@@ -1022,13 +1022,15 @@ monolithProbeReader: _readerApi,
                                     if (!_readerApi.TryReadStruct<nint>(inGameState + Poe2.InGameState.Camera, out var cameraPtr) || cameraPtr == 0)
                                         return (400, (object)new { error = "not-attached" });
 
-                                    // 4 sweeps in parallel — each does its own one-second sleep; total
-                                    // endpoint time ≈ 1 second instead of 4. RPM is concurrency-safe on
-                                    // the same handle; TryReadStruct has no per-instance buffers.
-                                    var igIntTask = Task.Run(() => GameFpsProber.SweepInGameStateInt(inGameState, _readerApi, sampleDurationMs));
-                                    var igFloatTask = Task.Run(() => GameFpsProber.SweepInGameStateFloat(inGameState, _readerApi, sampleDurationMs));
-                                    var camIntTask = Task.Run(() => GameFpsProber.SweepCameraInt(cameraPtr, _readerApi, sampleDurationMs));
-                                    var camFloatTask = Task.Run(() => GameFpsProber.SweepCameraFloat(cameraPtr, _readerApi, sampleDurationMs));
+                                    // v0.42.3: use the async sweep variants (Task.Delay under the hood) so
+                                    // the 4 concurrent 1-second waits don't each pin a ThreadPool thread
+                                    // for their entire duration. All 4 start immediately; endpoint total
+                                    // wall-clock stays ~1s; ThreadPool pressure drops from 4 blocked threads
+                                    // to zero during the sleep window.
+                                    var igIntTask = GameFpsProber.SweepInGameStateIntAsync(inGameState, _readerApi, sampleDurationMs);
+                                    var igFloatTask = GameFpsProber.SweepInGameStateFloatAsync(inGameState, _readerApi, sampleDurationMs);
+                                    var camIntTask = GameFpsProber.SweepCameraIntAsync(cameraPtr, _readerApi, sampleDurationMs);
+                                    var camFloatTask = GameFpsProber.SweepCameraFloatAsync(cameraPtr, _readerApi, sampleDurationMs);
                                     Task.WaitAll(igIntTask, igFloatTask, camIntTask, camFloatTask);
 
                                     return (200, (object)new

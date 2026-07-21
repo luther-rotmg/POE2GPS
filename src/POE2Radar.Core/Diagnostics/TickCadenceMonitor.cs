@@ -26,9 +26,18 @@ public sealed class TickCadenceMonitor
 
     // ── State (single writer: WorldLoop thread). Readers see via volatile / lock-free snapshot. ──
     private volatile int _adaptedFpsCap = int.MaxValue;
+    // v0.42.3: track whether the FIRST fingerprint has been seen, so the initial call with
+    // fingerprint=0 doesn't accidentally match _lastFingerprint=default(int)=0 and prime
+    // _staleTicks off-by-one. Without this, the very first RecordWorldTick call after startup
+    // (or after Clear()) treated any zero-fingerprint as a repeat.
+    private bool _hasFirstFingerprint;
     private int _lastFingerprint;
     private int _staleTicks;
-    private long _lastActionTicks;    // Stopwatch ticks of last throttle or restore action
+    // v0.42.3: split the single _lastActionTicks into engage- and restore-specific stamps so
+    // a fresh over-polling event can re-throttle immediately after a restore, instead of
+    // being gated by another StaleAdaptCoolDownSeconds window that we're not actually in.
+    private long _lastThrottleTicks;  // Stopwatch ticks of the last throttle-engage action
+    private long _lastRestoreTicks;   // Stopwatch ticks of the last cap-restore action
     private bool _isThrottled;
 
     // Sliding window: timestamps (Stopwatch.GetTimestamp()) of fingerprint-CHANGE events.
@@ -70,6 +79,25 @@ public sealed class TickCadenceMonitor
     {
         var now = Stopwatch.GetTimestamp();
 
+        // v0.42.3: FIRST fingerprint is treated as a change (not a stale-match), regardless
+        // of its numeric value. Prevents the init-zero misprime where the first
+        // RecordWorldTick(0) call would collide with _lastFingerprint's default zero and
+        // start _staleTicks off-by-one.
+        if (!_hasFirstFingerprint)
+        {
+            _hasFirstFingerprint = true;
+            _lastFingerprint = fingerprint;
+            _staleTicks = 0;
+            lock (_changeLock)
+            {
+                _changeTimestamps.Enqueue(now);
+                var cutoff = now - WindowTicks;
+                while (_changeTimestamps.Count > 0 && _changeTimestamps.Peek() < cutoff)
+                    _changeTimestamps.Dequeue();
+            }
+            return;
+        }
+
         if (fingerprint == _lastFingerprint)
         {
             // ── Same fingerprint — staleness growing ──
@@ -78,8 +106,11 @@ public sealed class TickCadenceMonitor
 
             if (_staleTicks >= threshold && !_isThrottled)
             {
+                // v0.42.3: gate throttle-engage on the LAST engage timestamp only, not on the
+                // last restore. A cap that just restored can immediately re-throttle if a fresh
+                // over-polling event surfaces — the anti-oscillation window applies engage-to-engage.
                 var cooldownTicks = (long)Stopwatch.Frequency * StaleAdaptCoolDownSeconds;
-                if (now - _lastActionTicks >= cooldownTicks)
+                if (now - _lastThrottleTicks >= cooldownTicks)
                 {
                     // Compute effective Hz from recent fingerprint changes
                     int changeCount;
@@ -94,7 +125,7 @@ public sealed class TickCadenceMonitor
                     var newCap = Math.Max(MinAdaptedFps, changeCount);
                     _adaptedFpsCap = newCap;
                     _isThrottled = true;
-                    _lastActionTicks = now;
+                    _lastThrottleTicks = now;
                 }
             }
         }
@@ -113,15 +144,16 @@ public sealed class TickCadenceMonitor
                     _changeTimestamps.Dequeue();
             }
 
-            // Check if we should restore the cap
+            // Check if we should restore the cap. Gate on time since THROTTLE (not since
+            // last restore), matching the semantics "we've been throttled long enough now."
             if (_isThrottled)
             {
                 var cooldownTicks = (long)Stopwatch.Frequency * StaleAdaptCoolDownSeconds;
-                if (now - _lastActionTicks >= cooldownTicks)
+                if (now - _lastThrottleTicks >= cooldownTicks)
                 {
                     _adaptedFpsCap = int.MaxValue;
                     _isThrottled = false;
-                    _lastActionTicks = now;
+                    _lastRestoreTicks = now;
                 }
             }
         }
@@ -153,10 +185,12 @@ public sealed class TickCadenceMonitor
     /// <summary>Test-only reset. Resets all internal state.</summary>
     public void Clear()
     {
+        _hasFirstFingerprint = false;
         _lastFingerprint = 0;
         _staleTicks = 0;
         _adaptedFpsCap = int.MaxValue;
-        _lastActionTicks = 0;
+        _lastThrottleTicks = 0;
+        _lastRestoreTicks = 0;
         _isThrottled = false;
         lock (_changeLock)
         {

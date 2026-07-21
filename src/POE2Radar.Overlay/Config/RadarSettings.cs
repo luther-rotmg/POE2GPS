@@ -77,6 +77,13 @@ public sealed class RadarSettings
     /// Opt-in only until we have a real game-FPS offset (see /api/probe/gamefps).</summary>
     public bool AutoAdaptTickCadence { get; set; } = false;
 
+    /// <summary>v0.42.3: one-time migration flag. Anyone who ran v0.42.1 saved
+    /// <see cref="AutoAdaptTickCadence"/>=true to disk (the v0.42.1 default), so the
+    /// v0.42.2 default-flip did nothing for them on upgrade. When this flag is false,
+    /// Migrate() forces <see cref="AutoAdaptTickCadence"/> back to false ONCE and sets
+    /// this flag to true, so users can still explicitly opt in after the migration.</summary>
+    public bool AutoAdaptTickCadenceMigratedV0423 { get; set; } = false;
+
     /// <summary>Consecutive world ticks with byte-identical state fingerprint before
     /// the adaptive throttle engages. 15 = ~500 ms at WorldHz=30. Set higher to be
     /// more tolerant of legit static scenes (hideouts, menus). NOT applied unless
@@ -563,6 +570,21 @@ public sealed class RadarSettings
         if (AutoNavPatterns is not null)
             for (var i = 0; i < AutoNavPatterns.Count; i++)
                 if (IsStaleExp(AutoNavPatterns[i])) { AutoNavPatterns[i] = precise; changed = true; }
+
+        // v0.42.3: one-time force AutoAdaptTickCadence to false. Anyone who ran v0.42.1
+        // had the default true persisted to disk; v0.42.2's default-flip did nothing for them
+        // on load. Force it once (guarded by AutoAdaptTickCadenceMigratedV0423), then let
+        // users explicitly re-opt in via the config file if they want it.
+        if (!AutoAdaptTickCadenceMigratedV0423)
+        {
+            if (AutoAdaptTickCadence)
+            {
+                AutoAdaptTickCadence = false;
+                changed = true;
+            }
+            AutoAdaptTickCadenceMigratedV0423 = true;
+            changed = true;
+        }
 
         return changed;
     }
