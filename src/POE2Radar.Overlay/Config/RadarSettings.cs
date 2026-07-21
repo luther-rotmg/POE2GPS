@@ -71,9 +71,11 @@ public sealed class RadarSettings
 
     /// <summary>v0.42.1: auto-throttle the overlay render rate when world-state reads
     /// stop returning fresh bytes (controller-mode FPS-mismatch symptom — HP bars stop
-    /// clearing, plugins appear frozen). Default on; set false to keep the classic
-    /// fixed FpsCap behavior.</summary>
-    public bool AutoAdaptTickCadence { get; set; } = true;
+    /// clearing, plugins appear frozen). v0.42.2: DEFAULT OFF. The fingerprint heuristic
+    /// false-positives on quiet scenes (post-zone-load entity stability, brief pauses)
+    /// and locks the render cap at 30 FPS for 10s+ — unusable on high-refresh monitors.
+    /// Opt-in only until we have a real game-FPS offset (see /api/probe/gamefps).</summary>
+    public bool AutoAdaptTickCadence { get; set; } = false;
 
     /// <summary>Consecutive world ticks with byte-identical state fingerprint before
     /// the adaptive throttle engages. 15 = ~500 ms at WorldHz=30. Set higher to be

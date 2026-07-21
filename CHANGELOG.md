@@ -3,6 +3,31 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.42.2] — 2026-07-20 "Quiet Scenes Aren't Stale Bytes"
+
+*Shipped an auto-throttle heuristic yesterday. It false-positives on any 500 ms quiet moment — right after a zone loads while entities are still populating, or just standing still with no monsters nearby — and locks the FPS cap at 30 for 10+ seconds. On a 240 Hz monitor that reads as "overlay stopped working." Flipping the default off until we can rebuild the trigger on a real game-FPS signal (the C2 diagnostic is exactly for finding that offset). All the v0.42.1 code stays in place — opt in with one config line if it worked for you.*
+
+### Fixed
+
+- 🎮 **`AutoAdaptTickCadence` default flipped from `true` → `false`.** The fingerprint (`entityCount + areaInstance + localPlayer + areaHash`) conflates "significant game-state change" with "reads are working" — a quiet scene where nothing enters or leaves the entity list produces 15 byte-identical ticks, the throttle engages, and the 10-second cooldown (which requires a fingerprint change to re-arm) holds the cap at 30 FPS until something in the world moves. The signature we actually want ("game IS updating but we're reading stale bytes") needs the game-FPS offset that C2 is meant to help locate. Until we have it, the heuristic is unsafe as a default.
+
+### Under the hood
+
+- All v0.42.1 C1 code stays in place — `TickCadenceMonitor`, the `tickCadence` block in `/api/state`, `StaleFingerprintTickThreshold`, `StaleAdaptCoolDownSeconds`. The only change is one line in `RadarSettings` (`AutoAdaptTickCadence = false`). If v0.42.1 fixed your controller-mode HP-bar freeze and you want to keep it, set `"AutoAdaptTickCadence": true` in `radar-settings.json` and everything works as it did yesterday.
+- 🩺 **C2 diagnostic (`/api/probe/gamefps`) stays live.** This is the endpoint that maps the real game-FPS offset — the payload we need to replace the C1 fingerprint heuristic with a direct read. Loopback-Host-gated (raw pointers never leave your machine). If you're on a high-refresh setup with an in-game FPS cap active, `curl http://localhost:16311/api/probe/gamefps` returns in ~1 second and the JSON tells us which offset holds the number.
+
+### Tests
+
+- No test changes. Suite stays at **1529 pass / 3 skipped / 0 failed**. The regression is a default-value flip, not a logic bug — the existing `TickCadenceMonitor` tests still cover the behavior for opt-in users.
+
+### Upgrade
+
+Fully automatic via the in-app update checker. Anyone already on v0.42.1 who hit the regression can either update to v0.42.2 or work around it immediately by editing `radar-settings.json` and setting `"AutoAdaptTickCadence": false` — the flipped default is the entire fix.
+
+### Sorry
+
+- Shipped a heuristic on a signal that wasn't specific enough. The right trigger needs a real game-FPS read, and building that on top of C2's payload is the v0.42.3+ scope. Thanks to everyone who reported the 30-FPS lock — that's the signal that got us here.
+
 ## [0.42.1] — 2026-07-20 "Controller-Mode Freeze Fix + Cadence Probe"
 
 *Field-diagnosed by streamer @themostepic (playing via Moonlight): when the overlay's render rate is much higher than the game's actual render rate, per-frame memory reads outrun the game's state updates and controller-mode users see HP bars freeze / plugins appear stuck for a couple of seconds. Manual workaround (match the two rates) is now automatic. Ships alongside a diagnostic probe so the "real" game FPS offset can be mapped from a support payload.*
