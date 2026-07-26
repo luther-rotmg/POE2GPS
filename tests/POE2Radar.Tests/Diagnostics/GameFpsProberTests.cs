@@ -68,7 +68,7 @@ public sealed class GameFpsProberTests
     }
 
     [Fact]
-    public void SweepInGameStateInt_MonotonicCandidate_PassesSignature()
+    public async System.Threading.Tasks.Task SweepInGameStateInt_MonotonicCandidate_PassesSignature()
     {
         var reader = new MemoryReader(CreateSelfProcessHandle());
         // Buffer covers offsets [0x40..0x400] inclusive (need 0x404 bytes for the 0x400 read).
@@ -80,19 +80,15 @@ public sealed class GameFpsProberTests
             // Pre-write the first value at offset 0x100 (in-window).
             Marshal.WriteInt32(buf + 0x100, 1000);
 
-            // Mutation thread: write the second value after a short delay so the mutation lands
-            // between the prober's read1 and read2 (both reads happen inside Thread.Sleep(dur)).
-            var mutated = new ManualResetEventSlim(false);
-            var mutator = new Thread(() =>
-            {
-                Thread.Sleep(5);
-                Marshal.WriteInt32(buf + 0x100, 1060);
-                mutated.Set();
-            });
-            mutator.Start();
-
-            var result = GameFpsProber.SweepInGameStateInt(buf, reader, sampleDurationMs: 30);
-            Assert.True(mutated.Wait(2000), "mutator thread did not signal within 2s");
+            // Drive the mutation off the ASYNC overload rather than a racing mutator thread.
+            // SweepIntAsync reads the entire first window synchronously before it reaches its
+            // first await, so the moment the Task is handed back, read #1 has provably happened
+            // and read #2 has provably not. Writing here lands strictly between them — no timing
+            // margin to lose under parallel test load. (The old form slept 5 ms against a 30 ms
+            // sample window and failed intermittently in full-suite runs.)
+            var sweep = GameFpsProber.SweepInGameStateIntAsync(buf, reader, sampleDurationMs: 30);
+            Marshal.WriteInt32(buf + 0x100, 1060);
+            var result = await sweep;
 
             // Sanity: the self-opened handle must be able to read the test process's own heap.
             var at0x100 = result.Single(s => s.OffsetHex == "0x100");
@@ -106,12 +102,15 @@ public sealed class GameFpsProberTests
             Assert.Equal(1000, passes[0].Value.First);
             Assert.Equal(1060, passes[0].Value.Second);
             Assert.Equal(60, passes[0].Value.Delta);
+            // v0.42.4: the high-confidence gate, reported by name.
+            Assert.Equal("monotonic", passes[0].Value.Gate);
 
             // All other offsets read 0 → 0 (Second > First is false) so they fail the signature.
             foreach (var sample in result)
             {
                 if (sample.OffsetHex == "0x100") continue;
                 Assert.False(sample.PassesSignature);
+                Assert.Null(sample.Value.Gate);
             }
         }
         finally
@@ -131,16 +130,19 @@ public sealed class GameFpsProberTests
             // First read sees 1000 at 0x100; the mutation makes the second read see 500 (delta = -500).
             Marshal.WriteInt32(buf + 0x100, 1000);
 
+            // Sync overload, so the mutation needs its own thread. Margins are deliberately wide
+            // (150 ms into a 400 ms window) — the original 5 ms/30 ms pairing lost the race under
+            // full-suite parallel load.
             var mutated = new ManualResetEventSlim(false);
             var mutator = new Thread(() =>
             {
-                Thread.Sleep(5);
+                Thread.Sleep(150);
                 Marshal.WriteInt32(buf + 0x100, 500);
                 mutated.Set();
             });
             mutator.Start();
 
-            var result = GameFpsProber.SweepInGameStateInt(buf, reader, sampleDurationMs: 30);
+            var result = GameFpsProber.SweepInGameStateInt(buf, reader, sampleDurationMs: 400);
             Assert.True(mutated.Wait(2000));
 
             var at0x100 = result.Single(s => s.OffsetHex == "0x100");
@@ -169,16 +171,18 @@ public sealed class GameFpsProberTests
             // (≈ 1.4% jitter) — well within the 25% gate, |Second - First| = 0.0001 < 0.001725.
             Marshal.WriteInt32(buf + 0x80, BitConverter.SingleToInt32Bits(0.0069f));
 
+            // Wide margins (150 ms into a 400 ms window) for the same load-sensitivity reason as
+            // SweepInGameStateInt_NonMonotonic_FailsSignature.
             var mutated = new ManualResetEventSlim(false);
             var mutator = new Thread(() =>
             {
-                Thread.Sleep(5);
+                Thread.Sleep(150);
                 Marshal.WriteInt32(buf + 0x80, BitConverter.SingleToInt32Bits(0.0068f));
                 mutated.Set();
             });
             mutator.Start();
 
-            var result = GameFpsProber.SweepInGameStateFloat(buf, reader, sampleDurationMs: 30);
+            var result = GameFpsProber.SweepInGameStateFloat(buf, reader, sampleDurationMs: 400);
             Assert.True(mutated.Wait(2000));
 
             var at0x80 = result.Single(s => s.OffsetHex == "0x80");
@@ -244,6 +248,10 @@ public sealed class GameFpsProberTests
             // Post-v0.42.3: passes via smoothed-FPS gate (first in [15..300], second in [15..300], |delta| <= 3)
             Assert.True(at0x100.PassesSignature,
                 "Smoothed FPS 144/144 in [15..300] should pass v0.42.3 smoothed gate");
+            // v0.42.4: the smoothed gate is speculative by construction — any stable small int in
+            // [15..300] matches it — so the sample must say WHICH gate passed, or a support payload
+            // can't be sorted high-confidence-first.
+            Assert.Equal("smoothed", at0x100.Value.Gate);
         }
         finally
         {

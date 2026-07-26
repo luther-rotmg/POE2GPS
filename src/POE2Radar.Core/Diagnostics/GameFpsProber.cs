@@ -18,8 +18,14 @@ public static class GameFpsProber
     /// <summary>Two int readings <c>sampleDurationMs</c> apart, with <c>Delta = Second - First</c>
     /// computed at probe time. Both readings preserved so a reviewer can distinguish a frame
     /// counter (First &amp; Second both large, delta ≈ FPS) from a smoothed FPS int (both in [15..300],
-    /// delta ≈ 0) from noise (both jump wildly).</summary>
-    public readonly record struct GameFpsIntSample(int First, int Second, int Delta);
+    /// delta ≈ 0) from noise (both jump wildly).
+    /// <para><see cref="Gate"/> (v0.42.4) names WHICH gate passed — <c>"monotonic"</c> or
+    /// <c>"smoothed"</c>, <c>null</c> when the sample fails signature. The smoothed gate cannot
+    /// distinguish a real FPS int from any other stable small int in [15..300] on a two-shot
+    /// sample, so it necessarily passes a lot of unrelated fields; reporting the mode lets a
+    /// reviewer sort the high-confidence monotonic hits from the speculative smoothed ones instead
+    /// of seeing them collapsed into one bool.</para></summary>
+    public readonly record struct GameFpsIntSample(int First, int Second, int Delta, string? Gate = null);
 
     /// <summary>Two float readings <c>sampleDurationMs</c> apart, with <c>Delta = Second - First</c>.
     /// Carries frame-time-in-seconds candidates (e.g. <c>1/144 ≈ 0.0069</c>).</summary>
@@ -126,9 +132,13 @@ public static class GameFpsProber
             var passesMonotonic = second > first && delta >= 15 && delta <= 300;
             var passesSmoothed = first >= 15 && first <= 300 && second >= 15 && second <= 300 && Math.Abs(delta) <= 3;
             var passes = passesMonotonic || passesSmoothed;
+            // v0.42.4: report WHICH gate passed. Monotonic is the high-confidence hit; smoothed is
+            // speculative by construction (any stable small int in [15..300] matches), so a support
+            // payload has to be sortable by mode or the smoothed hits drown the real one.
+            var gate = passesMonotonic ? "monotonic" : passesSmoothed ? "smoothed" : null;
             result[i] = new ProbeSample<GameFpsIntSample>(
                 $"0x{off:X}", $"0x{target:X}",
-                new GameFpsIntSample(first, second, delta), null, passes);
+                new GameFpsIntSample(first, second, delta, gate), null, passes);
         }
         return result;
     }

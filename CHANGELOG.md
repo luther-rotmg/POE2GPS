@@ -3,6 +3,29 @@
 All notable changes to POE2GPS. This project is a strictly read-only, GGG-compliant PoE2 navigation overlay.
 Versions are GitHub release tags (`vX.Y.Z`); the in-app update checker compares against the latest.
 
+## [0.42.4] — 2026-07-26 "Let The Cap Breathe"
+
+*Audit of the audit. v0.42.3 fixed a real cooldown defect — a restored FPS cap had to wait out another full 10-second window before it could re-throttle — but it fixed it all the way to zero. Because the engage gate measures from the last **engage**, it's already satisfied the instant a restore happens, so a scene with sparse activity re-throttled about half a second after every restore and the cap sat at its floor roughly 95% of the time. That's the "overlay stopped working" symptom v0.42.2 flipped the default for, arriving by a different road. This drop adds a dwell floor: the cap has to stay released a while before staleness can pull it back down. Only reaches you if you opted back into the auto-throttle — it's still off by default.*
+
+### Fixed
+
+- 🩺 **Auto-throttle pinned the FPS cap in semi-quiet scenes** — v0.42.3's engage-to-engage cooldown left no minimum un-throttled dwell, so `restore → ~500 ms → re-throttle` cycled indefinitely and the adapted cap was effectively permanent. New `ReEngageCoolDownSeconds` (default `5`) requires the cap to stay restored that long before a fresh stale run may re-engage. Engage now needs **both** the engage-to-engage window and the dwell floor, which keeps v0.42.3's actual fix intact. Set it to `0` for exact v0.42.3 behavior. Configurable via `radar-settings.json`.
+- ⚙️ **Settings migrations claimed success they hadn't earned** — `Save()` swallowed IO failures and returned void, so a migration whose flag never reached disk logged "migrated stale mechanic rules (Expedition/Strongbox category gating)" — the wrong migration name — and then silently re-ran on every launch, re-forcing `AutoAdaptTickCadence = false` over a deliberate opt-in each time. `Save()` now reports failure and the load path says plainly when migrations couldn't be persisted. (Visibility, not immunity: an unwritable config file still can't retain the flags.)
+
+### Changed — 🩺 Diagnostics
+
+- 🩺 **`/api/probe/gamefps` int samples now name their gate.** `GameFpsIntSample` gained `Gate` — `"monotonic"`, `"smoothed"`, or `null`. v0.42.3's smoothed gate can't distinguish a real FPS integer from any other stable small int in `[15..300]` on a two-shot sample, so it necessarily flags a lot of unrelated fields across the 241-offset sweep. Both modes collapsed into one bool made a support payload hard to read; naming the mode makes it sortable high-confidence-first.
+
+### Tests
+
+- +2 net xUnit facts. Full suite: **1539 pass / 3 skipped / 0 failed** (baseline 1537).
+- Replaced v0.42.3's cooldown regression guard, which set `StaleAdaptCoolDownSeconds = 0` — at zero, the *pre-fix* expression `now - _lastActionTicks >= 0` is also always true, so the test passed against the very code it claimed to guard. Rewritten with a non-zero cooldown, plus two new facts covering the dwell floor and its `0` opt-out.
+- De-flaked `SweepInGameStateInt_MonotonicCandidate_PassesSignature`, which failed intermittently under full-suite parallel load (5 ms mutator against a 30 ms sample window). Rebuilt on the async overload: the first window read completes synchronously before the first `await`, so the mutation lands provably between the two reads with no timing margin to lose. The two sync-path mutator tests got wide margins instead.
+
+### Upgrade
+
+Fully automatic via the in-app update checker. No action needed — `AutoAdaptTickCadence` remains **off by default** and this release does not change that. If you opted back in, you'll get the dwell floor automatically; tune `ReEngageCoolDownSeconds` in `radar-settings.json` if 5 seconds doesn't suit your setup.
+
 ## [0.42.3] — 2026-07-21 "Post-Audit Sweep"
 
 *Ran a focused audit over the v0.42.x additions — read-throw defects, concurrency, loopback gates, wire-format compat, config-default drift, C1/C2 edge cases. Everything either clean or fixed here. Highlight: v0.42.2's default flip was inert for the users it was meant to protect (the persisted setting overrode the new default on load). This drop's one-time migration flips it once for everyone, then respects any explicit opt-in going forward.*

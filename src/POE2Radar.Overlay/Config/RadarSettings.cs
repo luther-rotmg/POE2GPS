@@ -94,6 +94,12 @@ public sealed class RadarSettings
     /// oscillation. Only applied when <see cref="AutoAdaptTickCadence"/> is on.</summary>
     public int StaleAdaptCoolDownSeconds { get; set; } = 10;
 
+    /// <summary>Minimum seconds the FPS cap must stay restored before a new stale run may
+    /// re-engage the throttle. Guards against the cap sitting at the adapted floor almost
+    /// continuously in semi-quiet scenes. Only applied when
+    /// <see cref="AutoAdaptTickCadence"/> is on.</summary>
+    public int ReEngageCoolDownSeconds { get; set; } = 5;
+
     // ── Navigation-menu widget: which screen corner it is pinned to.
     //    One of "TopLeft", "TopRight", "BottomLeft", "BottomRight". ──
     public string NavMenuCorner { get; set; } = "TopLeft";
@@ -503,8 +509,15 @@ public sealed class RadarSettings
             // patterns shipped by older builds in place, then persist the upgrade.
             if (loaded.Migrate())
             {
-                loaded.Save();
-                Console.WriteLine("Settings: migrated stale mechanic rules (Expedition/Strongbox category gating).");
+                if (loaded.Save())
+                    Console.WriteLine("Settings: applied one-time migrations (mechanic rules / tick-cadence default).");
+                else
+                    // The migration flags live in the file we just failed to write, so they will be
+                    // false again next launch and every forced default gets re-applied — including
+                    // AutoAdaptTickCadence=false over a deliberate opt-in. Say so plainly.
+                    Console.Error.WriteLine(
+                        "Settings: migrations could NOT be persisted — they will re-run (and re-force " +
+                        "their defaults) on every launch until the settings file is writable.");
             }
             return loaded;
         }
@@ -603,16 +616,21 @@ public sealed class RadarSettings
     }
 
     /// <summary>Persist current settings to disk atomically (write-to-tmp then replace — crash-safe).
-    /// Never throws on IO error — logs and continues.</summary>
-    public void Save()
+    /// Never throws on IO error — logs and continues. Returns false if the write failed, so callers
+    /// that depend on persistence — notably the one-time migrations in <see cref="Migrate"/>, which
+    /// silently re-run every launch if their flags never land — can say so instead of assuming
+    /// success.</summary>
+    public bool Save()
     {
         try
         {
             JsonStore.AtomicWrite(FilePath, this, Json);
+            return true;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Settings save failed: {ex.Message}");
+            return false;
         }
     }
 }

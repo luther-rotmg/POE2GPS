@@ -21,6 +21,15 @@ public sealed class TickCadenceMonitor
     /// <summary>Seconds to wait between throttle adjustments (up or down). Prevents oscillation.</summary>
     public int StaleAdaptCoolDownSeconds { get; set; } = 10;
 
+    /// <summary>Minimum seconds the cap must stay RESTORED before a new stale run may re-engage
+    /// the throttle. Without this floor the engage gate — measured from the last engage — is
+    /// already satisfied the instant a restore happens, so a semi-quiet scene re-throttles
+    /// ~<see cref="StaleFingerprintTickThreshold"/> ticks later and the cap sits at
+    /// <see cref="MinAdaptedFps"/> almost continuously (the "overlay stopped working" report on
+    /// high-refresh monitors). 5s with the default 10s cooldown caps the throttled duty cycle at
+    /// ~2/3 instead of ~95%. Set to 0 to re-engage immediately after a restore.</summary>
+    public int ReEngageCoolDownSeconds { get; set; } = 5;
+
     /// <summary>Never throttle below this FPS (30 = the world-loop baseline).</summary>
     public int MinAdaptedFps { get; set; } = 30;
 
@@ -34,8 +43,11 @@ public sealed class TickCadenceMonitor
     private int _lastFingerprint;
     private int _staleTicks;
     // v0.42.3: split the single _lastActionTicks into engage- and restore-specific stamps so
-    // a fresh over-polling event can re-throttle immediately after a restore, instead of
+    // a fresh over-polling event can re-throttle sooner after a restore, instead of
     // being gated by another StaleAdaptCoolDownSeconds window that we're not actually in.
+    // v0.42.4: _lastRestoreTicks is no longer merely informational — it enforces the
+    // ReEngageCoolDownSeconds dwell floor that keeps a semi-quiet scene from re-throttling
+    // ~500 ms after every restore.
     private long _lastThrottleTicks;  // Stopwatch ticks of the last throttle-engage action
     private long _lastRestoreTicks;   // Stopwatch ticks of the last cap-restore action
     private bool _isThrottled;
@@ -106,11 +118,16 @@ public sealed class TickCadenceMonitor
 
             if (_staleTicks >= threshold && !_isThrottled)
             {
-                // v0.42.3: gate throttle-engage on the LAST engage timestamp only, not on the
-                // last restore. A cap that just restored can immediately re-throttle if a fresh
-                // over-polling event surfaces — the anti-oscillation window applies engage-to-engage.
+                // v0.42.3: the anti-oscillation window applies engage-to-engage, so a restored cap
+                // isn't held hostage by a cooldown window we're not actually in.
+                // v0.42.4: BUT a bare engage-to-engage gate is already satisfied the moment a
+                // restore happens, which let a semi-quiet scene re-throttle ~500 ms later and pinned
+                // the cap at MinAdaptedFps ~95% of the time. Require BOTH the engage-to-engage
+                // window AND a minimum restored-dwell so the cap actually stays released a while.
                 var cooldownTicks = (long)Stopwatch.Frequency * StaleAdaptCoolDownSeconds;
-                if (now - _lastThrottleTicks >= cooldownTicks)
+                var reEngageTicks = (long)Stopwatch.Frequency * ReEngageCoolDownSeconds;
+                if (now - _lastThrottleTicks >= cooldownTicks &&
+                    now - _lastRestoreTicks >= reEngageTicks)
                 {
                     // Compute effective Hz from recent fingerprint changes
                     int changeCount;

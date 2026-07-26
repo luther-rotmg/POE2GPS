@@ -293,32 +293,86 @@ public class TickCadenceMonitorTests
     }
 
     [Fact]
-    public void v0423_RestoreThenImmediateReThrottle_WorksWithoutCooldownGate()
+    public void v0423_RestoreThenReThrottle_NotBlockedByEngageCooldown()
     {
-        // Regression guard for v0.42.3 cooldown-FSM split. Pre-fix, the single _lastActionTicks
-        // was reset on RESTORE as well as on ENGAGE, so a fresh over-polling event within the
-        // cooldown window after a restore could not re-throttle. Post-fix, engage-cooldown gates
-        // engage only, so restore does not block re-throttle.
+        // Regression guard for the v0.42.3 cooldown-FSM split. Pre-v0.42.3 the single
+        // _lastActionTicks was reset on RESTORE as well as on ENGAGE, so a fresh over-polling
+        // event had to wait out another full StaleAdaptCoolDownSeconds. Post-fix the engage gate
+        // is measured from the last ENGAGE only.
+        //
+        // The cooldown must be NON-ZERO for this to discriminate: with cooldown 0 the pre-fix
+        // expression (now - _lastActionTicks >= 0) is also always true, so a zero-cooldown version
+        // of this test passes against the very code it claims to guard.
         var mon = new TickCadenceMonitor();
         mon.StaleFingerprintTickThreshold = 3;
-        mon.StaleAdaptCoolDownSeconds = 0;   // no cooldown — instant engage/restore for the test
+        mon.StaleAdaptCoolDownSeconds = 1;   // non-zero: this is what makes the assertion meaningful
+        mon.ReEngageCoolDownSeconds = 0;     // isolate the engage gate from the v0.42.4 dwell floor
         mon.MinAdaptedFps = 30;
 
-        // Engage throttle
+        // Engage throttle.
         for (int i = 0; i < 5; i++) mon.RecordWorldTick(42);
         Assert.True(mon.AdaptedFpsCap < int.MaxValue, "First engage should throttle");
 
-        // Restore (fingerprint change)
+        // Restore requires the engage-cooldown to have elapsed, so wait it out, then change.
+        Thread.Sleep(1100);
         mon.RecordWorldTick(99);
         Assert.Equal(int.MaxValue, mon.AdaptedFpsCap);
 
-        // Immediately re-throttle with a new stale run
+        // A fresh stale run re-engages. Pre-fix this was blocked: the restore had just reset
+        // _lastActionTicks, leaving us 0 s into a 1 s window.
         for (int i = 0; i < 5; i++) mon.RecordWorldTick(77);
-
-        // Pre-fix: cooldown gate would block this re-throttle (both engage and restore updated the
-        // same _lastActionTicks and we're within cooldownSeconds=0 of the restore).
-        // Post-fix: engage-cooldown is measured from _lastThrottleTicks only.
         Assert.True(mon.AdaptedFpsCap < int.MaxValue,
-            "Should re-throttle immediately after restore when cooldown is zero");
+            "Re-throttle after restore must not be gated by the engage cooldown");
+    }
+
+    [Fact]
+    public void v0424_ReEngageCoolDown_KeepsCapReleasedAfterRestore()
+    {
+        // v0.42.4 dwell floor. The v0.42.3 engage gate is measured from the last ENGAGE, so it is
+        // already satisfied the instant a restore happens — a semi-quiet scene re-throttled
+        // StaleFingerprintTickThreshold ticks (~500 ms live) after every restore and the cap sat at
+        // MinAdaptedFps ~95% of the time. ReEngageCoolDownSeconds enforces a restored-dwell floor.
+        var mon = new TickCadenceMonitor();
+        mon.StaleFingerprintTickThreshold = 3;
+        mon.StaleAdaptCoolDownSeconds = 0;   // engage gate wide open — isolate the dwell floor
+        mon.ReEngageCoolDownSeconds = 1;
+        mon.MinAdaptedFps = 30;
+
+        for (int i = 0; i < 5; i++) mon.RecordWorldTick(42);
+        Assert.True(mon.AdaptedFpsCap < int.MaxValue, "First engage should throttle");
+
+        mon.RecordWorldTick(99);
+        Assert.Equal(int.MaxValue, mon.AdaptedFpsCap);
+
+        // Immediately stale again — the dwell floor must hold the cap released.
+        for (int i = 0; i < 20; i++) mon.RecordWorldTick(77);
+        Assert.Equal(int.MaxValue, mon.AdaptedFpsCap);
+
+        // Once the dwell elapses, the same stale condition is allowed to re-engage.
+        Thread.Sleep(1100);
+        for (int i = 0; i < 5; i++) mon.RecordWorldTick(77);
+        Assert.True(mon.AdaptedFpsCap < int.MaxValue,
+            "Re-engage must be permitted once ReEngageCoolDownSeconds has elapsed");
+    }
+
+    [Fact]
+    public void v0424_ReEngageCoolDownZero_PreservesImmediateReThrottle()
+    {
+        // The v0.42.3 behaviour stays available as an explicit opt-in at 0.
+        var mon = new TickCadenceMonitor();
+        mon.StaleFingerprintTickThreshold = 3;
+        mon.StaleAdaptCoolDownSeconds = 0;
+        mon.ReEngageCoolDownSeconds = 0;
+        mon.MinAdaptedFps = 30;
+
+        for (int i = 0; i < 5; i++) mon.RecordWorldTick(42);
+        Assert.True(mon.AdaptedFpsCap < int.MaxValue);
+
+        mon.RecordWorldTick(99);
+        Assert.Equal(int.MaxValue, mon.AdaptedFpsCap);
+
+        for (int i = 0; i < 5; i++) mon.RecordWorldTick(77);
+        Assert.True(mon.AdaptedFpsCap < int.MaxValue,
+            "ReEngageCoolDownSeconds=0 should restore the v0.42.3 immediate re-throttle");
     }
 }

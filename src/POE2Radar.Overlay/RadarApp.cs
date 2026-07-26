@@ -468,6 +468,7 @@ public sealed class RadarApp : IDisposable
         // v0.42 C1: apply TickCadenceMonitor thresholds from settings.
         _cadenceMonitor.StaleFingerprintTickThreshold = _settings.StaleFingerprintTickThreshold;
         _cadenceMonitor.StaleAdaptCoolDownSeconds = _settings.StaleAdaptCoolDownSeconds;
+        _cadenceMonitor.ReEngageCoolDownSeconds = _settings.ReEngageCoolDownSeconds;
         _controllerHold = new HoldRepeat(TimeSpan.FromMilliseconds(_settings.CycleHoldDelayMs),
                                          TimeSpan.FromMilliseconds(_settings.CycleHoldIntervalMs));
         _keyboardHold   = new HoldRepeat(TimeSpan.FromMilliseconds(_settings.CycleHoldDelayMs),
