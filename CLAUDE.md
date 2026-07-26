@@ -117,10 +117,10 @@ is rescaled by liveZoom/calibZoom each frame. See `resources/atlas-research-note
 ## Key facts (validated live; re-verify per patch)
 
 - Chain: AOB "Game States" → GameState → InGameState (active state) → `AreaInstance @ +0x290` →
-  `LocalPlayer @ +0x5C0` (2026-07-16 patch, +0x08; was 0x5B8 after the 0.5.4 +0x18 insertion, 0x5A0 before it).
+  `LocalPlayer @ +0x5C0` (0.5.4d / 2026-07-16, +0x08; was 0x5B8 after the 0.5.4 +0x18 insertion, 0x5A0 before it).
 - AreaInstance: AreaInfo `+0xA0` (code), AreaLevel `+0xC4`, AreaHash `+0x11C`, AwakeEntities std::map
   `+0x6E0` / Sleeping `+0x6F0`, TerrainStruct `+0x8C0` (walkable `+0xD0`, BytesPerRow `+0x130`). Two
-  stacked shifts: 0.5.4 (2026-06-25) inserted +0x18 at ≥0x580, then the 2026-07-16 patch shifted
+  stacked shifts: 0.5.4 (2026-06-25) inserted +0x18 at ≥0x580, then 0.5.4d (2026-07-16) shifted
   everything ≥0x598 by a further +0x08. The low fields (AreaInfo/Level/Hash) sit below both and were
   unchanged. `Poe2Offsets.cs` is authoritative — this list is a summary, verify there before acting.
 - Entity: Details `+0x08`, ComponentList `+0x10`; component map via ComponentLookUp StdBucket.
