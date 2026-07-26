@@ -117,17 +117,22 @@ is rescaled by liveZoom/calibZoom each frame. See `resources/atlas-research-note
 ## Key facts (validated live; re-verify per patch)
 
 - Chain: AOB "Game States" → GameState → InGameState (active state) → `AreaInstance @ +0x290` →
-  `LocalPlayer @ +0x5B8` (PoE2 0.5.4; was 0x5A0, +0x18 AreaInstance insertion).
+  `LocalPlayer @ +0x5C0` (2026-07-16 patch, +0x08; was 0x5B8 after the 0.5.4 +0x18 insertion, 0x5A0 before it).
 - AreaInstance: AreaInfo `+0xA0` (code), AreaLevel `+0xC4`, AreaHash `+0x11C`, AwakeEntities std::map
-  `+0x6D8` / Sleeping `+0x6E8`, TerrainStruct `+0x8B8` (walkable `+0xD0`, BytesPerRow `+0x130`). 0.5.4
-  shifted every AreaInstance field ≥0x580 by +0x18; the low fields (AreaInfo/Level/Hash) were unchanged.
+  `+0x6E0` / Sleeping `+0x6F0`, TerrainStruct `+0x8C0` (walkable `+0xD0`, BytesPerRow `+0x130`). Two
+  stacked shifts: 0.5.4 (2026-06-25) inserted +0x18 at ≥0x580, then the 2026-07-16 patch shifted
+  everything ≥0x598 by a further +0x08. The low fields (AreaInfo/Level/Hash) sit below both and were
+  unchanged. `Poe2Offsets.cs` is authoritative — this list is a summary, verify there before acting.
 - Entity: Details `+0x08`, ComponentList `+0x10`; component map via ComponentLookUp StdBucket.
   Rarity = ObjectMagicProperties `+0x144`; hostility = Positioned.Reaction `+0x1E0` (friendly = bit
   pattern `(b&0x7F)==1`); grid = Render world `+0x138` / 10.87; Life HP `+0x1B0` / Mana `+0x208` / ES
-  `+0x248` (✓ 0.5.4 validated live; was 0x1A8/0x1F8/0x230 pre-patch); Player name `+0x1B0`, level `+0x204`.
+  `+0x24C` (HP/Mana ✓ since 0.5.4, were 0x1A8/0x1F8 pre-patch; **ES drifts almost every patch** —
+  0x230 → 0x248 (0.5.4) → 0x264 (2026-07-02) → 0x24C (2026-07-10). `Poe2Live.EnsureVitalOffsets`
+  auto-heals it at runtime, so re-validate with Research `--vitals` and re-bake rather than trusting
+  this line); Player name `+0x1B0`, level `+0x204`.
 - Map UI: UiRoot `InGameState +0x2F0`; UiElement Self `+0x08`, Children `+0x10`, Flags `+0x180`
   (visible = bit `0x0B`); MapUiElement Shift `+0x368`, DefaultShift `+0x370` (= (0,-20)), Zoom `+0x3A8`.
-- Inventory (✓ live, Research `--inventory`): `AreaInstance +0x598` → ServerData → `+0x48` PlayerServerData
+- Inventory (✓ live, Research `--inventory`): `AreaInstance +0x5A0` → ServerData → `+0x48` PlayerServerData
   vec `[0]` → ServerDataStructure → `+0x320` PlayerInventories vec (InventoryArrayStruct stride `0x18`:
   `+0x00` id, `+0x08` → InventoryStruct, `+0x10` = ptr−0x10 fingerprint). InventoryStruct: TotalBoxes(X,Y)
   `+0x150`, ItemList vec(ptr→InventoryItemStruct, len X·Y) `+0x170`. InventoryItemStruct: Item entity
