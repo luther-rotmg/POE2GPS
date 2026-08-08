@@ -2707,7 +2707,9 @@ public sealed class ApiServer : IDisposable
         // Support — v0.27 (LO ask): supporter code + cosmetic dashboard palette + optional overlay badge.
         // isSupporter is a derived read-only mirror of the honor-system check — the dashboard uses it
         // to gate palette + badge UI, no reveal of the actual code or hash list.
-        supporterCode      = _settings.SupporterCode,
+        // The raw supporter code is write-only. It is accepted by POST /api/settings,
+        // but never echoed through this unauthenticated GET (especially important when
+        // AllowLanAccess is enabled); the dashboard uses the derived isSupporter flag.
         dashboardPalette   = _settings.DashboardPalette,
         paletteColors = POE2Radar.Core.Themes.RecapPaletteMap.Resolve(_settings.DashboardPalette),
         showSupporterBadge = _settings.ShowSupporterBadge,
