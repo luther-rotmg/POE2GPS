@@ -49,6 +49,7 @@ public class StreamSafeSettingsTests
             Assert.True(root.GetProperty("webObsSafeMaskZoneName").GetBoolean());
             Assert.True(root.GetProperty("webObsSafeHideoutBlur").GetBoolean());
             Assert.False(root.GetProperty("webObsSafeEntityNameFog").GetBoolean());
+            Assert.False(root.TryGetProperty("supporterCode", out _));
         }
         finally { api.Dispose(); }
     }
